@@ -674,9 +674,9 @@ class ESLRun():
                 for line in alignment_file: # loop through alignment lines
                     if line[0] == '>': 
                         species = line.strip('>\n') # get species name
+                    else: # all other lines are sequence lines
                         if species in self.run_family.input_pheno_dict:
                             continue # skip input species here
-                    else: # all other lines are sequence lines
                         if line[position] == aa_to_check_for: # 0-indexed
                             self.species_scores[species] += weight #add the site
                 alignment_file.close()
@@ -688,9 +688,9 @@ class ESLRun():
                 for line in input_alignment_file: # loop through alignment lines
                     if line[0] == '>': 
                         species = line.strip('>\n') # get species name
+                    else: # all other lines are sequence lines
                         if species not in self.run_family.input_pheno_dict:
                             continue # only look at input species here
-                    else: # all other lines are sequence lines
                         if line[position] == aa_to_check_for: # 0-indexed
                             self.species_scores[species] += weight #add the site
                 input_alignment_file.close()

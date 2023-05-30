@@ -4,7 +4,7 @@
 
 1. [Description](#description)
 2. [Usage](#usage)
-3. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc-scripts)
+3. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 4. [Requirements](#requirements)
 5. [Input Data](#input-data)
 6. [Output Data](#output-data)
@@ -13,20 +13,18 @@
 9. [Citation](#citation)
 
 ## Description ##
-ESL-PSC is a set of scripts for performing integrations of many species combinations using the Evolutionary Sparse Learning method. The tool is designed for analyzing genomic data to identify convergence in phenotypic traits among species. It employs a combination of Sparse Group Lasso and Contrast Tree methods to perform the analysis.
-
-The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates predictions. The output of the script includes gene ranks, species predictions, and optional plots to visualize the results.
+The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The output of the script includes gene ranks, species predictions, and optional plots to visualize the results.
 
 ## Usage ##
 To use ESL-PSC, you will need to run the esl_multimatrix.py script with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
-`python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace` 
+`python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace` `--cancel_only_partner`
 
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
-### Using a Configuration File with ESL-PSC Scripts ###
+### Using a Configuration File with ESL-PSC ###
 
 ESL-PSC scripts can utilize a configuration file to easily manage arguments that remain constant across multiple runs. The scripts will check for the presence of an esl_psc_config.txt file in the current working directory. If it exists, the function reads the arguments from the file and combines them with any additional command-line arguments provided when running the script. This allows you to keep common arguments in the configuration file, while providing run-specific arguments via the command line.
 
@@ -141,7 +139,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ##### Deletion Canceler Options:
 * `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire gene that the.
 * `--cancel_only_partner`: Only cancel partner of any gap species at the site instead of eliminating the entire column.
-* `--min_pairs MIN_PAIRS`: The minimum number of pairs that must not have gaps or the whole site will be canceled.
+* `--min_pairs`: The minimum number of pairs that must not have gaps or the whole site will be canceled.
 * `--limited_genes_list`: Use only genes in this list. One file per line.
 
 ##### Multimatrix-specific Optional Arguments:
