@@ -280,10 +280,15 @@ if __name__ == '__main__':
         # Only prediction_alignments_dir has been provided, assign
         # alignments_dir to the same value
         args.alignments_dir = args.prediction_alignments_dir
+    elif args.use_existing_alignments and args.no_pred_output:
+       	pass # if the canceled alignments are given and no_pred then ok
     else:
         # Neither argument has been provided, raise an error
         raise ValueError("At least one of --alignments-dir or "
                          "--prediction-alignments-dir must be provided.")
+    # set output_dir
+    if not args.output_dir:
+        args.output_dir = args.esl_main_dir
 
     # if use_uncanceled_alignments option is given, set canceled alignments dir
     if args.use_uncanceled_alignments:
@@ -403,14 +408,14 @@ if __name__ == '__main__':
     
     # call output functions which should generate output files
     if not args.no_genes_output: # skip genes output if flag is true
-        esl_int.generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
+        esl_int.generate_gene_ranks_output(gene_objects_dict, args.output_dir,
                                       args.output_file_base_name,
                                       show_sites = args.show_selected_sites,
                                            multimatrix = True)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
-        preds_output_path = os.path.join(args.esl_main_dir,
+        preds_output_path = os.path.join(args.output_dir,
                                          args.output_file_base_name
                                          + '_species_predictions.csv')
         esl_int.generate_predictions_output(master_run_list,

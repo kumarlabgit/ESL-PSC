@@ -47,6 +47,8 @@ def get_esl_args(parser = None):
     help_txt = '''* The name of this overall run to use in the output files'''
     group.add_argument('--output_file_base_name', help = help_txt,
                            type = str, required = True)
+    help_txt = '''where the output will be saved. default = ESL-PSC directory'''
+    group.add_argument('--output_dir', help = help_txt, type = str)
 
     ######### Hyperparameters #########
     group = parser.add_argument_group('Hyperparameters')
@@ -421,6 +423,10 @@ if __name__ == '__main__':
 
     args = ecf.parse_args_with_config(parser)
 
+    # set output_dir
+    if not args.output_dir:
+        args.output_dir = args.esl_main_dir
+
     # set group penalty default if necessary
     if args.group_penalty_type == "default":
         args.use_default_gp = True
@@ -485,13 +491,13 @@ if __name__ == '__main__':
     
     # call output functions which should generate output text files
     if not args.no_genes_output: # skip this output if flag is true
-        generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
+        generate_gene_ranks_output(gene_objects_dict, args.output_dir,
                                    args.output_file_base_name,
                                    show_sites = args.show_selected_sites)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
-        preds_output_path = os.path.join(args.esl_main_dir,
+        preds_output_path = os.path.join(args.output_dir,
                                          args.output_file_base_name
                                          + '_species_predictions.csv')
         generate_predictions_output(esl_run_list,

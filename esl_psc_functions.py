@@ -26,15 +26,18 @@ def parse_args_with_config(parser):
         args = parser.parse_args()
     # the following path was an arg in earlier versions but will be static here
     args.esl_main_dir = os.path.dirname(os.path.abspath(__file__))
-    # set this path if necessary
-    if not args.esl_inputs_outputs_dir:
+    # Ensure esl_inputs_outputs_dir is set if not already provided
+    if not hasattr(args, 'esl_inputs_outputs_dir') or not args.esl_inputs_outputs_dir:
         args.esl_inputs_outputs_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "preprocessed_data_and_outputs/")
-    if ((args.make_sps_plot or args.make_sps_kde_plot) and not
-        args.species_pheno_path):
-            raise ValueError("Error: A species phenotype file is required to "
-                             "make species plots or KDE plots.")
+
+    # Conditional error for missing species_pheno_path when plot generation is requested
+    plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)
+    species_pheno_path_missing = not getattr(args, 'species_pheno_path', None)
+
+    if plot_requested and species_pheno_path_missing:
+        raise ValueError("Error: A species phenotype file is required to make species plots or KDE plots.")
     return args
 
 def is_fasta(file_name):

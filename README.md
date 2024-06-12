@@ -13,7 +13,7 @@
 9. [Citation](#citation)
 
 ## Description ##
-The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The output of the script includes gene ranks, species predictions, and optional plots to visualize the results.
+The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
 
 ## Usage ##
 To use ESL-PSC, you will need to run the esl_multimatrix.py script with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
@@ -65,9 +65,9 @@ You can install these libraries using pip:
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in 2-line fasta format and whose file names must have the file extension `.fas`. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2023). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in 2-line fasta format and whose file names must have the file extension `.fas`. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2024). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
 
-2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2023 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
+2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2024 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
 
 #### Optional input files: ####
 
@@ -91,13 +91,13 @@ The predictions file contains every prediction made by every model generated usi
 3. Lambda2 (second sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
 5. Number of genes (the number of genes/protein
-6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by Allard et al. (2023))
+6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by Allard et al. (2024))
 7. Species being predicted
 8. Sequence Prediction Score (SPS) (a negative value indicates a prediction of the phenotype assigned a response value of -1 and a positive value indicates a prediction of opposite phenotype) 
 9. True phenotype for the species (taken from the species_pheno_file if provided)
 
 #### Gene Ranks File ####
-The gene ranks file lists the genes (or proteins or other genomic components) used in the analysis, along with information about their rankings based on their model contributions. Each line in the file includes the following information:
+The gene ranks file lists the genes (or proteins or other genomic components) used in the analysis, along with information about their rankings based on their model contributions. It is recommended to perform ontology enrichment tests and/or other follow-up analyses on the highest ranking ~1% of genetic elements. Each line in the file includes the following information:
 
 1. Gene name (taken from the alignment file)
 2. Number of species combinations in which the gene is ranked (i.e. number of combinations for which it recieved a non-zero GSS as part of any model)
@@ -117,11 +117,11 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--initial_lambda2`: Initial lambda 2 value (group sparsity parameter). Default = .01.
 * `--final_lambda2`: Final lambda 2 value (group sparsity parameter). Default = .99.
 * `--lambda_step`: The increment to increase the lambda values with each step. It is recommended to use a logspace (see options below) but in a linear gridsearch of sparsity hyperparameters, this controls the step between values.
-* `--group_penalty_type`: Group penalty calculation type ("sqrt", "median", "linear", or "default"). Median will be used by default (see Methods in Allard et al. 2023)
+* `--group_penalty_type`: Group penalty calculation type ("sqrt", "median", "linear", or "default"). Median will be used by default (see Methods in Allard et al. 2024)
 * `--initial_gp_value`: Group penalty constant term initial value. If a linear group lenalty type is selected, the group penalties for each gene will be equal to the number of variable sites in the gene's alignment plus a constant term that is the same across all genes. By default, this will be 1 for all genes, but it is also possible to use a range of different constant terms and repeat all model ensembles for each group penalty term. In order to do this, the initial, final and step can be set using this and the following two arguments.
 * `--final_gp_value`: Group penalty constant term final value. See initial_gp_value above for explanation.
 * `--gp_step`: Group penalty constant term increment. The default is 6. See initial_gp_value above for explanation.
-* `--num_log_points`: The number of values per sparsity hyperparameter (lambda1 and lambda2) in a logspace of values to test.
+* `--num_log_points`: The number of values per sparsity hyperparameter (lambda1 and lambda2) in a logspace of values to test. Include the `--use_logspace` flag (see options below).
 * `--pheno_names`: The names of the two phenotypes separated by a space, with the convergent phenotype coming first. by default "1" and "-1" will be used
 * `--min_genes`: Minimum number of genes a model must have in order for that model to be included in the prediction scores plots. Default = 0.
 
@@ -134,10 +134,10 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
-* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in Allard et al. 2023)
+* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in Allard et al. 2024)
 
 ##### Deletion Canceler Options:
-* `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire gene that the.
+* `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire alignment is excluded.
 * `--cancel_only_partner`: Only cancel partner of any gap species at the site instead of eliminating the entire column.
 * `--min_pairs`: The minimum number of pairs that must not have gaps or the whole site will be canceled.
 * `--limited_genes_list`: Use only genes in this list. One file per line.
@@ -148,22 +148,22 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
 * `--delete_preprocess`: Clear preprocess folders after each matrix run.
-* `--make_null_models`: Make null response-flipped ESL-CT models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al. 2023). 
-* `--make_pair_randomized_null_models`: Make null pair randomized ESL-CT models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al. 2023).
+* `--make_null_models`: Make null response-flipped ESL-CT models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al. 2024). 
+* `--make_pair_randomized_null_models`: Make null pair randomized ESL-CT models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al. 2024).
 * `--num_randomized_alignments`: Number of pair-randomized alignments to make. Default is 10.
 
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (fewest gaps used for photosynthesis analyses by Allard et al. (2023))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations (Allard et al. 2023) 
+1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in Allard et al. (2024))
+2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations (Allard et al. 2024) 
 
 A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
 
-#### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2023). If you use these data, please cite these sources: ####
+#### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2024). If you use these data, please cite these sources: ####
 
 
-##### Grass chloroplast alignments which were used by Allard et al. (2023) were derived from:
+##### Grass chloroplast alignments which were used by Allard et al. (2024) were derived from:
 
 Casola C, Li J. 2022. Beyond RuBisCO: convergent molecular evolution of multiple chloroplast genes in C4 plants. PeerJ 10:e12791 https://doi.org/10.7717/peerj.12791
 More information regarding these alignments can be found in the supplemental information kindly provided online by these authors.
@@ -177,6 +177,6 @@ OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with Mo
 ## Citation ##
 If you use this software in your research, please cite our paper:
 
-Allard, J. B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G. S., & Kumar, S. (2023). Evolutionary sparse learning reveals the shared genetic basis of convergent traits. (Submitted)
+Allard, J. B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G. S., & Kumar, S. (2024). Evolutionary sparse learning reveals the shared genetic basis of convergent traits. (Submitted)
 
 

@@ -79,11 +79,15 @@ def get_deletion_canceler_args(parser):
                         help = "don't create files for fully canceled genes",
                         action='store_true',
                         default=False)
-    # flag to cancel only partner
+    
+    group.add_argument('--outgroup_species',
+                       help='require controls to match this species, or cancel',
+                       type=str, default=None)
     group.add_argument('--cancel_only_partner',
-                        help = "only cancel partner of any gap species at site",
-                        action='store_true',
-                        default=False)
+                       help="only cancel partner of any gap species at site",
+                       action='store_true',
+                       default=False)
+    
     # minimum number of uncanceled pairs to require or whole gene is excluded
     # If there are at least args.min_pairs pairs with sequence at a site,
     # then if cancel_only_partner is set, only gap cancel the partners of the
@@ -103,7 +107,7 @@ def get_deletion_canceler_args(parser):
     return parser
 
 def generate_gap_canceled_alignments(args, list_of_species_combos,
-                                     enumerate_combos = False,
+                                     enumerate_combos = True,
                                      limited_genes_list = None):
     '''cancel deletions and generate alignment files.'''
 
@@ -217,37 +221,83 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
             # ***Now do the checking and canceling   
             # make a list of the sequences which are converted from str to lists
             seq_list = [list(record.seq) for record in records]
-            # loop through all positions, replace with '-' where necessary
+            # Determine if outgroup information is available and valid
+            outgroup_available = (args.outgroup_species and
+                                  args.outgroup_species in record_dict)
+            if outgroup_available:
+                outgroup_seq = list(record_dict[args.outgroup_species].seq)
+            
             for index in range(len(seq_list[0])):
-                # make list of AAs at this position
-                position_list = [seq[index] for seq in seq_list]
+                position_list = [seq[index] for seq in seq_list] # AAs here
                 
-                if args.cancel_only_partner: # will cancel if partner has a gap
-                    # first check if there are enough non-gap containing pairs 
-                    # there must be at least args.min_pairs
-                    pair_list = [position_list[n:n+2] for n in
-                                     range(0, len(position_list), 2)]
-                    gap_free_pairs_count = 0
-                    for pair in pair_list:
-                        if '-' not in pair:
-                            gap_free_pairs_count += 1
-                    # check if enough pairs
-                    if args.min_pairs > gap_free_pairs_count:
-                        # if not enough remaining, cancel the site
+                # Initialize cancellation for gap or outgroup mismatch as False
+                cancel_site_due_to_gap = False
+                cancel_site_due_to_outgroup_mismatch = False
+                
+                if '-' in position_list:
+                    cancel_site_due_to_gap = True  
+
+                # Cancel only partner if option is set, else whole site if gap
+                if args.cancel_only_partner and cancel_site_due_to_gap:
+                    pairs_left_after_partner_cancellation = len(seq_list) // 2
+                    pair_list = [position_list[n:n+2]
+                                 for n in range(0, len(position_list), 2)]
+                    for seq_num in range(0, len(seq_list), 2):  # Check pairs
+                        if '-' in pair_list[seq_num // 2]: #Cancel pair if gap
+                            seq_list[seq_num][index] = '-'
+                            seq_list[seq_num + 1][index] = '-'
+                            pairs_left_after_partner_cancellation -= 1
+                    if pairs_left_after_partner_cancellation < args.min_pairs:
                         for seq_num in range(len(seq_list)):
                             seq_list[seq_num][index] = '-'
-                    else:
-                        #now just cancel the partner of any gap
-                        for seq_num in range(0, len(seq_list), 2): #1, 3, 5...
-                            if (seq_list[seq_num][index] == '-' or
-                                seq_list[seq_num + 1][index] == '-'):
-                                seq_list[seq_num][index] = '-'
-                                seq_list[seq_num + 1][index] = '-'
-                            
-                elif '-' in {seq[index] for seq in seq_list}: # set comprehen.
-                    # if theres any gap, replace all AAS at position with gap 
+                        continue  # site is fully canceled
+                elif cancel_site_due_to_gap:  # Cancel entire site for any gap
                     for seq_num in range(len(seq_list)):
                         seq_list[seq_num][index] = '-'
+                
+                # Check for outgroup mismatch only if the site not canceled 
+                if outgroup_available and not cancel_site_due_to_gap:
+                    outgroup_residue = outgroup_seq[index]
+                    if outgroup_residue != '-':  #check non-gap sites in outgroup
+                        for seq_num in range(1, len(seq_list), 2):  
+                            if seq_list[seq_num][index] != outgroup_residue:
+                                cancel_site_due_to_outgroup_mismatch = True
+                                break  # Found a mismatch
+                        if cancel_site_due_to_outgroup_mismatch:  
+                            for seq_num in range(len(seq_list)):
+                                seq_list[seq_num][index] = '-'
+##            # loop through all positions, replace with '-' where necessary
+##            for index in range(len(seq_list[0])):
+##                # make list of AAs at this position
+##                position_list = [seq[index] for seq in seq_list]
+##                
+##                if args.cancel_only_partner: # will cancel if partner has a gap
+##                    # first check if there are enough non-gap containing pairs 
+##                    # there must be at least args.min_pairs
+##                    pair_list = [position_list[n:n+2] for n in
+##                                     range(0, len(position_list), 2)]
+##                    gap_free_pairs_count = 0
+##                    for pair in pair_list:
+##                        if '-' not in pair:
+##                            gap_free_pairs_count += 1
+##                    # check if enough pairs
+##                    if args.min_pairs > gap_free_pairs_count:
+##                        # if not enough remaining, cancel the site
+##                        for seq_num in range(len(seq_list)):
+##                            seq_list[seq_num][index] = '-'
+##                    else:
+##                        #now just cancel the partner of any gap
+##                        for seq_num in range(0, len(seq_list), 2): #1, 3, 5...
+##                            if (seq_list[seq_num][index] == '-' or
+##                                seq_list[seq_num + 1][index] == '-'):
+##                                seq_list[seq_num][index] = '-'
+##                                seq_list[seq_num + 1][index] = '-'
+##                            
+##                elif '-' in {seq[index] for seq in seq_list}: # set comprehen.
+##                    # if theres any gap, replace all AAS at position with gap 
+##                    for seq_num in range(len(seq_list)):
+##                        seq_list[seq_num][index] = '-'
+            
 
                 # if we want to cancel triallelic sites (only if 2 pairs)
                 if args.cancel_tri_allelic and len(species_to_scan_list) == 4: 
