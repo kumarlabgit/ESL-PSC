@@ -38,6 +38,20 @@ def parse_args_with_config(parser):
 
     if plot_requested and species_pheno_path_missing:
         raise ValueError("Error: A species phenotype file is required to make species plots or KDE plots.")
+
+    # Check for relative paths and adjust them to be absolute
+    path_args = [
+        'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir', 
+        'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file', 
+        'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir'
+    ]
+
+    # Convert path arguments to absolute paths
+    for path_arg in path_args:
+        path = getattr(args, path_arg)
+        if path:
+            setattr(args, path_arg, os.path.abspath(path))
+
     return args
 
 def is_fasta(file_name):
@@ -699,7 +713,7 @@ class ESLRun():
                 input_alignment_file.close()
         weights_file.close()
         
-        ###### calculate input species RMSE ######
+        ###### calculate input species RMSE (MFS) ######
         if not skip_pred:
             sum_of_squared_diffs = 0 #sum of (predicted - observed)^2
             n_species = len(self.run_family.input_pheno_dict.keys())

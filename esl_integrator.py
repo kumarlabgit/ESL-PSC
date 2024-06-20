@@ -1,4 +1,4 @@
-# a unified script for running integrated ESL analyses over hyper parameters
+# a unified script for running integrated ESL analyses
 
 import argparse, os, subprocess, sys, math, re, shutil, time, datetime
 import esl_psc_functions as ecf
@@ -17,12 +17,7 @@ def get_esl_args(parser = None):
 
     ######### Directories and Paths #########
     group = parser.add_argument_group('Directories and Paths')
-##    help_txt = '''*full path to the main directory that contains the
-##    subdirectory with sg_lasso executable files i.e.
-##    mlpack-3.2.2/build/bin/mlpack_sg_lasso
-##    '''
-##    group.add_argument('--esl_main_dir', help = help_txt,
-##                           type = str, required = True)
+
     help_txt = '''The full path to the folder where the preprocessed input
     folder will be. this same folder will be where the output feature weights
     files are put. 
@@ -491,13 +486,13 @@ if __name__ == '__main__':
     
     # call output functions which should generate output text files
     if not args.no_genes_output: # skip this output if flag is true
-        generate_gene_ranks_output(gene_objects_dict, args.output_dir,
+        generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
                                    args.output_file_base_name,
                                    show_sites = args.show_selected_sites)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
-        preds_output_path = os.path.join(args.output_dir,
+        preds_output_path = os.path.join(args.esl_main_dir,
                                          args.output_file_base_name
                                          + '_species_predictions.csv')
         generate_predictions_output(esl_run_list,

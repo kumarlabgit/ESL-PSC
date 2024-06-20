@@ -1,33 +1,9 @@
-# a script to create a modified set of alignment files in which any gap in any
-# species will trigger the replacment of that position accross all species with
-# a gap.  This version is designed to deal with 2x2 matrices where all species
-# have to be canceled at each gap site because canceling only one +1/-1 pair
-# would leave only 1x1 which is not informative.  It can also cancel out
-# tri-allelic sites which might be mostly uninformative with 2x2 species ESL
-# there is also an option to impute genes from related species when missing
-
 import os, sys, argparse, itertools, time, datetime
 import esl_psc_functions as ecf 
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-# sample run command
-""" 
-python3 deletion_canceler.py \
---alignments_dir '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_alignments' \
---canceled_alignments_dir '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_echo_alignments_canceled_gaps_new_test' \
---species_groups_file '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_echo_species_groups_for_deletion_canceler.txt'
-"""
-# with response file
-"""
-python3 deletion_canceler.py \
---alignments_dir '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_alignments' \
---canceled_alignments_dir '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_bodymass_7pairs_canceled_min5' \
---response_file '/home/john/mlpack_sg_lasso/longevity_ptp/esl_input/orthomam_bodymass_response_matrix.txt' \
---cancel_only_partner \
---min_pairs 5
-"""
 
 def parse_species_groups(species_group_file_path):
     '''open a species groups file and read it and make a list of combos'''
@@ -266,38 +242,6 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                         if cancel_site_due_to_outgroup_mismatch:  
                             for seq_num in range(len(seq_list)):
                                 seq_list[seq_num][index] = '-'
-##            # loop through all positions, replace with '-' where necessary
-##            for index in range(len(seq_list[0])):
-##                # make list of AAs at this position
-##                position_list = [seq[index] for seq in seq_list]
-##                
-##                if args.cancel_only_partner: # will cancel if partner has a gap
-##                    # first check if there are enough non-gap containing pairs 
-##                    # there must be at least args.min_pairs
-##                    pair_list = [position_list[n:n+2] for n in
-##                                     range(0, len(position_list), 2)]
-##                    gap_free_pairs_count = 0
-##                    for pair in pair_list:
-##                        if '-' not in pair:
-##                            gap_free_pairs_count += 1
-##                    # check if enough pairs
-##                    if args.min_pairs > gap_free_pairs_count:
-##                        # if not enough remaining, cancel the site
-##                        for seq_num in range(len(seq_list)):
-##                            seq_list[seq_num][index] = '-'
-##                    else:
-##                        #now just cancel the partner of any gap
-##                        for seq_num in range(0, len(seq_list), 2): #1, 3, 5...
-##                            if (seq_list[seq_num][index] == '-' or
-##                                seq_list[seq_num + 1][index] == '-'):
-##                                seq_list[seq_num][index] = '-'
-##                                seq_list[seq_num + 1][index] = '-'
-##                            
-##                elif '-' in {seq[index] for seq in seq_list}: # set comprehen.
-##                    # if theres any gap, replace all AAS at position with gap 
-##                    for seq_num in range(len(seq_list)):
-##                        seq_list[seq_num][index] = '-'
-            
 
                 # if we want to cancel triallelic sites (only if 2 pairs)
                 if args.cancel_tri_allelic and len(species_to_scan_list) == 4: 
@@ -305,7 +249,6 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                     if len({seq[index] for seq in seq_list}) == 3:
                         for seq_num in range(len(seq_list)):
                             seq_list[seq_num][index] = '-'
-
 
             # now write new fasta file with modified sequences
             # first modify seq_records
@@ -369,6 +312,4 @@ if __name__ == '__main__':
     print("finished generating gap-canceled alignments!")
 
     ecf.report_elapsed_time(start_time) # print time taken for execution
-
-     
-                            
+    

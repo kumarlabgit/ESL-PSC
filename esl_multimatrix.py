@@ -281,11 +281,12 @@ if __name__ == '__main__':
         # alignments_dir to the same value
         args.alignments_dir = args.prediction_alignments_dir
     elif args.use_existing_alignments and args.no_pred_output:
-       	pass # if the canceled alignments are given and no_pred then ok
+        pass
     else:
         # Neither argument has been provided, raise an error
         raise ValueError("At least one of --alignments-dir or "
                          "--prediction-alignments-dir must be provided.")
+
     # set output_dir
     if not args.output_dir:
         args.output_dir = args.esl_main_dir
@@ -321,8 +322,8 @@ if __name__ == '__main__':
         list_of_species_combos = dc.parse_species_groups(
             args.species_groups_file)
         # now make a directory of response files under dir with group file in it
-        group_file_parent_dir = os.path.split(args.species_groups_file)[0]
-        response_dir = os.path.join(group_file_parent_dir,
+#        group_file_parent_dir = os.path.split(args.species_groups_file)[0]
+        response_dir = os.path.join(args.output_dir,
                                     os.path.split(args.species_groups_file)[1]
                                     + '_response_matrices')
         response_dir = response_dir.replace('.txt', '') #delete group file ext

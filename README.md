@@ -4,25 +4,46 @@
 
 1. [Description](#description)
 2. [Usage](#usage)
-3. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-4. [Requirements](#requirements)
+3. [Installation and Dependncies](#installation-and-dependncies)
+4. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 5. [Input Data](#input-data)
 6. [Output Data](#output-data)
 7. [Additional Options and Parameters](#additional-options-and-parameters)
 8. [Included Data](#included-data)
-9. [Citation](#citation)
+9. [Demo](#demo)
+10. [Citation](#citation)
 
 ## Description ##
 The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
+
+![flow chart](./images/ESL_PSC_flowchart_image.png)
 
 ## Usage ##
 To use ESL-PSC, you will need to run the esl_multimatrix.py script with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
-`python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace` `--cancel_only_partner`
+`python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
+
+See [Demo](#demo) for an example of a run command you can try with an included data set.
+
+## Installation and Dependncies ##
+
+ESL-PSC requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8.
+
+To install ESL-PSC, simply clone this repository and make sure the following Python libraries are installed:
+
+- BioPython
+- NumPy
+- pandas
+- matplotlib
+- seaborn
+
+You can install these libraries using pip:
+
+`pip install biopython numpy pandas matplotlib seaborn`
 
 ### Using a Configuration File with ESL-PSC ###
 
@@ -40,32 +61,11 @@ To use this feature:
 
 5. If the esl_psc_config.txt file is not found in the current working directory, the function will only parse command-line arguments.
 
-
-## Requirements ##
-
-To run ESL-PSC, you will need the following software, libraries, and dependencies:
-
-Python
-ESL-PSC requires Python 3. It has not been tested with Python 2, and compatibility is not guaranteed.
-
-Libraries
-The following Python libraries are required to run ESL-PSC:
-
-- BioPython
-- NumPy
-- pandas
-- matplotlib
-- seaborn
-
-You can install these libraries using pip:
-
-`pip install biopython numpy pandas matplotlib seaborn`
-
 ## Input Data ##
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in 2-line fasta format and whose file names must have the file extension `.fas`. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2024). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2024). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
 
 2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2024 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
 
@@ -148,8 +148,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
 * `--delete_preprocess`: Clear preprocess folders after each matrix run.
-* `--make_null_models`: Make null response-flipped ESL-CT models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al. 2024). 
-* `--make_pair_randomized_null_models`: Make null pair randomized ESL-CT models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al. 2024).
+* `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al. 2024). 
+* `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al. 2024).
 * `--num_randomized_alignments`: Number of pair-randomized alignments to make. Default is 10.
 
 ## Included Data ##
@@ -173,6 +173,18 @@ https://orthomam.mbb.cnrs.fr/#
 
 OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861–862
 
+## Demo ##
+You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 
+1. Clone this repository
+2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
+3. Navigate to the `ESL_PSC/` directory on your computer
+4. Unzip the `photosynthesis_alignments.zip` archive: `tar -xf photosynthesis_alignments.zip`
+5. Run this command from the ESL-PSC directory: `python esl_multimatrix.py --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
+6. The expected run time is approximately 30 seconds on a standard desktop computer.
+7. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
+the plot should look like this:
+![predictions violin plot](./images/demo_output_image.png)
+8. See [Output Data](#output-data) above for descriptions of the fields in the output csv files.
 
 ## Citation ##
 If you use this software in your research, please cite our paper:
