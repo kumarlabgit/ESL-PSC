@@ -96,7 +96,7 @@ def make_taxa_list(alignments_dir_path):
     appearing in the alignments will be represented'''
     previous_dir = os.getcwd()
     os.chdir(alignments_dir_path)
-    subprocess.run('grep -h ">" * | sort | uniq | sed "s/>//" > temp___.txt',
+    subprocess.run('"{}" -h ">" * | sort | uniq | "{}" "s/>//" > temp___.txt'.format(os.path.join(previous_dir, "bin", "grep"), os.path.join(previous_dir, "bin", "sed")),
                    shell=True, check=True)
     taxa_list = file_lines_to_list('temp___.txt')
     os.remove('temp___.txt')
@@ -610,7 +610,7 @@ class ESLRun():
                             preprocessed_dir_name + '.txt',
                             '-r', preprocessed_dir_name + '/response_' +
                             preprocessed_dir_name + '.txt',
-                            '-s', os.path.join(self.run_family.args.esl_main_dir, 'slep_opts_dec.txt'),
+                            '-s', os.path.join(self.run_family.args.esl_main_dir, 'slep_opts.txt'),
                             '-w', output_name + '_out_feature_weights']
         # run esl
         # subprocess.run(' '.join(esl_command_list), shell=True, check=True)
@@ -618,9 +618,9 @@ class ESLRun():
         subprocess.run(esl_command_list, shell=False, check=True)
         
         # command to pull out feature weights and create text files
-        grep_command = (r'grep -P "<item>.*</item>" ' +
+        grep_command = (r'"{}" -E "<item>.*</item>" '.format(os.path.join(self.run_family.args.esl_main_dir, "bin", "grep")) +
                         preprocessed_dir_name + self.get_lambda_tag() +
-                        r'_out_feature_weights.xml | sed' +
+                        r'_out_feature_weights.xml | "{}"'.format(os.path.join(self.run_family.args.esl_main_dir, "bin", "sed")) +
                         r' -re "s/.*<item>(.*)<\/item>.*/\1/" > ' +
                         r'temp_out_feature_weights.txt') 
         # creates 'temp_out_feature_weights.txt' (this is fast)          
