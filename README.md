@@ -11,7 +11,8 @@
 7. [Additional Options and Parameters](#additional-options-and-parameters)
 8. [Included Data](#included-data)
 9. [Demo](#demo)
-10. [Citation](#citation)
+10. [Troubleshooting](#troubleshooting)
+11. [Citation](#citation)
 
 ## Description ##
 The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
@@ -25,15 +26,17 @@ Here is an example of how to run the script:
 
 `python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
+##### We also include `esl_multimatrix.exe` which can be substituted for `esl_multimatrix.py` in the above command and will run on Windows. 
+
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
 ## Installation and Dependncies ##
 
-ESL-PSC requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8.
+When running on Windows using `esl_multimatrix.exe` all dependencies are included and no further installations are necessary.
 
-To install ESL-PSC, simply clone this repository and make sure the following Python libraries are installed:
+When running esl using the included python scripts, it requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8. The following Python libraries are required:
 
 - BioPython
 - NumPy
@@ -44,6 +47,8 @@ To install ESL-PSC, simply clone this repository and make sure the following Pyt
 You can install these libraries using pip:
 
 `pip install biopython numpy pandas matplotlib seaborn`
+
+ESL-PSC can be run on Windows by substituting 
 
 ### Using a Configuration File with ESL-PSC ###
 
@@ -172,6 +177,15 @@ More information regarding these alignments can be found in the supplemental inf
 https://orthomam.mbb.cnrs.fr/#
 
 OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861–862
+
+## Troubleshooting ##
+
+Problems with the inputs can cause segmentation fault errors in the ESL preprocess step. Here are some common causes of problems:
+1. An incorrect file path. It is recommended to use absolute file paths. Dragging the file icon onto the terminal window is a good way to make sure the path is entered correctly.
+2. Misspelling a species name. It is recommended to copy and paste the species identifiers from the alignment file when you set up your species groups file.  It's easy to miss a slight spelling error.
+3. Having an extra blank new line in one of the input files.
+4. having a duplicate alignment file name.
+5. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
 
 ## Demo ##
 You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 
