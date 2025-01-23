@@ -176,7 +176,7 @@ More information regarding these alignments can be found in the supplemental inf
 ##### Mammalian protein sequence alignments for echolocators and their control species were derived from the OrthoMaM database:
 https://orthomam.mbb.cnrs.fr/#
 
-OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, RÃ©my Dernat, FrÃ©dÃ©ric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861â€“862
+OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861-862
 
 ## Troubleshooting ##
 
