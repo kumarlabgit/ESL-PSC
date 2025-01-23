@@ -70,9 +70,9 @@ To use this feature:
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2024). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2025). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
 
-2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2024 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
+2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2025 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
 
 #### Optional input files: ####
 
@@ -176,7 +176,7 @@ More information regarding these alignments can be found in the supplemental inf
 ##### Mammalian protein sequence alignments for echolocators and their control species were derived from the OrthoMaM database:
 https://orthomam.mbb.cnrs.fr/#
 
-OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861–862
+OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, RÃ©my Dernat, FrÃ©dÃ©ric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861â€“862
 
 ## Troubleshooting ##
 
@@ -203,6 +203,6 @@ the plot should look like this:
 ## Citation ##
 If you use this software in your research, please cite our paper:
 
-Allard, J. B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G. S., & Kumar, S. (2024). Evolutionary sparse learning reveals the shared genetic basis of convergent traits. (Submitted)
+Allard, J.B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G.S. and Kumar, S., 2025. Evolutionary sparse learning with paired species contrast reveals the shared genetic basis of convergent traits. bioRxiv.
 
 
