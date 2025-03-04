@@ -20,7 +20,7 @@ The tools presented in this repository allow one to analyse signatures of molecu
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
 ## Usage ##
-To use ESL-PSC, you will need to run the esl_multimatrix.py script with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+To use ESL-PSC, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
@@ -36,7 +36,7 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 When running on Windows using `esl_multimatrix.exe` all dependencies are included and no further installations are necessary.
 
-When running esl using the included python scripts, it requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8. The following Python libraries are required:
+When running ESL-PSC using the included python scripts, it requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8. The following Python libraries are required:
 
 - BioPython
 - NumPy
@@ -80,7 +80,7 @@ To use this feature:
 
 2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
 
-3. Canceled alignments directory. Full path to the new alignments directory. Gap-canceled alignments for each species combo will be placed here. This may also be an existing folder of gap-canceled alignments for multimatrix ESL. Use the argument `--canceled_alignments_dir` and give the full absolute path to the directory.
+3. Canceled alignments directory. Full path to the new alignments directory. Gap-canceled alignments for each species combo will be placed here. This may also be an existing folder of gap-canceled alignments for multimatrix ESL-PSC. Use the argument `--canceled_alignments_dir` and give the full absolute path to the directory.
 
 4. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, you can submit a limited genes list file, which is a text file containing one alignment file name on each line. Note that these names must exactly match the ones in the alignments directory, and must end in `.fas` like they do. Use the argument `--limited_genes_list` and give the full absolute path to the file.
 
@@ -96,7 +96,7 @@ The predictions file contains every prediction made by every model generated usi
 3. Lambda2 (second sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
 5. Number of genes (the number of genes/protein
-6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by Allard et al. (2024))
+6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by Allard et al. (2025))
 7. Species being predicted
 8. Sequence Prediction Score (SPS) (a negative value indicates a prediction of the phenotype assigned a response value of -1 and a positive value indicates a prediction of opposite phenotype) 
 9. True phenotype for the species (taken from the species_pheno_file if provided)
@@ -122,7 +122,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--initial_lambda2`: Initial lambda 2 value (group sparsity parameter). Default = .01.
 * `--final_lambda2`: Final lambda 2 value (group sparsity parameter). Default = .99.
 * `--lambda_step`: The increment to increase the lambda values with each step. It is recommended to use a logspace (see options below) but in a linear gridsearch of sparsity hyperparameters, this controls the step between values.
-* `--group_penalty_type`: Group penalty calculation type ("sqrt", "median", "linear", or "default"). Median will be used by default (see Methods in Allard et al. 2024)
+* `--group_penalty_type`: Group penalty calculation type ("sqrt", "median", "linear", or "default"). Median will be used by default (see Methods in Allard et al., 2025)
 * `--initial_gp_value`: Group penalty constant term initial value. If a linear group lenalty type is selected, the group penalties for each gene will be equal to the number of variable sites in the gene's alignment plus a constant term that is the same across all genes. By default, this will be 1 for all genes, but it is also possible to use a range of different constant terms and repeat all model ensembles for each group penalty term. In order to do this, the initial, final and step can be set using this and the following two arguments.
 * `--final_gp_value`: Group penalty constant term final value. See initial_gp_value above for explanation.
 * `--gp_step`: Group penalty constant term increment. The default is 6. See initial_gp_value above for explanation.
@@ -139,7 +139,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
-* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in Allard et al. 2024)
+* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in Allard et al., 2025)
 
 ##### Deletion Canceler Options:
 * `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire alignment is excluded.
@@ -153,22 +153,22 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
 * `--delete_preprocess`: Clear preprocess folders after each matrix run.
-* `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al. 2024). 
-* `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al. 2024).
+* `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al., 2025). 
+* `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL-PSC integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al., 2025).
 * `--num_randomized_alignments`: Number of pair-randomized alignments to make. Default is 10.
 
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in Allard et al. (2024))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations (Allard et al. 2024) 
+1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in Allard et al., (2025))
+2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations (Allard et al., 2025) 
 
 A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
 
-#### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2024). If you use these data, please cite these sources: ####
+#### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2025). If you use these data, please cite these sources: ####
 
 
-##### Grass chloroplast alignments which were used by Allard et al. (2024) were derived from:
+##### Grass chloroplast alignments which were used by Allard et al. (2025) were derived from:
 
 Casola C, Li J. 2022. Beyond RuBisCO: convergent molecular evolution of multiple chloroplast genes in C4 plants. PeerJ 10:e12791 https://doi.org/10.7717/peerj.12791
 More information regarding these alignments can be found in the supplemental information kindly provided online by these authors.
@@ -176,7 +176,7 @@ More information regarding these alignments can be found in the supplemental inf
 ##### Mammalian protein sequence alignments for echolocators and their control species were derived from the OrthoMaM database:
 https://orthomam.mbb.cnrs.fr/#
 
-OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861-862
+OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861–862
 
 ## Troubleshooting ##
 
@@ -203,6 +203,6 @@ the plot should look like this:
 ## Citation ##
 If you use this software in your research, please cite our paper:
 
-Allard, J.B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G.S. and Kumar, S., 2025. Evolutionary sparse learning with paired species contrast reveals the shared genetic basis of convergent traits. bioRxiv.
+Allard, J.B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G.S. and Kumar, S., 2025. Evolutionary sparse learning  reveals the shared genetic basis of convergent traits. Nature Communications. (accepted)
 
 

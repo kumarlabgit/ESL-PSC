@@ -9,6 +9,73 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+def validate_specific_paths(args):
+    '''
+    Check that certain known arguments (if provided) are valid paths.
+    '''
+    paths_to_check = [
+        'esl_main_dir',
+        'alignments_dir',
+        'prediction_alignments_dir',
+        'response_dir',
+        'species_groups_file',
+        'species_pheno_path',
+        'canceled_alignments_dir'
+        # Add or remove as needed for your script
+    ]
+
+    problem_paths = []
+
+    for attr_name in paths_to_check:
+        path_value = getattr(args, attr_name, None)
+        # If user didn't supply it, or it's None, skip it
+        if path_value is None:
+            continue
+
+        # Check existence
+        if not os.path.exists(path_value):
+            problem_paths.append(f"{attr_name} = '{path_value}'")
+
+    if problem_paths:
+        error_msg = (
+            "The following paths were provided but do not exist on disk:\n"
+            + "\n".join(problem_paths)
+            + "\nPlease check these paths for errors."
+        )
+        raise ValueError(error_msg)
+
+def check_species_in_alignments(list_of_species_combos, alignments_dir):
+    '''
+    Checks that every species in each combo from the species_groups_file
+    is actually present in at least one alignment file in alignments_dir.
+    Raises a ValueError if any species is missing.
+    '''
+    # Collect every species from the combos into a set
+    all_species = set()
+    for combo in list_of_species_combos:
+        all_species.update(combo)
+    
+    # Collect all species actually found in the alignment files
+    found_species = set()
+    if not os.path.isdir(alignments_dir):
+        raise ValueError(f"Alignment directory '{alignments_dir}'"
+                         "does not exist or is not a directory.")
+    
+    for file_name in os.listdir(alignments_dir):
+        if ecf.is_fasta(file_name):
+            file_path = os.path.join(alignments_dir, file_name)
+            for record in SeqIO.parse(file_path, 'fasta'):
+                # record.id is your species ID/header
+                found_species.add(record.id)
+    
+    # Determine if any species are missing
+    missing_species = all_species - found_species
+    if missing_species:
+        raise ValueError(
+            f"The following species from the species groups file were not "
+            f"found in any alignment in '{alignments_dir}':\n"
+            f"{', '.join(sorted(missing_species))} Double check the spelling"
+        )
 
 def randomize_alignments(original_alignments_directory, species_list):
     '''generates randomly pair-flipped alignments from deletion-canceled
@@ -287,6 +354,8 @@ if __name__ == '__main__':
         raise ValueError("At least one of --alignments-dir or "
                          "--prediction-alignments-dir must be provided.")
 
+    validate_specific_paths(args) #verify that dir and file paths are real
+
     # set output_dir
     if not args.output_dir:
         args.output_dir = args.esl_main_dir
@@ -321,6 +390,8 @@ if __name__ == '__main__':
         response_file_list = []
         list_of_species_combos = dc.parse_species_groups(
             args.species_groups_file)
+        # check that species names are all in alignments (correct spellings)
+        check_species_in_alignments(list_of_species_combos, args.alignments_dir)
         # now make a directory of response files under dir with group file in it
 #        group_file_parent_dir = os.path.split(args.species_groups_file)[0]
         response_dir = os.path.join(args.output_dir,

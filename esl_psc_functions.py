@@ -25,15 +25,11 @@ def parse_args_with_config(parser):
         print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args()
     # the following path was an arg in earlier versions but will be static here
-    # args.esl_main_dir = os.path.dirname(os.path.abspath(__file__))
-    # Modified to work with pyinstaller
-    args.esl_main_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    args.esl_main_dir = os.path.dirname(os.path.abspath(__file__))
     # Ensure esl_inputs_outputs_dir is set if not already provided
     if not hasattr(args, 'esl_inputs_outputs_dir') or not args.esl_inputs_outputs_dir:
         args.esl_inputs_outputs_dir = os.path.join(
-            #os.path.dirname(os.path.abspath(__file__)),
-            # Modified to work with pyinstaller
-            os.path.dirname(os.path.abspath(sys.argv[0])),
+            os.path.dirname(os.path.abspath(__file__)),
             "preprocessed_data_and_outputs/")
 
     # Conditional error for missing species_pheno_path when plot generation is requested
@@ -96,13 +92,7 @@ def make_taxa_list(alignments_dir_path):
     appearing in the alignments will be represented'''
     previous_dir = os.getcwd()
     os.chdir(alignments_dir_path)
-    if os.name == "posix":
-        sed_exe = 'sed'
-        grep_exe = 'grep'
-    else:
-        sed_exe = os.path.join(previous_dir, "bin", "sed")
-        grep_exe = os.path.join(previous_dir, "bin", "grep")
-    subprocess.run('"{}" -h ">" * | sort | uniq | "{}" "s/>//" > temp___.txt'.format(grep_exe, sed_exe),
+    subprocess.run('grep -h ">" * | sort | uniq | sed "s/>//" > temp___.txt',
                    shell=True, check=True)
     taxa_list = file_lines_to_list('temp___.txt')
     os.remove('temp___.txt')
@@ -366,12 +356,8 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
                         "supposed to be moved to. So that won't work")
     #construct command to run ESL preprocess
     print(os.getcwd())
-    if os.name == "posix":
-        preprocess_exe = 'preprocess'
-    else:
-        preprocess_exe = 'preprocess.exe'
     preprocess_command_list = [os.path.join(esl_dir_path,
-                               'bin', preprocess_exe),
+                               'bin/preprocess'),
                                response_matrix_file_path,
                                path_file_path,
                                preprocessed_input_folder]
@@ -379,8 +365,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
         preprocess_command_list.append("is") # add this to ignore singletons
     # make sure the input file names are right including ".txt" or get seg fault
     print(' '.join(preprocess_command_list))
-    #subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
-    subprocess.run(preprocess_command_list, shell=False, check=True)
+    subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
 
     # move the input folder from preprocess to its folder
     clear_existing_folder(os.path.join(esl_inputs_folder_name,
@@ -446,7 +431,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     plt.savefig(fig_path)
     report_elapsed_time(start_time)
     plt.show()
-    print("\npreditions density plot figure saved at: " + fig_path)
+    print("\npredictions density plot figure saved at: " + fig_path)
 
     
 
@@ -610,12 +595,8 @@ class ESLRun():
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
         # generate the command for calling ESL logistic lasso
-        if os.name == "posix":
-            sg_lasso_exe = 'sg_lasso'
-        else:
-            sg_lasso_exe = 'sg_lasso.exe'
         esl_command_list = [os.path.join(self.run_family.args.esl_main_dir,
-                            'bin', sg_lasso_exe),
+                            'bin/sg_lasso'),
                             '-f', preprocessed_dir_name + '/feature_' +
                             preprocessed_dir_name + '.txt',
                             '-z', str(self.lambda1),
@@ -624,22 +605,14 @@ class ESLRun():
                             preprocessed_dir_name + '.txt',
                             '-r', preprocessed_dir_name + '/response_' +
                             preprocessed_dir_name + '.txt',
-                            '-s', os.path.join(self.run_family.args.esl_main_dir, 'slep_opts.txt'),
                             '-w', output_name + '_out_feature_weights']
         # run esl
-        # subprocess.run(' '.join(esl_command_list), shell=True, check=True)
-        print(" ".join(esl_command_list))
-        subprocess.run(esl_command_list, shell=False, check=True)
-        if os.name == "posix":
-            grep_exe = 'grep'
-            sed_exe = 'sed'
-        else:
-            grep_exe = os.path.join(self.run_family.args.esl_main_dir, "bin", "grep")
-            sed_exe = os.path.join(self.run_family.args.esl_main_dir, "bin", "sed")
+        subprocess.run(' '.join(esl_command_list), shell=True, check=True)
+        
         # command to pull out feature weights and create text files
-        grep_command = (r'"{}" -E "<item>.*</item>" '.format(grep_exe) +
+        grep_command = (r'grep -P "<item>.*</item>" ' +
                         preprocessed_dir_name + self.get_lambda_tag() +
-                        r'_out_feature_weights.xml | "{}"'.format(sed_exe) +
+                        r'_out_feature_weights.xml | sed' +
                         r' -re "s/.*<item>(.*)<\/item>.*/\1/" > ' +
                         r'temp_out_feature_weights.txt') 
         # creates 'temp_out_feature_weights.txt' (this is fast)          
