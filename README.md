@@ -203,6 +203,6 @@ the plot should look like this:
 ## Citation ##
 If you use this software in your research, please cite our paper:
 
-Allard, J.B., Sharma, S., Patel, R., Sanderford, M., Tamura, K., Vucetic, S., Gerhard, G.S. and Kumar, S., 2025. Evolutionary sparse learning  reveals the shared genetic basis of convergent traits. Nature Communications. (accepted)
+Allard, J.B., Sharma, S., Patel, R. et al. Evolutionary sparse learning reveals the shared genetic basis of convergent traits. Nature Communications 16, 3217 (2025). https://doi.org/10.1038/s41467-025-58428-8
 
 
