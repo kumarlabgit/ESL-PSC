@@ -16,6 +16,10 @@ from collections import defaultdict
 from tqdm import tqdm
 from Bio import SeqIO
 from esl_psc_functions import parse_ESL_weight_line, parse_ESL_weight_label, get_species_to_check
+from sps_density import (
+    create_sps_plot,
+    create_sps_plot_violin
+)
 
 def predict_one_model(model_path, aln_dir, input_species):
     """
@@ -68,6 +72,14 @@ def main():
                     help="Directory full of combo_#.txt files (multimatrix runs)")
     pa.add_argument('--output', default="saved_model_predictions.csv",
                     help="Name of the CSV to write")
+    pa.add_argument('--make_sps_plot', action='store_true',
+                    help="Generate an SPS **violin** density plot from the predictions CSV")
+    pa.add_argument('--make_sps_kde_plot', action='store_true',
+                    help="Generate an SPS **KDE** density plot from the predictions CSV")
+    pa.add_argument('--plot_output', default="sps_plot.png",
+                    help="Path (with extension) to save the SPS plot (SVG or PNG)")
+    pa.add_argument('--rmse_rank', type=float, default=0.05,
+                    help="RMSE percentile rank cutoff for selecting models in SPS plot")
     args = pa.parse_args()
 
     # --------- helper for per-model input-species list -----------------------
@@ -115,6 +127,34 @@ def main():
         oh.write("\n".join(out_lines))
 
     print(f"\nPredictions written to: {os.path.abspath(args.output)}")
+
+    # Optionally generate an SPS plot
+    if args.make_sps_plot or args.make_sps_kde_plot:
+        # Ensure the predictions CSV has at least these columns:
+        #  num_genes, input_RMSE, true_phenotype, SPS, species
+        if not os.path.exists(args.output):
+            raise FileNotFoundError(f"Predictions file not found: {args.output}")
+
+        title = os.path.splitext(os.path.basename(args.output))[0]
+
+        if args.make_sps_plot:
+            # Violin‐style plot
+            create_sps_plot_violin(
+                csv_file_path=args.output,
+                RMSE_rank=args.rmse_rank,
+                fig_path=args.plot_output,
+                title=title
+            )
+            print(f"SPS violin plot saved to: {os.path.abspath(args.plot_output)}")
+        else:
+            # KDE‐style plot
+            create_sps_plot(
+                csv_file_path=args.output,
+                RMSE_rank=args.rmse_rank,
+                fig_path=args.plot_output,
+                title=title
+            )
+            print(f"SPS KDE plot saved to: {os.path.abspath(args.plot_output)}")
 
 
 if __name__ == "__main__":
