@@ -7,7 +7,7 @@ import numpy as np
 import os
 from textwrap import wrap
 
-matplotlib.use('svg')
+##matplotlib.use('svg')
 
 def create_sps_plot(csv_file_path=None,
                     df=None, RMSE_rank = 0.05,

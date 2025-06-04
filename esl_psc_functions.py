@@ -231,15 +231,17 @@ def report_elapsed_time(start_time):
           str(datetime.timedelta(seconds = secs_since_start)) + '\n')
     return
 
-def parse_ESL_weight_line(line):
-    '''takes a line of the text versions of the feature weights output from ESL
-    and returns a 2-tuple of the label (str) and weight (flt) from that line
-    '''
-    # split the line on tabs and get the last two items
-    label, weight = line.split('\t')[-2:]
-    # split the label on '/' and get the last part
-    label = label.split('/')[-1]  
-    return label, float(weight)  # return the label and the weight as a float
+def parse_ESL_weight_line(line: str):
+    """
+    Given *one* line from the new-style out_feature_weights.txt, return
+
+        label : str   – path_without_index **or** the literal string 'y_intercept'
+        weight: float – the model weight (or the intercept value)
+
+    The input line is always exactly two tab-separated fields.
+    """
+    label, weight = line.rstrip("\n").split("\t")
+    return label, float(weight)
 
 def parse_ESL_weight_label(label):
     '''takes a label (str) parsed from a line of the text versions of the
@@ -627,17 +629,30 @@ class ESLRun():
 
         # paste lines together but filter out zeros
         output_line_list = list()
-        for line_pair in zip(map_lines[1:], temp_lines):
-            if line_pair[1] == "0.00000000000000000e+00\n":
+        for mapping, weight in zip(map_lines[1:], temp_lines):      # skip header
+            if weight.strip() == "0.00000000000000000e+00":
                 continue
-            output_line_list.append(line_pair[0].strip() + '\t' + line_pair[1])
-        # make string
-        output_str = ''.join(output_line_list)
-        # write the output text file
-        with open(self.output,'w') as output_text_file:
-            output_text_file.write(output_str)
-        # remove the temp file
-        os.remove('temp_out_feature_weights.txt')
+            feature_path = mapping.strip().split('\t')[-1]          # <- index gone
+            output_line_list.append(f"{feature_path}\t{weight}")
+        
+        # ---- intercept ----------------------------------------------------
+        xml_path = (
+            f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
+        )
+        with open(xml_path) as xf:
+            xml_txt = xf.read()
+        intercept_val = float(
+            re.search(r"<intercept_value>(.*?)</intercept_value>", xml_txt).group(1)
+        )
+        #add intercept as last line
+        output_line_list.append(f"Intercept\t{intercept_val:.15e}\n")
+
+        # ---- write file & clean up ----------------------------------------
+        with open(self.output, 'w') as oh:
+            oh.writelines(output_line_list)
+
+        os.remove('temp_out_feature_weights.txt') # temp weights
+        os.remove(xml_path) # XML now redundant
         return
 
     def calc_preds_and_weights(self, only_pos_gss = False,
@@ -645,25 +660,18 @@ class ESLRun():
         '''tally gene GSSs and species prediction scores'''
         # create dict for tracking GSSs; keys: gene objects, values: GSSs 
         included_gene_weights = defaultdict(lambda : 0) 
-        
-        # get y_intercept
-        # xml file name is identical to feature weights file but with xml
-        xml_file = open(self.output[:-3] + 'xml')
-        for line in xml_file:
-            if re.search("intercept", line):
-                # the () around the variable part lets us get it with .group(1) 
-                self.y_intercept = float(
-                    re.search("<intercept_value>(.*?)<\/intercept_value>",
-                              line).group(1))
-        xml_file.close()
-        # define species scores dict to use the y intercept as the default 
-        self.species_scores = defaultdict(lambda : self.y_intercept)
+        # species prediction scores
+        species_scores = defaultdict(lambda: 0.0)
 
         ###### tally all selected sites ######
         # get lines of esl model feature weights from the lasso output txt file
         weights_file = open(self.output,'r') # model weights for sites
         for position_line in weights_file:
             label, weight = parse_ESL_weight_line(position_line)
+            # --- intercept line -------------------------------------------
+            if label == "Intercept":
+                self.y_intercept = weight # remember for later
+                continue # skip normal processing
             if weight == 0.0:
                 continue # skip zero weights which will be most of them
             gene_name, position, aa_to_check_for = parse_ESL_weight_label(label)
@@ -712,6 +720,8 @@ class ESLRun():
                             self.species_scores[species] += weight #add the site
                 input_alignment_file.close()
         weights_file.close()
+        for sp in species_scores:
+            species_scores[sp] += self.y_intercept #add intercept to all scores
         
         ###### calculate input species RMSE (MFS) ######
         if not skip_pred:
