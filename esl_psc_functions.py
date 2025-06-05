@@ -661,7 +661,7 @@ class ESLRun():
         # create dict for tracking GSSs; keys: gene objects, values: GSSs 
         included_gene_weights = defaultdict(lambda : 0) 
         # species prediction scores
-        species_scores = defaultdict(lambda: 0.0)
+        self.species_scores = defaultdict(lambda: 0.0)
 
         ###### tally all selected sites ######
         # get lines of esl model feature weights from the lasso output txt file
@@ -720,8 +720,8 @@ class ESLRun():
                             self.species_scores[species] += weight #add the site
                 input_alignment_file.close()
         weights_file.close()
-        for sp in species_scores:
-            species_scores[sp] += self.y_intercept #add intercept to all scores
+        for sp in self.species_scores:
+            self.species_scores[sp] += self.y_intercept #add intercept to all scores
         
         ###### calculate input species RMSE (MFS) ######
         if not skip_pred:
