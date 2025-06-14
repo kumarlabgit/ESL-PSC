@@ -686,13 +686,6 @@ class ParametersPage(BaseWizardPage):
             "recommended for initial exploration."
         )
         self.genes_only_btn.setChecked(True)  # Set as default
-        # Connect the toggled signal after UI elements are created
-        def update_output_options(checked):
-            setattr(self.config, 'no_pred_output', checked)
-            if hasattr(self, 'pheno_names_group'):  # Only update if the group exists
-                self._update_phenotype_names_state()
-                
-        self.genes_only_btn.toggled.connect(update_output_options)
         self.output_options_group.addButton(self.genes_only_btn)
         genes_only_layout.addWidget(self.genes_only_btn)
         genes_only_layout.addStretch()
@@ -725,6 +718,14 @@ class ParametersPage(BaseWizardPage):
         both_outputs_layout.addWidget(self.both_outputs_btn)
         both_outputs_layout.addStretch()
         output_layout.addLayout(both_outputs_layout)
+        
+        # Connect all radio button signals after they're all created
+        self.genes_only_btn.toggled.connect(
+            lambda checked: setattr(self.config, 'no_pred_output', checked)
+        )
+        self.genes_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.preds_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.both_outputs_btn.toggled.connect(self._update_phenotype_names_state)
         
         # Add more spacing after the output options
         output_layout.addSpacing(15)  # Increased spacing
