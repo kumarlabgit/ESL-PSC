@@ -729,8 +729,8 @@ class ParametersPage(BaseWizardPage):
         # Add more spacing after the output options
         output_layout.addSpacing(15)  # Increased spacing
         
-        # Add more space after radio buttons
-        output_layout.addSpacing(20)  # Increased from 10px to 20px
+        # Add standard spacing after radio buttons
+        output_layout.addSpacing(8)  # About one line of space
         
         # Output file base name (on its own row, left-aligned)
         output_name_layout = QHBoxLayout()
@@ -752,64 +752,62 @@ class ParametersPage(BaseWizardPage):
         output_layout.addSpacing(5)  # Reduced from 10px to 5px
         
         # Phenotype Names (moved from Hyperparameters section)
-        self.pheno_names_group = QGroupBox("Phenotype Names (for output files)")
-        self.pheno_names_layout = QVBoxLayout()
+        # Add label above the fields
+        pheno_label = QLabel("Phenotype Names (for output files):")
+        output_layout.addWidget(pheno_label)
         
-        # Add some margin and spacing for better appearance
-        self.pheno_names_layout.setContentsMargins(10, 15, 10, 10)  # left, top, right, bottom
-        self.pheno_names_layout.setSpacing(10)
+        # Create a container widget for the fields
+        pheno_container = QWidget()
+        pheno_layout = QHBoxLayout(pheno_container)
+        pheno_layout.setContentsMargins(0, 0, 0, 0)
+        pheno_layout.setSpacing(10)
         
-        self.pheno_group = QHBoxLayout()
-        self.pheno_group.setSpacing(10)  # Add spacing between widgets
-        
-        # Create a container widget with fixed minimum height
-        container = QWidget()
-        container.setMinimumHeight(80)  # Ensure enough vertical space
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
+        # Create fields with labels
+        pos_container = QWidget()
+        pos_layout = QHBoxLayout(pos_container)
+        pos_layout.setContentsMargins(0, 0, 0, 0)
+        pos_layout.addWidget(QLabel("Positive:"))
         
         self.pheno_name1 = QLineEdit("Convergent")
         self.pheno_name1.setPlaceholderText("Positive phenotype name")
         self.pheno_name1.textChanged.connect(
             lambda t: setattr(self.config, 'pheno_name1', t)
         )
+        pos_layout.addWidget(self.pheno_name1)
+        
+        neg_container = QWidget()
+        neg_layout = QHBoxLayout(neg_container)
+        neg_layout.setContentsMargins(10, 0, 0, 0)
+        neg_layout.addWidget(QLabel("Negative:"))
         
         self.pheno_name2 = QLineEdit("Control")
         self.pheno_name2.setPlaceholderText("Negative phenotype name")
         self.pheno_name2.textChanged.connect(
             lambda t: setattr(self.config, 'pheno_name2', t)
         )
+        neg_layout.addWidget(self.pheno_name2)
         
         # Set default values in config
         self.config.pheno_name1 = "Convergent"
         self.config.pheno_name2 = "Control"
         
-        # Create a form layout for better alignment
-        form_layout = QFormLayout()
-        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
-        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        form_layout.setHorizontalSpacing(10)
-        form_layout.setVerticalSpacing(8)
+        # Add fields to layout
+        pheno_layout.addWidget(pos_container)
+        pheno_layout.addWidget(neg_container)
+        pheno_layout.addStretch()
         
-        form_layout.addRow(QLabel("Positive:"), self.pheno_name1)
-        form_layout.addRow(QLabel("Negative:"), self.pheno_name2)
+        # Add to main layout
+        output_layout.addWidget(pheno_container)
         
-        # Add form layout to container
-        container_layout.addLayout(form_layout)
-        container_layout.addStretch()
-        
-        # Add container to main layout
-        self.pheno_names_layout.addWidget(container)
-        self.pheno_names_group.setLayout(self.pheno_names_layout)
-        
-        # Set minimum width to prevent squishing
-        self.pheno_names_group.setMinimumWidth(500)
-        
-        # Add to output layout with stretch to center it
-        output_layout.addWidget(self.pheno_names_group, alignment=Qt.AlignmentFlag.AlignLeft)
+        # Store references for enabling/disabling
+        self.pheno_label = pheno_label
+        self.pheno_container = pheno_container
         
         # Initialize the state of phenotype names based on output option
         self._update_phenotype_names_state()
+        
+        # Add standard spacing after phenotype names
+        output_layout.addSpacing(8)
         
         # Add vertical spacer for better separation before output directory
         output_layout.addSpacing(5)  # Reduced spacing before output directory
@@ -1246,45 +1244,19 @@ class ParametersPage(BaseWizardPage):
         """Enable/disable the phenotype names section based on the selected output option."""
         is_gene_ranks_only = self.genes_only_btn.isChecked()
         
-        # Enable/disable the entire group and its children
-        self.pheno_names_group.setEnabled(not is_gene_ranks_only)
+        # Enable/disable the fields
+        self.pheno_name1.setEnabled(not is_gene_ranks_only)
+        self.pheno_name2.setEnabled(not is_gene_ranks_only)
         
-        # Apply visual styling for disabled state
+        # Update visual styling
         if is_gene_ranks_only:
-            self.pheno_names_group.setStyleSheet("""
-                QGroupBox {
-                    color: #909090;
-                    border: 1px solid #e0e0e0;
-                    padding-top: 20px;
-                    margin-top: 5px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px;
-                }
-                QLineEdit {
-                    background-color: #f8f8f8;
-                    color: #a0a0a0;
-                    border: 1px solid #e0e0e0;
-                    padding: 4px;
-                }
-                QLabel {
-                    color: #909090;
-                }
-            """)
+            self.pheno_label.setStyleSheet("color: gray;")
+            self.pheno_name1.setStyleSheet("color: gray; background-color: #f8f8f8;")
+            self.pheno_name2.setStyleSheet("color: gray; background-color: #f8f8f8;")
         else:
-            self.pheno_names_group.setStyleSheet("""
-                QGroupBox {
-                    padding-top: 20px;
-                    margin-top: 5px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px;
-                }
-            """)
+            self.pheno_label.setStyleSheet("")
+            self.pheno_name1.setStyleSheet("")
+            self.pheno_name2.setStyleSheet("")
     
     def _update_penalty_type(self, penalty_type):
         """
