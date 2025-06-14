@@ -1045,7 +1045,10 @@ class ParametersPage(BaseWizardPage):
             "sequence composition. This controls for potential biases in the input data."
         )
         self.pair_randomized_btn.toggled.connect(
-            lambda checked: setattr(self.config, 'make_pair_randomized_null_models', checked)
+            lambda checked: (
+                setattr(self.config, 'make_pair_randomized_null_models', checked) or True,
+                update_num_rand_visibility()
+            )
         )
         self.null_models_group.addButton(self.pair_randomized_btn)
         pair_randomized_layout.addWidget(self.pair_randomized_btn)
@@ -1054,33 +1057,28 @@ class ParametersPage(BaseWizardPage):
         
         # Number of randomizations
         num_rand_layout = QHBoxLayout()
+        self.num_rand_label = QLabel("Number of randomizations:")
         self.num_rand = QSpinBox()
         self.num_rand.setRange(1, 1000)
         self.num_rand.setValue(10)
         self.num_rand.setToolTip(
             "Number of randomized alignments to generate for the null model. "
-            "Higher values provide more accurate significance estimates but increase computation time. "
-            "This is equivalent to the --num_randomized_alignments command line option."
+            "Higher values provide more accurate significance estimates but increase computation time."
         )
         self.num_rand.valueChanged.connect(
             lambda v: setattr(self.config, 'num_randomized_alignments', v)
         )
-        num_rand_layout.addWidget(QLabel("Number of randomizations:"))
-        num_rand_layout.addWidget(self.num_rand)
-        num_rand_layout.addStretch()
-        
-        # Only show number of randomizations when a null model is selected
-        self.num_rand_label = QLabel("Number of randomizations:")
-        num_rand_layout = QHBoxLayout()
         num_rand_layout.addWidget(self.num_rand_label)
         num_rand_layout.addWidget(self.num_rand)
         num_rand_layout.addStretch()
         
-        # Function to update visibility of num_rand based on selection
+        # Function to update visibility and enabled state of num_rand based on selection
         def update_num_rand_visibility():
-            show = not self.no_null_btn.isChecked()
-            self.num_rand_label.setVisible(show)
-            self.num_rand.setVisible(show)
+            # Only show and enable if pair-randomized null models are selected
+            enabled = self.pair_randomized_btn.isChecked()
+            self.num_rand_label.setVisible(enabled)
+            self.num_rand.setVisible(enabled)
+            self.num_rand.setEnabled(enabled)
         
         # Connect signals
         self.no_null_btn.toggled.connect(update_num_rand_visibility)
@@ -1361,78 +1359,38 @@ class OutputPage(BaseWizardPage):
         cmd_group = QGroupBox("ESL-PSC Command")
         cmd_layout = QVBoxLayout()
         
-        # Command display with monospace font for better readability
+        # Command display with monospace font
         self.cmd_display = QTextEdit()
         self.cmd_display.setReadOnly(True)
-        self.cmd_display.setFont(QFont("Courier", 10))
-        self.cmd_display.setPlaceholderText("The ESL-PSC command will be generated here...")
-        # Set a larger size for better visibility
-        self.cmd_display.setMinimumHeight(400)  # Increased from 300
-        self.cmd_display.setMinimumWidth(800)
-        # Allow horizontal scrolling but prevent word wrap
+        font = QFont("Monospace")
+        font.setStyleHint(QFont.StyleHint.TypeWriter)
+        self.cmd_display.setFont(font)
         self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.cmd_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.cmd_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        # Ensure the widget can expand
-        self.cmd_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
-        # Copy button
-        self.copy_btn = QPushButton("Copy to Clipboard")
-        self.copy_btn.clicked.connect(self.copy_command_to_clipboard)
+        # Copy to clipboard button
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.clicked.connect(self.copy_command_to_clipboard)
         
         # Add widgets to command layout
-        cmd_layout.addWidget(QLabel("This command will be executed:"))
         cmd_layout.addWidget(self.cmd_display)
-        cmd_layout.addWidget(self.copy_btn, 0, Qt.AlignmentFlag.AlignRight)
+        cmd_layout.addWidget(copy_btn)
         cmd_group.setLayout(cmd_layout)
         
         # Add command group to container
         container_layout.addWidget(cmd_group)
         
-        # Output directory section
-        output_dir_group = QGroupBox("Output Directory")
-        output_dir_layout = QVBoxLayout()
-        
-        # Output directory display
-        output_dir_widget = QWidget()
-        output_dir_hbox = QHBoxLayout(output_dir_widget)
-        output_dir_hbox.setContentsMargins(0, 0, 0, 0)
-        
-        self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setReadOnly(True)
-        self.output_dir_edit.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc; padding: 5px;")
-        self.output_dir_edit.setToolTip("Output directory where results will be saved")
-        
-        # Set default output directory if not already set
-        if not hasattr(self.config, 'output_dir') or not self.config.output_dir:
-            self.config.output_dir = os.path.join(os.getcwd(), 'esl_psc_output')
-        
-        self.output_dir_edit.setText(self.config.output_dir)
-        
-        browse_btn = QPushButton("Browse...")
-        browse_btn.setMaximumWidth(80)
-        browse_btn.clicked.connect(self.browse_output_dir)
-        
-        output_dir_hbox.addWidget(QLabel("Output Directory:"))
-        output_dir_hbox.addWidget(self.output_dir_edit, 1)
-        output_dir_hbox.addWidget(browse_btn)
-        
-        output_dir_layout.addWidget(output_dir_widget)
-        output_dir_group.setLayout(output_dir_layout)
-        
         # Configuration summary section
         summary_group = QGroupBox("Configuration Summary")
         summary_layout = QFormLayout()
+        summary_group.setLayout(summary_layout)
         
         # Summary fields will be populated in on_enter()
         self.summary_labels = {}
         
         # Add some spacing between fields
         summary_layout.setVerticalSpacing(5)
-        summary_group.setLayout(summary_layout)
-        
-        # Add output directory group to container before command group
-        container_layout.insertWidget(0, output_dir_group)
         
         # Add summary group to container
         container_layout.addWidget(summary_group)

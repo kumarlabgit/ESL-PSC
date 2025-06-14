@@ -109,30 +109,46 @@ class ESLConfig:
                 "--lambda_step", str(self.lambda_step)
             ]
             
-        # Group penalty
-        a += [
-            "--group_penalty_type", self.group_penalty_type,
-            "--initial_gp_value", str(self.initial_gp_value),
-            "--final_gp_value", str(self.final_gp_value),
-            "--gp_step", str(self.gp_step)
-        ]
+        # Group penalty - only include values if not using 'median' or 'standard' type
+        a += ["--group_penalty_type", self.group_penalty_type]
+        if self.group_penalty_type not in ['median', 'standard']:
+            a += [
+                "--initial_gp_value", str(self.initial_gp_value),
+                "--final_gp_value", str(self.final_gp_value),
+                "--gp_step", str(self.gp_step)
+            ]
         
         # Toggles
         a += self._flag(self.cancel_only_partner, "--cancel_only_partner")
         a += self._flag(self.nix_full_deletions, "--nix_full_deletions")
         
         # Output configuration (continued)
-        a += [
-            "--min_pairs", str(self.min_pairs),
-            "--output_dir", self.output_dir
-        ]
+        a += ["--output_dir", self.output_dir]
+        
+        # Only include min_pairs if cancel_only_partner is True
+        if hasattr(self, 'cancel_only_partner') and self.cancel_only_partner:
+            a += ["--min_pairs", str(self.min_pairs)]
+            
+        # Add top_rank_frac if it exists
+        if hasattr(self, 'top_rank_frac') and self.top_rank_frac is not None:
+            a += ["--top_rank_frac", str(self.top_rank_frac)]
         
         # Output toggles
-        a += self._flag(self.keep_raw_output, "--keep_raw_output")
-        a += self._flag(self.no_genes_output, "--no_genes_output")
-        a += self._flag(self.no_pred_output, "--no_pred_output")
-        a += self._flag(self.make_sps_plot, "--make_sps_plot")
-        a += self._flag(self.make_sps_kde_plot, "--make_sps_kde_plot")
+        a += self._flag(getattr(self, 'keep_raw_output', False), "--keep_raw_output")
+        a += self._flag(getattr(self, 'show_selected_sites', False), "--show_selected_sites")
+        a += self._flag(getattr(self, 'no_genes_output', False), "--no_genes_output")
+        a += self._flag(getattr(self, 'no_pred_output', False), "--no_pred_output")
+        a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
+        a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
+        
+        # Null model options
+        if hasattr(self, 'make_null_models') and self.make_null_models:
+            a.append("--make_null_models")
+            
+        if hasattr(self, 'make_pair_randomized_null_models') and self.make_pair_randomized_null_models:
+            a.append("--make_pair_randomized_null_models")
+            if hasattr(self, 'num_randomized_alignments'):
+                a += ["--num_randomized_alignments", str(self.num_randomized_alignments)]
         
         return a
 
@@ -140,43 +156,23 @@ class ESLConfig:
         """Return a full shell-ready command with proper quoting and formatting.
         
         Returns:
-            str: The command string with flag-value pairs on the same line.
+            str: The command string with one argument per line.
         """
         parts = ["python", "-m", "esl_multimatrix"]
         args = self.to_cli_args()
         
-        # Group flags with their values
+        # Add all arguments, each on its own line
         i = 0
         while i < len(args):
             part = args[i]
             # If this is a flag and there's a value after it, group them
             if part.startswith('--') and i + 1 < len(args) and not args[i+1].startswith('--'):
-                parts.append(f"{part} {args[i+1]}")
+                parts.append(f"{part}")
+                parts.append(args[i+1])
                 i += 2
             else:
                 parts.append(part)
                 i += 1
         
-        # Format with line continuations
-        cmd_lines = []
-        current_line = []
-        line_length = 0
-        max_line_length = 80  # Target line length before wrapping
-        
-        for part in parts:
-            # For the first part or if adding this part would exceed max line length
-            if not current_line or line_length + len(part) + 1 > max_line_length:
-                if current_line:  # If there's a current line, add it to the result
-                    cmd_lines.append(" ".join(current_line))
-                current_line = [part]
-                line_length = len(part)
-            else:
-                current_line.append(part)
-                line_length += len(part) + 1  # +1 for the space
-        
-        # Add the last line
-        if current_line:
-            cmd_lines.append(" ".join(current_line))
-        
-        # Join with line continuations and proper indentation
-        return " \\\n  ".join(cmd_lines)
+        # Join with newlines and proper indentation
+        return " \\\n  ".join(parts)
