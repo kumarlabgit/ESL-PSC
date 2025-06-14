@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QFormLayout, QScrollArea, QSizePolicy, QSpacerItem, QFrame, QStackedWidget,
     QDoubleSpinBox, QSpinBox, QComboBox, QCheckBox, QMessageBox, QButtonGroup,
     QTextEdit, QLineEdit, QPushButton, QProgressBar, QHBoxLayout, QApplication, QRadioButton,
-    QFileDialog
+    QFileDialog, QAbstractSpinBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool
 from PyQt6.QtGui import QFont, QTextCursor
@@ -184,7 +184,7 @@ class ESLWizard(QWizard):
         
         # Check required fields on input page
         if current_page == self.input_page:
-            if not self.config.alignment_dir:
+            if not self.config.alignments_dir:
                 QMessageBox.warning(self, "Missing Required Field", 
                                   "Please select an alignment directory.")
                 return False
@@ -292,7 +292,7 @@ class InputPage(BaseWizardPage):
             )
         )
         self.alignment_dir.path_changed.connect(
-            lambda p: setattr(self.config, 'alignment_dir', p)
+            lambda p: setattr(self.config, 'alignments_dir', p)
         )
         self.input_files_layout.addWidget(self.alignment_dir)
         
@@ -463,7 +463,8 @@ class ParametersPage(BaseWizardPage):
         hyper_layout.addRow("Grid Type:", grid_type_group)
         
         # Lambda 1 (Position Sparsity)
-        lambda1_group = QHBoxLayout()
+        lambda1_group = QVBoxLayout()
+        lambda1_range_group = QHBoxLayout()
         
         self.initial_lambda1 = QDoubleSpinBox()
         self.initial_lambda1.setRange(0.0, 1.0)
@@ -481,59 +482,64 @@ class ParametersPage(BaseWizardPage):
             lambda v: setattr(self.config, 'final_lambda1', v)
         )
         
-        self.lambda1_step = QDoubleSpinBox()
-        self.lambda1_step.setRange(0.01, 1.0)
-        self.lambda1_step.setSingleStep(0.01)
-        self.lambda1_step.setValue(0.1)
-        self.lambda1_step.valueChanged.connect(
-            lambda v: setattr(self.config, 'lambda1_step', v)
+        # Add range controls to the range group
+        lambda1_range_group.addWidget(QLabel("From:"))
+        lambda1_range_group.addWidget(self.initial_lambda1)
+        lambda1_range_group.addWidget(QLabel("To:"))
+        lambda1_range_group.addWidget(self.final_lambda1)
+        lambda1_range_group.addStretch()
+        
+        # Create widgets for step size (linear grid)
+        step_widget = QWidget()
+        step_layout = QHBoxLayout(step_widget)
+        step_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.lambda_step = QDoubleSpinBox()
+        self.lambda_step.setRange(0.01, 1.0)
+        self.lambda_step.setSingleStep(0.01)
+        self.lambda_step.setValue(0.1)  # Default step size
+        self.lambda_step.setDecimals(2)  # Show 2 decimal places
+        self.lambda_step.valueChanged.connect(
+            lambda v: setattr(self.config, 'lambda_step', v)
         )
         
-        # Number of log points
+        step_layout.addWidget(QLabel("Step:"))
+        step_layout.addWidget(self.lambda_step)
+        step_layout.addStretch()
+        
+        # Create widgets for log points (log grid)
+        log_widget = QWidget()
+        log_layout = QHBoxLayout(log_widget)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.num_log_points = QSpinBox()
-        self.num_log_points.setRange(5, 1000)
-        self.num_log_points.setValue(20)
+        self.num_log_points.setRange(2, 1000)
+        self.num_log_points.setValue(20)  # Default number of points
+        self.num_log_points.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.UpDownArrows)
         self.num_log_points.valueChanged.connect(
             lambda v: setattr(self.config, 'num_log_points', v)
         )
         
-        # Stacked widget to toggle between step and log points
-        self.lambda1_step_widget = QWidget()
-        step_layout = QHBoxLayout(self.lambda1_step_widget)
-        step_layout.addWidget(QLabel("Step:"))
-        step_layout.addWidget(self.lambda1_step)
-        step_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.lambda1_log_widget = QWidget()
-        log_layout = QHBoxLayout(self.lambda1_log_widget)
         log_layout.addWidget(QLabel("Points:"))
         log_layout.addWidget(self.num_log_points)
-        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.addStretch()
         
+        # Set initial config values
+        self.config.lambda_step = 0.1
+        self.config.num_log_points = 20
+        
+        # Create stacked widgets for lambda1 and lambda2
         self.lambda1_stack = QStackedWidget()
-        self.lambda1_stack.addWidget(self.lambda1_step_widget)
-        self.lambda1_stack.addWidget(self.lambda1_log_widget)
-        self.lambda1_stack.setCurrentIndex(1 if self.logspace_btn.isChecked() else 0)
+        self.lambda1_stack.addWidget(step_widget)
+        self.lambda1_stack.addWidget(log_widget)
         
-        # Connect grid type change to update the stack
-        def update_grid_type():
-            is_logspace = self.logspace_btn.isChecked()
-            self.lambda1_stack.setCurrentIndex(1 if is_logspace else 0)
-            self.lambda2_stack.setCurrentIndex(1 if is_logspace else 0)
-            
-        self.logspace_btn.toggled.connect(update_grid_type)
-        self.linear_btn.toggled.connect(update_grid_type)
-        
-        lambda1_group.addWidget(QLabel("From:"))
-        lambda1_group.addWidget(self.initial_lambda1)
-        lambda1_group.addWidget(QLabel("To:"))
-        lambda1_group.addWidget(self.final_lambda1)
+        # Add both groups to the main lambda1 group
+        lambda1_group.addLayout(lambda1_range_group)
         lambda1_group.addWidget(self.lambda1_stack)
         
-        hyper_layout.addRow("Lambda 1 (Position Sparsity):", lambda1_group)
-        
         # Lambda 2 (Group Sparsity)
-        lambda2_group = QHBoxLayout()
+        lambda2_group = QVBoxLayout()
+        lambda2_range_group = QHBoxLayout()
         
         self.initial_lambda2 = QDoubleSpinBox()
         self.initial_lambda2.setRange(0.0, 1.0)
@@ -551,38 +557,31 @@ class ParametersPage(BaseWizardPage):
             lambda v: setattr(self.config, 'final_lambda2', v)
         )
         
-        self.lambda2_step = QDoubleSpinBox()
-        self.lambda2_step.setRange(0.01, 1.0)
-        self.lambda2_step.setSingleStep(0.01)
-        self.lambda2_step.setValue(0.1)
-        self.lambda2_step.valueChanged.connect(
-            lambda v: setattr(self.config, 'lambda2_step', v)
-        )
+        # Add range controls to the range group
+        lambda2_range_group.addWidget(QLabel("From:"))
+        lambda2_range_group.addWidget(self.initial_lambda2)
+        lambda2_range_group.addWidget(QLabel("To:"))
+        lambda2_range_group.addWidget(self.final_lambda2)
+        lambda2_range_group.addStretch()
         
-        # Stacked widget for Lambda 2 step/log points
-        self.lambda2_step_widget = QWidget()
-        step_layout2 = QHBoxLayout(self.lambda2_step_widget)
-        step_layout2.addWidget(QLabel("Step:"))
-        step_layout2.addWidget(self.lambda2_step)
-        step_layout2.setContentsMargins(0, 0, 0, 0)
-        
-        self.lambda2_log_widget = QWidget()
-        log_layout2 = QHBoxLayout(self.lambda2_log_widget)
-        log_layout2.addWidget(QLabel("Points:"))
-        log_layout2.addWidget(QLabel("20"))  # Just a label since it uses the same num_log_points
-        log_layout2.setContentsMargins(0, 0, 0, 0)
-        
+        # Create a new stacked widget for lambda2
         self.lambda2_stack = QStackedWidget()
-        self.lambda2_stack.addWidget(self.lambda2_step_widget)
-        self.lambda2_stack.addWidget(self.lambda2_log_widget)
-        self.lambda2_stack.setCurrentIndex(1 if self.logspace_btn.isChecked() else 0)
+        self.lambda2_stack.addWidget(step_widget)
+        self.lambda2_stack.addWidget(log_widget)
         
-        lambda2_group.addWidget(QLabel("From:"))
-        lambda2_group.addWidget(self.initial_lambda2)
-        lambda2_group.addWidget(QLabel("To:"))
-        lambda2_group.addWidget(self.final_lambda2)
+        # Add both groups to the main lambda2 group
+        lambda2_group.addLayout(lambda2_range_group)
         lambda2_group.addWidget(self.lambda2_stack)
         
+        # Initially set the correct view based on grid type
+        self._update_grid_type_view()
+        
+        # Connect grid type change to update the stacks
+        self.logspace_btn.toggled.connect(self._update_grid_type_view)
+        self.linear_btn.toggled.connect(self._update_grid_type_view)
+        
+        # Add to the main layout
+        hyper_layout.addRow("Lambda 1 (Position Sparsity):", lambda1_group)
         hyper_layout.addRow("Lambda 2 (Group Sparsity):", lambda2_group)
         
         # Group Penalty Settings
@@ -591,11 +590,14 @@ class ParametersPage(BaseWizardPage):
         # Penalty type selection
         type_group = QHBoxLayout()
         self.group_penalty_type = QComboBox()
-        self.group_penalty_type.addItems(["median (Recommended)", "default", "sqrt", "linear"])
+        self.group_penalty_type.addItems(["median (Recommended)", "standard", "sqrt", "linear"])
         self.group_penalty_type.setCurrentText("median (Recommended)")
         self.group_penalty_type.currentTextChanged.connect(
             lambda t: self._update_penalty_type(t.split(' ')[0])  # Remove " (Recommended)" from text
         )
+        
+        # Set initial group penalty type in config
+        self.config.group_penalty_type = "median"
         
         type_group.addWidget(QLabel("Type:"))
         type_group.addWidget(self.group_penalty_type)
@@ -603,14 +605,15 @@ class ParametersPage(BaseWizardPage):
         
         penalty_group.addLayout(type_group)
         
-        # Range settings (hidden by default for median)
+        # Range settings (will be hidden for median/standard)
         self.penalty_range_group = QWidget()
         range_layout = QHBoxLayout(self.penalty_range_group)
         
+        # Set up initial group penalty values
         self.initial_gp_value = QDoubleSpinBox()
         self.initial_gp_value.setRange(0.0, 100.0)
         self.initial_gp_value.setSingleStep(0.5)
-        self.initial_gp_value.setValue(0.1)  # Default from CLI
+        self.initial_gp_value.setValue(1.0)  # Default value for standard
         self.initial_gp_value.valueChanged.connect(
             lambda v: setattr(self.config, 'initial_gp_value', v)
         )
@@ -618,7 +621,7 @@ class ParametersPage(BaseWizardPage):
         self.final_gp_value = QDoubleSpinBox()
         self.final_gp_value.setRange(0.0, 100.0)
         self.final_gp_value.setSingleStep(0.5)
-        self.final_gp_value.setValue(1.0)  # Default from CLI
+        self.final_gp_value.setValue(1.0)  # Default value for standard
         self.final_gp_value.valueChanged.connect(
             lambda v: setattr(self.config, 'final_gp_value', v)
         )
@@ -626,7 +629,7 @@ class ParametersPage(BaseWizardPage):
         self.gp_step = QDoubleSpinBox()
         self.gp_step.setRange(0.1, 10.0)
         self.gp_step.setSingleStep(0.1)
-        self.gp_step.setValue(0.1)  # Default from CLI
+        self.gp_step.setValue(0.1)
         self.gp_step.valueChanged.connect(
             lambda v: setattr(self.config, 'gp_step', v)
         )
@@ -638,12 +641,19 @@ class ParametersPage(BaseWizardPage):
         range_layout.addWidget(QLabel("Step:"))
         range_layout.addWidget(self.gp_step)
         
+        # Set initial config values before adding to layout
+        self.config.initial_gp_value = 1.0
+        self.config.final_gp_value = 1.0
+        self.config.gp_step = 0.1
+        
+        # Add the penalty group to the layout
+        hyper_layout.addRow("Group Penalty Settings:", penalty_group)
+        
+        # Add the range group to the penalty group
         penalty_group.addWidget(self.penalty_range_group)
         
-        # Initially hide the range group
-        self.penalty_range_group.setVisible(False)
-        
-        hyper_layout.addRow("Group Penalty Settings:", penalty_group)
+        # Initialize the penalty type UI state after all widgets are in place
+        self._update_penalty_type("median")
         
         # Add Top rank fraction to Hyperparameters section
         self.top_rank_frac = QDoubleSpinBox()
@@ -949,8 +959,9 @@ class ParametersPage(BaseWizardPage):
             "If checked, only cancel deletions that are part of a partner pair. "
             "If unchecked, all deletions will be canceled. This is equivalent to the --cancel_only_partner command line option."
         )
+        self.cancel_only_partner.setChecked(True)  # Set checked by default
         self.cancel_only_partner.stateChanged.connect(
-            lambda s: setattr(self.config, 'cancel_only_partner', s == 2)
+            self._update_deletion_canceler_state
         )
         del_cancel_layout.addWidget(self.cancel_only_partner)
         
@@ -960,14 +971,19 @@ class ParametersPage(BaseWizardPage):
         self.min_pairs = QSpinBox()
         self.min_pairs.setRange(2, 100)  # Minimum is 2 as per requirements
         self.min_pairs.setValue(2)
+        self.min_pairs.setEnabled(True)  # Enabled by default since checkbox is checked
         self.min_pairs.setToolTip(
             "Minimum number of aligned pairs required to consider a site. "
             "Sites with fewer aligned pairs will be excluded from analysis. "
-            "This is equivalent to the --min_pairs command line option."
+            "This parameter is only used when 'Only cancel partner deletions' is enabled."
         )
         self.min_pairs.valueChanged.connect(
             lambda v: setattr(self.config, 'min_pairs', v)
         )
+        
+        # Set initial config values
+        self.config.cancel_only_partner = True
+        self.config.min_pairs = 2
         min_pairs_layout.addWidget(self.min_pairs)
         min_pairs_layout.addStretch()
         del_cancel_layout.addLayout(min_pairs_layout)
@@ -1241,11 +1257,71 @@ class ParametersPage(BaseWizardPage):
         del_group.setLayout(del_layout)
         self.container_layout.addWidget(del_group)
     
+    def _update_grid_type_view(self):
+        """Update the UI based on the selected grid type (linear or logspace)."""
+        is_logspace = self.logspace_btn.isChecked()
+        
+        # Update the stacked widgets
+        self.lambda1_stack.setCurrentIndex(1 if is_logspace else 0)
+        self.lambda2_stack.setCurrentIndex(1 if is_logspace else 0)
+        
+        # Update the config based on the selected grid type
+        if is_logspace:
+            # When switching to logspace, store the current step value
+            self.config.lambda_step = self.lambda_step.value()
+        else:
+            # When switching to linear, store the current num_log_points
+            self.config.num_log_points = self.num_log_points.value()
+    
+    def _update_deletion_canceler_state(self, state):
+        """
+        Update the state of the minimum aligned pairs control based on the 'Only cancel partner deletions' checkbox.
+        
+        Args:
+            state: The state of the checkbox (2 for checked, 0 for unchecked)
+        """
+        is_checked = state == 2  # 2 is Qt.Checked
+        self.min_pairs.setEnabled(is_checked)
+        
+        # Update the config
+        self.config.cancel_only_partner = is_checked
+        
+        # If disabling, we don't need to include min_pairs in the config
+        if not is_checked:
+            # Set a default value that will be ignored by the CLI
+            self.config.min_pairs = 0
+    
+    def _update_penalty_type(self, penalty_type):
+        """
+        Update the UI based on the selected group penalty type.
+        
+        Args:
+            penalty_type: The selected penalty type ('median', 'standard', 'sqrt', or 'linear')
+        """
+        # Update the config
+        self.config.group_penalty_type = penalty_type
+        
+        # For standard type, set initial and final values to be the same
+        if penalty_type == 'standard':
+            current_value = self.initial_gp_value.value()
+            self.final_gp_value.setValue(current_value)
+            self.config.initial_gp_value = current_value
+            self.config.final_gp_value = current_value
+            
+        # Show/hide the range settings based on the penalty type
+        should_show = penalty_type not in ['median', 'standard']
+        if hasattr(self, 'penalty_range_group'):
+            self.penalty_range_group.setVisible(should_show)
+    
     def _update_phenotype_names_state(self):
         """Enable/disable the phenotype names section based on the selected output option."""
         is_gene_ranks_only = self.genes_only_btn.isChecked()
         
-        # Enable/disable the fields
+        # Update the config
+        self.config.output_genes_only = is_gene_ranks_only
+        
+        # Enable/disable the phenotype name inputs
+        self.pheno_label.setEnabled(not is_gene_ranks_only)
         self.pheno_name1.setEnabled(not is_gene_ranks_only)
         self.pheno_name2.setEnabled(not is_gene_ranks_only)
         
@@ -1259,21 +1335,6 @@ class ParametersPage(BaseWizardPage):
             self.pheno_name1.setStyleSheet("")
             self.pheno_name2.setStyleSheet("")
     
-    def _update_penalty_type(self, penalty_type):
-        """
-        Update the UI based on the selected group penalty type.
-        
-        Args:
-            penalty_type: The selected penalty type ('median', 'default', 'sqrt', or 'linear')
-        """
-        # Update the config
-        self.config.group_penalty_type = penalty_type
-        
-        # Show/hide the range settings based on the penalty type
-        if penalty_type == 'median':
-            self.penalty_range_group.setVisible(False)
-        else:
-            self.penalty_range_group.setVisible(True)
 
 
 class OutputPage(BaseWizardPage):
@@ -1305,7 +1366,15 @@ class OutputPage(BaseWizardPage):
         self.cmd_display.setReadOnly(True)
         self.cmd_display.setFont(QFont("Courier", 10))
         self.cmd_display.setPlaceholderText("The ESL-PSC command will be generated here...")
-        self.cmd_display.setMinimumHeight(150)
+        # Set a larger size for better visibility
+        self.cmd_display.setMinimumHeight(400)  # Increased from 300
+        self.cmd_display.setMinimumWidth(800)
+        # Allow horizontal scrolling but prevent word wrap
+        self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.cmd_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.cmd_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # Ensure the widget can expand
+        self.cmd_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # Copy button
         self.copy_btn = QPushButton("Copy to Clipboard")
@@ -1397,98 +1466,12 @@ class OutputPage(BaseWizardPage):
         
     def on_enter(self):
         """Update the command preview and summary when the page is shown."""
-        # Build the command
-        cmd_parts = ["esl-psc"]
-        
-        # Required parameters
-        if hasattr(self.config, 'alignment_dir') and self.config.alignment_dir:
-            cmd_parts.append(f'--alignment-dir "{self.config.alignment_dir}"')
-        if hasattr(self.config, 'species_groups_file') and self.config.species_groups_file:
-            cmd_parts.append(f'--species-groups "{self.config.species_groups_file}"')
-        
-        # Optional parameters
-        if hasattr(self.config, 'species_phenotypes_file') and self.config.species_phenotypes_file:
-            cmd_parts.append(f'--species-phenotypes "{self.config.species_phenotypes_file}"')
-        if hasattr(self.config, 'prediction_alignments_dir') and self.config.prediction_alignments_dir:
-            cmd_parts.append(f'--prediction-alignments "{self.config.prediction_alignments_dir}"')
-        if hasattr(self.config, 'limited_genes_file') and self.config.limited_genes_file:
-            cmd_parts.append(f'--limited-genes "{self.config.limited_genes_file}"')
-        if hasattr(self.config, 'output_dir') and self.config.output_dir:
-            cmd_parts.append(f'--output-dir "{self.config.output_dir}"')
-        
-        # Hyperparameters
-        if hasattr(self.config, 'initial_lambda1') and hasattr(self.config, 'final_lambda1') and hasattr(self.config, 'lambda1_step'):
-            cmd_parts.append(f'--lambda1 {self.config.initial_lambda1}:{self.config.final_lambda1}:{self.config.lambda1_step}')
-        
-        if hasattr(self.config, 'initial_lambda2') and hasattr(self.config, 'final_lambda2') and hasattr(self.config, 'lambda2_step'):
-            cmd_parts.append(f'--lambda2 {self.config.initial_lambda2}:{self.config.final_lambda2}:{self.config.lambda2_step}')
-        
-        # Group penalty settings
-        if hasattr(self.config, 'group_penalty_type') and self.config.group_penalty_type != 'default':
-            cmd_parts.append(f'--group-penalty {self.config.group_penalty_type}')
-        
-        if hasattr(self.config, 'initial_gp_value') and hasattr(self.config, 'final_gp_value') and hasattr(self.config, 'gp_step'):
-            cmd_parts.append(f'--group-penalty-value {self.config.initial_gp_value}:{self.config.final_gp_value}:{self.config.gp_step}')
-        
-        # Logspace settings
-        if hasattr(self.config, 'use_logspace') and self.config.use_logspace:
-            cmd_parts.append(f'--logspace {self.config.num_log_points}')
-        
-        # Phenotype names
-        if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
-            cmd_parts.append(f'--pheno-names {self.config.pheno_name1}:{self.config.pheno_name2}')
-        
-        # Minimum genes per model
-        if hasattr(self.config, 'min_genes') and self.config.min_genes > 0:
-            cmd_parts.append(f'--min-genes {self.config.min_genes}')
-        
-        # Deletion canceler options
-        if hasattr(self.config, 'nix_full_deletions') and self.config.nix_full_deletions:
-            cmd_parts.append('--nix-full-deletions')
-        
-        if hasattr(self.config, 'cancel_only_partner') and not self.config.cancel_only_partner:
-            cmd_parts.append('--no-cancel-only-partner')
-        
-        if hasattr(self.config, 'min_pairs') and self.config.min_pairs > 1:
-            cmd_parts.append(f'--min-pairs {self.config.min_pairs}')
-        
-        # Output options
-        if hasattr(self.config, 'output_file_base_name') and self.config.output_file_base_name:
-            cmd_parts.append(f'--output-file-base-name {self.config.output_file_base_name}')
-        
-        if hasattr(self.config, 'keep_raw_output') and self.config.keep_raw_output:
-            cmd_parts.append('--keep-raw-output')
-        
-        if hasattr(self.config, 'show_selected_sites') and self.config.show_selected_sites:
-            cmd_parts.append('--show-selected-sites')
-        
-        # Plot options
-        if hasattr(self.config, 'make_sps_plot') and not self.config.make_sps_plot:
-            cmd_parts.append('--no-sps-plot')
-        
-        if hasattr(self.config, 'make_sps_kde_plot') and self.config.make_sps_kde_plot:
-            cmd_parts.append('--sps-kde-plot')
-        
-        # Multi-matrix options
-        if hasattr(self.config, 'top_rank_frac') and self.config.top_rank_frac != 0.01:
-            cmd_parts.append(f'--top-rank-frac {self.config.top_rank_frac}')
-        
-        if hasattr(self.config, 'response_dir') and self.config.response_dir:
-            cmd_parts.append(f'--response-dir "{self.config.response_dir}"')
-        
-        # Null model options
-        if hasattr(self.config, 'make_null_models') and self.config.make_null_models:
-            cmd_parts.append('--make-null-models')
-        
-        if hasattr(self.config, 'make_pair_randomized_null_models') and self.config.make_pair_randomized_null_models:
-            cmd_parts.append('--make-pair-randomized-null-models')
-            if hasattr(self.config, 'num_randomized_alignments') and self.config.num_randomized_alignments != 10:
-                cmd_parts.append(f'--num-randomized-alignments {self.config.num_randomized_alignments}')
-        
-        # Join command parts with spaces and proper line continuation
-        cmd_str = r' \
-  '.join(cmd_parts)
-        
+        # Use the config's get_command_string method to generate the command
+        try:
+            cmd_str = self.config.get_command_string()
+        except ValueError as e:
+            cmd_str = f"Error generating command: {str(e)}"
+            
         # Display the command
         self.cmd_display.setPlainText(cmd_str)
         
@@ -1508,8 +1491,8 @@ class OutputPage(BaseWizardPage):
         
         # Add configuration items
         # Required parameters
-        if hasattr(self.config, 'alignment_dir') and self.config.alignment_dir:
-            self.add_summary_item(layout, "Alignment Directory:", self.config.alignment_dir)
+        if hasattr(self.config, 'alignments_dir') and self.config.alignments_dir:
+            self.add_summary_item(layout, "Alignment Directory:", self.config.alignments_dir)
         if hasattr(self.config, 'species_groups_file') and self.config.species_groups_file:
             self.add_summary_item(layout, "Species Groups File:", self.config.species_groups_file)
         
@@ -1522,8 +1505,8 @@ class OutputPage(BaseWizardPage):
             self.add_summary_item(layout, "Limited Genes File:", self.config.limited_genes_file)
         
         # Hyperparameters
-        if hasattr(self.config, 'initial_lambda1') and hasattr(self.config, 'final_lambda1') and hasattr(self.config, 'lambda1_step'):
-            lambda1_str = f"{self.config.initial_lambda1} to {self.config.final_lambda1} (step: {self.config.lambda1_step})"
+        if hasattr(self.config, 'initial_lambda1') and hasattr(self.config, 'final_lambda1') and hasattr(self.config, 'lambda_step'):
+            lambda1_str = f"{self.config.initial_lambda1} to {self.config.final_lambda1} (step: {self.config.lambda_step})"
             self.add_summary_item(layout, "Lambda 1 Range:", lambda1_str)
         
         if hasattr(self.config, 'initial_lambda2') and hasattr(self.config, 'final_lambda2') and hasattr(self.config, 'lambda2_step'):
@@ -1730,41 +1713,28 @@ class RunPage(BaseWizardPage):
     
     def on_enter(self):
         """Update the command display when the page is shown."""
-        # Build the command (same as in OutputPage)
-        cmd_parts = ["esl-psc"]
-        
-        # Required parameters
-        if hasattr(self.config, 'alignment_dir') and self.config.alignment_dir:
-            cmd_parts.append(f'--alignment-dir "{self.config.alignment_dir}"')
-        if hasattr(self.config, 'species_groups_file') and self.config.species_groups_file:
-            cmd_parts.append(f'--species-groups "{self.config.species_groups_file}"')
-        
-        # Optional parameters
-        if hasattr(self.config, 'species_phenotypes_file') and self.config.species_phenotypes_file:
-            cmd_parts.append(f'--species-phenotypes "{self.config.species_phenotypes_file}"')
-        if hasattr(self.config, 'prediction_alignments_dir') and self.config.prediction_alignments_dir:
-            cmd_parts.append(f'--prediction-alignments "{self.config.prediction_alignments_dir}"')
-        if hasattr(self.config, 'limited_genes_file') and self.config.limited_genes_file:
-            cmd_parts.append(f'--limited-genes "{self.config.limited_genes_file}"')
-        if hasattr(self.config, 'output_dir') and self.config.output_dir:
-            cmd_parts.append(f'--output-dir "{self.config.output_dir}"')
-        
-        # Join command parts with spaces
-        cmd_str = ' \
-  '.join(cmd_parts)
-        
-        # Display the command
-        self.cmd_display.setPlainText(cmd_str)
-        
-        # Clear previous output
-        self.output_display.clear()
-        
-        # Reset progress
-        self.progress_bar.setValue(0)
-        
-        # Enable/disable buttons
-        self.run_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
+        try:
+            # Get the command string from the config
+            cmd_str = self.config.get_command_string()
+            
+            # Display the command
+            self.cmd_display.setPlainText(cmd_str)
+            
+            # Clear previous output
+            self.output_display.clear()
+            
+            # Reset progress
+            self.progress_bar.setValue(0)
+            
+            # Enable/disable buttons
+            self.run_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            
+        except ValueError as e:
+            # If there's an error generating the command, show it
+            self.cmd_display.setPlainText(f"Error generating command: {str(e)}")
+            self.run_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
     
     def run_analysis(self):
         """Run the ESL-PSC analysis."""
