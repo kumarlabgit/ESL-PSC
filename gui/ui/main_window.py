@@ -645,28 +645,6 @@ class ParametersPage(BaseWizardPage):
         
         hyper_layout.addRow("Group Penalty Settings:", penalty_group)
         
-        # Phenotype Names
-        pheno_group = QHBoxLayout()
-        
-        self.pheno_name1 = QLineEdit("Convergent")
-        self.pheno_name1.setPlaceholderText("Positive phenotype name")
-        self.pheno_name1.textChanged.connect(
-            lambda t: setattr(self.config, 'pheno_name1', t)
-        )
-        
-        self.pheno_name2 = QLineEdit("Control")
-        self.pheno_name2.setPlaceholderText("Negative phenotype name")
-        self.pheno_name2.textChanged.connect(
-            lambda t: setattr(self.config, 'pheno_name2', t)
-        )
-        
-        pheno_group.addWidget(QLabel("Positive:"))
-        pheno_group.addWidget(self.pheno_name1)
-        pheno_group.addWidget(QLabel("Negative:"))
-        pheno_group.addWidget(self.pheno_name2)
-        
-        hyper_layout.addRow("Phenotype Names:", pheno_group)
-        
         # Add Top rank fraction to Hyperparameters section
         self.top_rank_frac = QDoubleSpinBox()
         self.top_rank_frac.setRange(0.0001, 1.0)
@@ -707,9 +685,14 @@ class ParametersPage(BaseWizardPage):
             "Only generate gene ranks output. This is the fastest option and is "
             "recommended for initial exploration."
         )
-        self.genes_only_btn.toggled.connect(
-            lambda checked: setattr(self.config, 'no_pred_output', checked)
-        )
+        self.genes_only_btn.setChecked(True)  # Set as default
+        # Connect the toggled signal after UI elements are created
+        def update_output_options(checked):
+            setattr(self.config, 'no_pred_output', checked)
+            if hasattr(self, 'pheno_names_group'):  # Only update if the group exists
+                self._update_phenotype_names_state()
+                
+        self.genes_only_btn.toggled.connect(update_output_options)
         self.output_options_group.addButton(self.genes_only_btn)
         genes_only_layout.addWidget(self.genes_only_btn)
         genes_only_layout.addStretch()
@@ -743,6 +726,12 @@ class ParametersPage(BaseWizardPage):
         both_outputs_layout.addStretch()
         output_layout.addLayout(both_outputs_layout)
         
+        # Add more spacing after the output options
+        output_layout.addSpacing(15)  # Increased spacing
+        
+        # Add more space after radio buttons
+        output_layout.addSpacing(20)  # Increased from 10px to 20px
+        
         # Output file base name (on its own row, left-aligned)
         output_name_layout = QHBoxLayout()
         output_name_layout.addWidget(QLabel("Output File Base Name:"))
@@ -759,8 +748,71 @@ class ParametersPage(BaseWizardPage):
         
         output_layout.addLayout(output_name_layout)
         
-        # Add vertical spacer for better separation
-        output_layout.addSpacing(10)  # Add 10px spacing
+        # Reduce spacing before the next section
+        output_layout.addSpacing(5)  # Reduced from 10px to 5px
+        
+        # Phenotype Names (moved from Hyperparameters section)
+        self.pheno_names_group = QGroupBox("Phenotype Names (for output files)")
+        self.pheno_names_layout = QVBoxLayout()
+        
+        # Add some margin and spacing for better appearance
+        self.pheno_names_layout.setContentsMargins(10, 15, 10, 10)  # left, top, right, bottom
+        self.pheno_names_layout.setSpacing(10)
+        
+        self.pheno_group = QHBoxLayout()
+        self.pheno_group.setSpacing(10)  # Add spacing between widgets
+        
+        # Create a container widget with fixed minimum height
+        container = QWidget()
+        container.setMinimumHeight(80)  # Ensure enough vertical space
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.pheno_name1 = QLineEdit("Convergent")
+        self.pheno_name1.setPlaceholderText("Positive phenotype name")
+        self.pheno_name1.textChanged.connect(
+            lambda t: setattr(self.config, 'pheno_name1', t)
+        )
+        
+        self.pheno_name2 = QLineEdit("Control")
+        self.pheno_name2.setPlaceholderText("Negative phenotype name")
+        self.pheno_name2.textChanged.connect(
+            lambda t: setattr(self.config, 'pheno_name2', t)
+        )
+        
+        # Set default values in config
+        self.config.pheno_name1 = "Convergent"
+        self.config.pheno_name2 = "Control"
+        
+        # Create a form layout for better alignment
+        form_layout = QFormLayout()
+        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form_layout.setHorizontalSpacing(10)
+        form_layout.setVerticalSpacing(8)
+        
+        form_layout.addRow(QLabel("Positive:"), self.pheno_name1)
+        form_layout.addRow(QLabel("Negative:"), self.pheno_name2)
+        
+        # Add form layout to container
+        container_layout.addLayout(form_layout)
+        container_layout.addStretch()
+        
+        # Add container to main layout
+        self.pheno_names_layout.addWidget(container)
+        self.pheno_names_group.setLayout(self.pheno_names_layout)
+        
+        # Set minimum width to prevent squishing
+        self.pheno_names_group.setMinimumWidth(500)
+        
+        # Add to output layout with stretch to center it
+        output_layout.addWidget(self.pheno_names_group, alignment=Qt.AlignmentFlag.AlignLeft)
+        
+        # Initialize the state of phenotype names based on output option
+        self._update_phenotype_names_state()
+        
+        # Add vertical spacer for better separation before output directory
+        output_layout.addSpacing(5)  # Reduced spacing before output directory
         
         # Output directory
         output_dir_layout = QHBoxLayout()
@@ -804,9 +856,20 @@ class ParametersPage(BaseWizardPage):
         # SPS plot options (always visible but may be disabled)
         self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
         sps_plot_layout = QVBoxLayout()
+        sps_plot_layout.setSpacing(5)  # Reduce spacing between radio buttons
         
         # Create a button group for mutually exclusive plot options
         self.plot_options_group = QButtonGroup(self)
+        
+        # None option (default)
+        self.no_sps_plot = QRadioButton("None")
+        self.no_sps_plot.setToolTip("Do not generate any SPS plots.")
+        self.no_sps_plot.setChecked(True)  # Default selection
+        self.no_sps_plot.toggled.connect(
+            lambda checked: setattr(self.config, 'no_sps_plot', checked)
+        )
+        self.plot_options_group.addButton(self.no_sps_plot)
+        sps_plot_layout.addWidget(self.no_sps_plot)
         
         # Make SPS plot
         self.make_sps_plot = QRadioButton("Generate SPS density plots")
@@ -830,9 +893,9 @@ class ParametersPage(BaseWizardPage):
         self.plot_options_group.addButton(self.make_sps_kde_plot)
         sps_plot_layout.addWidget(self.make_sps_kde_plot)
         
-        # Set default selection
-        self.make_sps_plot.setChecked(True)
-        self.config.make_sps_plot = True
+        # Set initial config values
+        self.config.no_sps_plot = True
+        self.config.make_sps_plot = False
         self.config.make_sps_kde_plot = False
         
         self.sps_plot_group.setLayout(sps_plot_layout)
@@ -1047,6 +1110,11 @@ class ParametersPage(BaseWizardPage):
             import traceback
             traceback.print_exc()
         
+        # Connect signals
+        self.wizard().input_page.species_phenotypes.path_changed.connect(
+            self.update_output_options_state
+        )
+    
     def browse_output_dir(self):
         """Open a dialog to select the output directory."""
         try:
@@ -1173,6 +1241,50 @@ class ParametersPage(BaseWizardPage):
         
         del_group.setLayout(del_layout)
         self.container_layout.addWidget(del_group)
+    
+    def _update_phenotype_names_state(self):
+        """Enable/disable the phenotype names section based on the selected output option."""
+        is_gene_ranks_only = self.genes_only_btn.isChecked()
+        
+        # Enable/disable the entire group and its children
+        self.pheno_names_group.setEnabled(not is_gene_ranks_only)
+        
+        # Apply visual styling for disabled state
+        if is_gene_ranks_only:
+            self.pheno_names_group.setStyleSheet("""
+                QGroupBox {
+                    color: #909090;
+                    border: 1px solid #e0e0e0;
+                    padding-top: 20px;
+                    margin-top: 5px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 3px;
+                }
+                QLineEdit {
+                    background-color: #f8f8f8;
+                    color: #a0a0a0;
+                    border: 1px solid #e0e0e0;
+                    padding: 4px;
+                }
+                QLabel {
+                    color: #909090;
+                }
+            """)
+        else:
+            self.pheno_names_group.setStyleSheet("""
+                QGroupBox {
+                    padding-top: 20px;
+                    margin-top: 5px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 3px;
+                }
+            """)
     
     def _update_penalty_type(self, penalty_type):
         """
