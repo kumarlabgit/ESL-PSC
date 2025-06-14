@@ -744,15 +744,20 @@ class ParametersPage(BaseWizardPage):
         output_layout.addLayout(both_outputs_layout)
         
         # Output file base name (on its own row, left-aligned)
+        output_name_layout = QHBoxLayout()
+        output_name_layout.addWidget(QLabel("Output File Base Name:"))
+        
         self.output_file_base_name = QLineEdit("esl_psc_results")
-        self.output_file_base_name.setMaximumWidth(300)
+        self.output_file_base_name.setMinimumWidth(400)  # Make it wider
         self.output_file_base_name.textChanged.connect(
             lambda t: setattr(self.config, 'output_file_base_name', t)
         )
         # Set the default value in config
         self.config.output_file_base_name = "esl_psc_results"
-        output_layout.addWidget(QLabel("Output File Base Name:"), alignment=Qt.AlignmentFlag.AlignLeft)
-        output_layout.addWidget(self.output_file_base_name, alignment=Qt.AlignmentFlag.AlignLeft)
+        output_name_layout.addWidget(self.output_file_base_name)
+        output_name_layout.addStretch()  # Push everything to the left
+        
+        output_layout.addLayout(output_name_layout)
         
         # Add vertical spacer for better separation
         output_layout.addSpacing(10)  # Add 10px spacing
