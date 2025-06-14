@@ -739,6 +739,18 @@ class ParametersPage(BaseWizardPage):
         both_outputs_layout.addStretch()
         output_layout.addLayout(both_outputs_layout)
         
+        # Output file base name
+        output_file_layout = QHBoxLayout()
+        output_file_layout.addWidget(QLabel("Output File Base Name:"))
+        
+        self.output_file_base_name = QLineEdit()
+        self.output_file_base_name.setPlaceholderText("e.g., analysis_results")
+        self.output_file_base_name.textChanged.connect(
+            lambda t: setattr(self.config, 'output_file_base_name', t)
+        )
+        output_file_layout.addWidget(self.output_file_base_name, 1)
+        output_layout.addLayout(output_file_layout)
+        
         # Output directory
         output_dir_layout = QHBoxLayout()
         output_dir_layout.addWidget(QLabel("Output Directory:"))
@@ -766,24 +778,55 @@ class ParametersPage(BaseWizardPage):
         )
         additional_layout.addWidget(self.keep_raw)
         
-        # Save plots
-        self.save_plots = QCheckBox("Save plots")
-        self.save_plots.setToolTip("If checked, generate and save diagnostic plots.")
-        self.save_plots.stateChanged.connect(
-            lambda s: setattr(self.config, 'save_plots', s == 2)
+        # Show selected sites
+        self.show_selected_sites = QCheckBox("Show selected sites in output")
+        self.show_selected_sites.setToolTip(
+            "If checked, include a dictionary of all selected sites with their highest model score for every gene."
         )
-        additional_layout.addWidget(self.save_plots)
+        self.show_selected_sites.stateChanged.connect(
+            lambda s: setattr(self.config, 'show_selected_sites', s == 2)
+        )
+        additional_layout.addWidget(self.show_selected_sites)
         
-        # Verbose output
-        self.verbose = QCheckBox("Verbose output")
-        self.verbose.setToolTip("If checked, show more detailed progress information.")
-        self.verbose.stateChanged.connect(
-            lambda s: setattr(self.config, 'verbose', s == 2)
+        # SPS plot options (only shown when species predictions are enabled)
+        self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
+        sps_plot_layout = QVBoxLayout()
+        
+        # Make SPS plot
+        self.make_sps_plot = QCheckBox("Generate SPS density plots")
+        self.make_sps_plot.setToolTip(
+            "Create violin plots showing SPS density for each true phenotype."
         )
-        additional_layout.addWidget(self.verbose)
+        self.make_sps_plot.stateChanged.connect(
+            lambda s: setattr(self.config, 'make_sps_plot', s == 2)
+        )
+        sps_plot_layout.addWidget(self.make_sps_plot)
+        
+        # Make SPS KDE plot
+        self.make_sps_kde_plot = QCheckBox("Generate SPS KDE plots")
+        self.make_sps_kde_plot.setToolTip(
+            "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
+        )
+        self.make_sps_kde_plot.stateChanged.connect(
+            lambda s: setattr(self.config, 'make_sps_kde_plot', s == 2)
+        )
+        sps_plot_layout.addWidget(self.make_sps_kde_plot)
+        
+        self.sps_plot_group.setLayout(sps_plot_layout)
+        additional_layout.addWidget(self.sps_plot_group)
         
         additional_options.setLayout(additional_layout)
         output_layout.addWidget(additional_options)
+        
+        # Connect output type changes to show/hide SPS plot options
+        def update_sps_plot_visibility():
+            show_sps = not self.genes_only_btn.isChecked()
+            self.sps_plot_group.setVisible(show_sps)
+        
+        self.genes_only_btn.toggled.connect(update_sps_plot_visibility)
+        self.preds_only_btn.toggled.connect(update_sps_plot_visibility)
+        self.both_outputs_btn.toggled.connect(update_sps_plot_visibility)
+        update_sps_plot_visibility()  # Initial update
         
         output_group.setLayout(output_layout)
         # Add output group to container
@@ -791,41 +834,60 @@ class ParametersPage(BaseWizardPage):
         
         # ===== Deletion Canceler Options =====
         del_cancel_group = QGroupBox("Deletion Canceler Options")
-        del_cancel_layout = QFormLayout()
+        del_cancel_layout = QVBoxLayout()
+        
+        # Add explanatory text
+        explanation = QLabel(
+            "The deletion canceler identifies and removes alignment columns where gaps may be due to sequencing artifacts "
+            "rather than true biological deletions. These settings control how the cancellation is performed."
+        )
+        explanation.setWordWrap(True)
+        del_cancel_layout.addWidget(explanation)
+        
+        # Create form layout for the options
+        form_layout = QFormLayout()
         
         # Nix full deletions
         self.nix_full_deletions = QCheckBox("Exclude fully deleted sites")
         self.nix_full_deletions.setToolTip(
-            "If checked, sites that are fully deleted in any species will be excluded from analysis."
+            "If checked, sites that are fully deleted in any species will be excluded from analysis. "
+            "This is equivalent to the --nix_full_deletions command line option."
         )
         self.nix_full_deletions.stateChanged.connect(
             lambda s: setattr(self.config, 'nix_full_deletions', s == 2)  # 2 is Qt.Checked
         )
-        del_cancel_layout.addRow(self.nix_full_deletions)
+        form_layout.addRow("Exclusion:", self.nix_full_deletions)
         
         # Cancel only partner
         self.cancel_only_partner = QCheckBox("Only cancel partner deletions")
         self.cancel_only_partner.setToolTip(
             "If checked, only cancel deletions that are part of a partner pair. "
-            "If unchecked, all deletions will be canceled."
+            "If unchecked, all deletions will be canceled. This is equivalent to the --cancel_only_partner command line option."
         )
         self.cancel_only_partner.stateChanged.connect(
             lambda s: setattr(self.config, 'cancel_only_partner', s == 2)
         )
-        del_cancel_layout.addRow(self.cancel_only_partner)
+        form_layout.addRow("Deletion Mode:", self.cancel_only_partner)
         
         # Minimum aligned pairs
+        min_pairs_layout = QHBoxLayout()
         self.min_pairs = QSpinBox()
-        self.min_pairs.setRange(1, 100)
+        self.min_pairs.setRange(2, 100)  # Minimum is 2 as per requirements
         self.min_pairs.setValue(2)
         self.min_pairs.setToolTip(
             "Minimum number of aligned pairs required to consider a site. "
-            "Sites with fewer aligned pairs will be excluded from analysis."
+            "Sites with fewer aligned pairs will be excluded from analysis. "
+            "This is equivalent to the --min_pairs command line option."
         )
         self.min_pairs.valueChanged.connect(
             lambda v: setattr(self.config, 'min_pairs', v)
         )
-        del_cancel_layout.addRow("Minimum aligned pairs:", self.min_pairs)
+        min_pairs_layout.addWidget(self.min_pairs)
+        min_pairs_layout.addStretch()
+        form_layout.addRow("Minimum aligned pairs:", min_pairs_layout)
+        
+        # Add form layout to the main layout
+        del_cancel_layout.addLayout(form_layout)
         
         del_cancel_group.setLayout(del_cancel_layout)
         self.container_layout.addWidget(del_cancel_group)
@@ -836,8 +898,8 @@ class ParametersPage(BaseWizardPage):
         
         # Add explanatory text
         explanation = QLabel(
-            "Select the type of null model to use for significance testing. "
-            "Null models help assess the statistical significance of your results."
+            "Null models help assess the statistical significance of your results by comparing against "
+            "randomized data. Select the type of null model to use:"
         )
         explanation.setWordWrap(True)
         null_models_layout.addWidget(explanation)
@@ -847,7 +909,7 @@ class ParametersPage(BaseWizardPage):
         
         # No null models (fastest)
         no_null_layout = QHBoxLayout()
-        self.no_null_btn = QRadioButton("No null models (fastest)")
+        self.no_null_btn = QRadioButton("No null models")
         self.no_null_btn.setToolTip(
             "Do not generate any null models. This is the fastest option but provides "
             "no statistical significance estimates."
@@ -860,51 +922,75 @@ class ParametersPage(BaseWizardPage):
         no_null_layout.addStretch()
         null_models_layout.addLayout(no_null_layout)
         
-        # Permutation test
-        permute_layout = QHBoxLayout()
-        self.permute_btn = QRadioButton("Permutation test")
-        self.permute_btn.setToolTip(
-            "Perform a permutation test by randomly shuffling phenotype labels. "
-            "This provides a non-parametric estimate of significance."
+        # Response-flipped null models
+        response_flip_layout = QHBoxLayout()
+        self.response_flip_btn = QRadioButton("Response-flipped null models")
+        self.response_flip_btn.setToolTip(
+            "Generate null models by randomly flipping response values. "
+            "This helps assess the significance of your results by comparing against random permutations "
+            "of the phenotype assignments. Requires an even number of species pairs."
         )
-        self.permute_btn.toggled.connect(
-            lambda checked: setattr(self.config, 'permute', checked)
+        self.response_flip_btn.toggled.connect(
+            lambda checked: setattr(self.config, 'make_null_models', checked)
         )
-        self.null_models_group.addButton(self.permute_btn)
-        permute_layout.addWidget(self.permute_btn)
-        permute_layout.addStretch()
-        null_models_layout.addLayout(permute_layout)
+        self.null_models_group.addButton(self.response_flip_btn)
+        response_flip_layout.addWidget(self.response_flip_btn)
+        response_flip_layout.addStretch()
+        null_models_layout.addLayout(response_flip_layout)
         
-        # Random alignments
-        random_align_layout = QHBoxLayout()
-        self.random_align_btn = QRadioButton("Random alignments")
-        self.random_align_btn.setToolTip(
-            "Generate random alignments with the same composition as the input. "
-            "This controls for sequence composition effects."
+        # Pair-randomized null models
+        pair_randomized_layout = QHBoxLayout()
+        self.pair_randomized_btn = QRadioButton("Pair-randomized null models")
+        self.pair_randomized_btn.setToolTip(
+            "Generate null models by randomizing the alignment data while preserving the overall "
+            "sequence composition. This controls for potential biases in the input data."
         )
-        self.random_align_btn.toggled.connect(
-            lambda checked: setattr(self.config, 'random_align', checked)
+        self.pair_randomized_btn.toggled.connect(
+            lambda checked: setattr(self.config, 'make_pair_randomized_null_models', checked)
         )
-        self.null_models_group.addButton(self.random_align_btn)
-        random_align_layout.addWidget(self.random_align_btn)
-        random_align_layout.addStretch()
-        null_models_layout.addLayout(random_align_layout)
+        self.null_models_group.addButton(self.pair_randomized_btn)
+        pair_randomized_layout.addWidget(self.pair_randomized_btn)
+        pair_randomized_layout.addStretch()
+        null_models_layout.addLayout(pair_randomized_layout)
         
         # Number of randomizations
         num_rand_layout = QHBoxLayout()
         self.num_rand = QSpinBox()
-        self.num_rand.setRange(10, 10000)
-        self.num_rand.setValue(100)
+        self.num_rand.setRange(1, 1000)
+        self.num_rand.setValue(10)
         self.num_rand.setToolTip(
-            "Number of randomizations to perform for the null model. "
-            "Higher values provide more accurate p-values but increase computation time."
+            "Number of randomized alignments to generate for the null model. "
+            "Higher values provide more accurate significance estimates but increase computation time. "
+            "This is equivalent to the --num_randomized_alignments command line option."
         )
         self.num_rand.valueChanged.connect(
-            lambda v: setattr(self.config, 'num_rand', v)
+            lambda v: setattr(self.config, 'num_randomized_alignments', v)
         )
         num_rand_layout.addWidget(QLabel("Number of randomizations:"))
         num_rand_layout.addWidget(self.num_rand)
         num_rand_layout.addStretch()
+        
+        # Only show number of randomizations when a null model is selected
+        self.num_rand_label = QLabel("Number of randomizations:")
+        num_rand_layout = QHBoxLayout()
+        num_rand_layout.addWidget(self.num_rand_label)
+        num_rand_layout.addWidget(self.num_rand)
+        num_rand_layout.addStretch()
+        
+        # Function to update visibility of num_rand based on selection
+        def update_num_rand_visibility():
+            show = not self.no_null_btn.isChecked()
+            self.num_rand_label.setVisible(show)
+            self.num_rand.setVisible(show)
+        
+        # Connect signals
+        self.no_null_btn.toggled.connect(update_num_rand_visibility)
+        self.response_flip_btn.toggled.connect(update_num_rand_visibility)
+        self.pair_randomized_btn.toggled.connect(update_num_rand_visibility)
+        
+        # Initial update
+        update_num_rand_visibility()
+        
         null_models_layout.addLayout(num_rand_layout)
         
         # Set default selection
