@@ -4,29 +4,83 @@ Configuration model for ESL-PSC analysis.
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+import os
 
 @dataclass
 class ESLConfig:
-    """Configuration for an ESL-PSC analysis."""
-    # Input files
+    """Configuration class to store ESL-PSC analysis parameters."""
+    
+    # Input Files
     alignment_dir: str = ""
     species_groups_file: str = ""
-    species_phenotypes_file: str = ""
+    species_pheno_path: str = ""
     prediction_alignments_dir: str = ""
-    limited_genes_file: str = ""
+    limited_genes_list: str = ""
+    canceled_alignments_dir: str = ""
     
-    # Parameters
-    lambda1: float = 0.1
-    lambda2: float = 0.1
-    group_penalty: str = "l1"  # 'l1', 'l2', or 'l1l2'
-    group_penalty_value: float = 1.0
-    deletion_handling: str = "drop"  # 'drop', 'impute', or 'impute_consensus'
-    min_species: int = 1
-    min_aa: int = 1
+    # Hyperparameters
+    # Lambda (Sparsity) Parameters
+    initial_lambda1: float = 0.01  # Position sparsity initial
+    final_lambda1: float = 0.99    # Position sparsity final
+    lambda1_step: float = 0.1      # Position sparsity step
     
-    # Output options
-    output_dir: str = ""
-    output_prefix: str = "esl_psc"
+    initial_lambda2: float = 0.01  # Group sparsity initial
+    final_lambda2: float = 0.99    # Group sparsity final
+    lambda2_step: float = 0.1      # Group sparsity step
+    
+    # Group Penalty Settings
+    group_penalty_type: str = "median"  # Options: "default", "sqrt", "median", "linear"
+    initial_gp_value: float = 1.0         # Initial group penalty constant
+    final_gp_value: float = 6.0           # Final group penalty constant
+    gp_step: float = 1.0                  # Group penalty step
+    
+    # Logspace Settings
+    use_logspace: bool = True
+    num_log_points: int = 20
+    
+    # Phenotype Names
+    pheno_name1: str = "C4"  # Positive phenotype name
+    pheno_name2: str = "C3"  # Negative phenotype name
+    
+    # Model Filtering
+    min_genes: int = 0  # Minimum number of genes a model must have
+    
+    # Deletion Canceler Options
+    nix_full_deletions: bool = False
+    cancel_only_partner: bool = True
+    min_pairs: int = 1
+    
+    # Output Options
+    output_dir: str = os.path.join(os.getcwd(), 'esl_psc_output')
+    output_file_base_name: str = "esl_psc_analysis"
+    
+    # Output Toggles
+    keep_raw_output: bool = False
+    show_selected_sites: bool = False
+    no_genes_output: bool = False
+    no_pred_output: bool = False
+    
+    # Plot Options
+    make_sps_plot: bool = True
+    make_sps_kde_plot: bool = False
+    
+    # Multi-matrix Options
+    top_rank_frac: float = 0.01  # Fraction of top genes to highlight
+    response_dir: str = ""      # Directory containing response matrices
+    
+    # Null Model Options
+    make_null_models: bool = False
+    make_pair_randomized_null_models: bool = False
+    num_randomized_alignments: int = 10
+    
+    # Runtime Options
+    num_threads: int = 1
+    use_existing_preprocess: bool = False
+    use_existing_alignments: bool = False
+    use_uncanceled_alignments: bool = False
+    delete_preprocess: bool = False
+    
+    # Additional Output Options
     save_model: bool = False
     save_predictions: bool = True
     generate_plots: bool = False

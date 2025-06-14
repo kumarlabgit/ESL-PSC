@@ -45,14 +45,6 @@ def main():
         window.show()
         print("Main window shown")
         
-        # Show a test message box to verify GUI is working
-        QMessageBox.information(
-            window, 
-            "ESL-PSC GUI", 
-            "Application started successfully!\n\n"
-            "If you can see this message, the GUI is working."
-        )
-        
         print("Starting event loop...")
         # Start the event loop
         sys.exit(app.exec())

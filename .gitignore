@@ -13,3 +13,8 @@ __pycache__/esl_psc_functions.cpython-38.pyc
 __pycache__/sps_density.cpython-38.pyc
 gui/__pycache__/__init__.cpython-39.pyc
 gui/__pycache__/main.cpython-39.pyc
+__pycache__/sps_density.cpython-39.pyc
+__pycache__/deletion_canceler.cpython-39.pyc
+__pycache__/esl_psc_functions.cpython-39.pyc
+__pycache__/esl_integrator.cpython-39.pyc
+.DS_Store

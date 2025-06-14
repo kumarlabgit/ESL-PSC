@@ -5,16 +5,17 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QFileDialog, QMessageBox
+    QPushButton, QFileDialog, QMessageBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QPalette
 
 class FileSelector(QWidget):
-    """A widget for selecting a file or directory with a browse button."""
+    """A widget for selecting a file or directory with a browse button and optional description."""
     
     path_changed = pyqtSignal(str)  # Signal emitted when path changes
     
-    def __init__(self, label, mode='file', default_path='', parent=None):
+    def __init__(self, label, mode='file', default_path='', description='', parent=None):
         """
         Initialize the file selector.
         
@@ -22,29 +23,45 @@ class FileSelector(QWidget):
             label: The label to display next to the path field
             mode: Either 'file' or 'directory'
             default_path: The default path to display
+            description: Optional help text to display below the input
             parent: The parent widget
         """
         super().__init__(parent)
         self.mode = mode
         self.default_path = default_path or os.getcwd()
         
-        # Create layout
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        # Create main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(2)  # Reduced spacing between widgets
+        
+        # Create top row layout (label + input + button)
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
         
         # Add label
-        layout.addWidget(QLabel(label))
+        top_row.addWidget(QLabel(label))
         
         # Add path display
         self.path_edit = QLineEdit()
         self.path_edit.setReadOnly(True)
         self.path_edit.setPlaceholderText(f"Select {mode}...")
-        layout.addWidget(self.path_edit, 1)  # Stretch factor 1
+        top_row.addWidget(self.path_edit, 1)  # Stretch factor 1
         
         # Add browse button
         self.browse_btn = QPushButton("Browse...")
         self.browse_btn.clicked.connect(self.browse)
-        layout.addWidget(self.browse_btn)
+        top_row.addWidget(self.browse_btn)
+        
+        main_layout.addLayout(top_row)
+        
+        # Add description label if provided
+        if description:
+            self.desc_label = QLabel(description)
+            self.desc_label.setWordWrap(True)
+            self.desc_label.setStyleSheet("color: #666666; font-size: 10pt;")
+            self.desc_label.setContentsMargins(5, 0, 0, 5)  # Left indent for description
+            main_layout.addWidget(self.desc_label)
     
     def browse(self):
         """Open a file/directory dialog to select the path."""
