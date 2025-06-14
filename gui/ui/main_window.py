@@ -743,13 +743,18 @@ class ParametersPage(BaseWizardPage):
         output_file_layout = QHBoxLayout()
         output_file_layout.addWidget(QLabel("Output File Base Name:"))
         
-        self.output_file_base_name = QLineEdit()
-        self.output_file_base_name.setPlaceholderText("e.g., analysis_results")
+        self.output_file_base_name = QLineEdit("esl_psc_results")
+        self.output_file_base_name.setMaximumWidth(300)  # Make the field narrower
         self.output_file_base_name.textChanged.connect(
             lambda t: setattr(self.config, 'output_file_base_name', t)
         )
+        # Set the default value in config
+        self.config.output_file_base_name = "esl_psc_results"
         output_file_layout.addWidget(self.output_file_base_name, 1)
         output_layout.addLayout(output_file_layout)
+        
+        # Add vertical spacer for better separation
+        output_layout.addSpacing(10)  # Add 10px spacing
         
         # Output directory
         output_dir_layout = QHBoxLayout()
@@ -766,9 +771,8 @@ class ParametersPage(BaseWizardPage):
         
         output_layout.addLayout(output_dir_layout)
         
-        # Additional output options
-        additional_options = QGroupBox("Additional Output Options")
-        additional_layout = QVBoxLayout()
+        # Add vertical spacer for better separation
+        output_layout.addSpacing(10)  # Add 10px spacing
         
         # Keep raw output
         self.keep_raw = QCheckBox("Keep raw output files")
@@ -776,7 +780,7 @@ class ParametersPage(BaseWizardPage):
         self.keep_raw.stateChanged.connect(
             lambda s: setattr(self.config, 'keep_raw', s == 2)  # 2 is Qt.Checked
         )
-        additional_layout.addWidget(self.keep_raw)
+        output_layout.addWidget(self.keep_raw)
         
         # Show selected sites
         self.show_selected_sites = QCheckBox("Show selected sites in output")
@@ -786,9 +790,12 @@ class ParametersPage(BaseWizardPage):
         self.show_selected_sites.stateChanged.connect(
             lambda s: setattr(self.config, 'show_selected_sites', s == 2)
         )
-        additional_layout.addWidget(self.show_selected_sites)
+        output_layout.addWidget(self.show_selected_sites)
         
-        # SPS plot options (only shown when species predictions are enabled)
+        # Add vertical spacer for better separation
+        output_layout.addSpacing(10)  # Add 10px spacing
+        
+        # SPS plot options (always visible but may be disabled)
         self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
         sps_plot_layout = QVBoxLayout()
         
@@ -813,20 +820,23 @@ class ParametersPage(BaseWizardPage):
         sps_plot_layout.addWidget(self.make_sps_kde_plot)
         
         self.sps_plot_group.setLayout(sps_plot_layout)
-        additional_layout.addWidget(self.sps_plot_group)
+        output_layout.addWidget(self.sps_plot_group)
         
-        additional_options.setLayout(additional_layout)
-        output_layout.addWidget(additional_options)
+        # Connect output type changes to enable/disable SPS plot options
+        def update_sps_plot_state():
+            enable_sps = not self.genes_only_btn.isChecked()
+            # Set the entire group box and its children enabled/disabled
+            self.sps_plot_group.setEnabled(enable_sps)
+            # Visually indicate the disabled state
+            self.sps_plot_group.setStyleSheet(
+                "QGroupBox:disabled { color: gray; }"
+                "QCheckBox:disabled { color: gray; }"
+            )
         
-        # Connect output type changes to show/hide SPS plot options
-        def update_sps_plot_visibility():
-            show_sps = not self.genes_only_btn.isChecked()
-            self.sps_plot_group.setVisible(show_sps)
-        
-        self.genes_only_btn.toggled.connect(update_sps_plot_visibility)
-        self.preds_only_btn.toggled.connect(update_sps_plot_visibility)
-        self.both_outputs_btn.toggled.connect(update_sps_plot_visibility)
-        update_sps_plot_visibility()  # Initial update
+        self.genes_only_btn.toggled.connect(update_sps_plot_state)
+        self.preds_only_btn.toggled.connect(update_sps_plot_state)
+        self.both_outputs_btn.toggled.connect(update_sps_plot_state)
+        update_sps_plot_state()  # Initial update
         
         output_group.setLayout(output_layout)
         # Add output group to container
