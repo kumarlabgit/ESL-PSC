@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
         try:
             # Set window properties
             self.setWindowTitle("ESL-PSC Wizard")
-            self.setMinimumSize(1000, 750)  # Increased minimum size
+            self.setMinimumSize(800, 900)  # Narrower and taller window
             print("MainWindow: Window properties set")
             
             # Create a central widget
@@ -434,6 +434,10 @@ class ParametersPage(BaseWizardPage):
         # ===== Hyperparameters Section =====
         hyper_group = QGroupBox("Hyperparameters")
         hyper_layout = QFormLayout()
+        # Ensure the form rows themselves stay left-aligned instead of centering in the
+        # available space.  Using AlignLeft keeps the widgets flush with the left
+        # edge without forcing them to expand across the full width.
+        hyper_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         
         # Grid Type Selection
         grid_type_group = QHBoxLayout()
@@ -739,19 +743,16 @@ class ParametersPage(BaseWizardPage):
         both_outputs_layout.addStretch()
         output_layout.addLayout(both_outputs_layout)
         
-        # Output file base name
-        output_file_layout = QHBoxLayout()
-        output_file_layout.addWidget(QLabel("Output File Base Name:"))
-        
+        # Output file base name (on its own row, left-aligned)
         self.output_file_base_name = QLineEdit("esl_psc_results")
-        self.output_file_base_name.setMaximumWidth(300)  # Make the field narrower
+        self.output_file_base_name.setMaximumWidth(300)
         self.output_file_base_name.textChanged.connect(
             lambda t: setattr(self.config, 'output_file_base_name', t)
         )
         # Set the default value in config
         self.config.output_file_base_name = "esl_psc_results"
-        output_file_layout.addWidget(self.output_file_base_name, 1)
-        output_layout.addLayout(output_file_layout)
+        output_layout.addWidget(QLabel("Output File Base Name:"), alignment=Qt.AlignmentFlag.AlignLeft)
+        output_layout.addWidget(self.output_file_base_name, alignment=Qt.AlignmentFlag.AlignLeft)
         
         # Add vertical spacer for better separation
         output_layout.addSpacing(10)  # Add 10px spacing
@@ -799,25 +800,35 @@ class ParametersPage(BaseWizardPage):
         self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
         sps_plot_layout = QVBoxLayout()
         
+        # Create a button group for mutually exclusive plot options
+        self.plot_options_group = QButtonGroup(self)
+        
         # Make SPS plot
-        self.make_sps_plot = QCheckBox("Generate SPS density plots")
+        self.make_sps_plot = QRadioButton("Generate SPS density plots")
         self.make_sps_plot.setToolTip(
             "Create violin plots showing SPS density for each true phenotype."
         )
-        self.make_sps_plot.stateChanged.connect(
-            lambda s: setattr(self.config, 'make_sps_plot', s == 2)
+        self.make_sps_plot.toggled.connect(
+            lambda checked: setattr(self.config, 'make_sps_plot', checked)
         )
+        self.plot_options_group.addButton(self.make_sps_plot)
         sps_plot_layout.addWidget(self.make_sps_plot)
         
         # Make SPS KDE plot
-        self.make_sps_kde_plot = QCheckBox("Generate SPS KDE plots")
+        self.make_sps_kde_plot = QRadioButton("Generate SPS KDE plots")
         self.make_sps_kde_plot.setToolTip(
             "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
         )
-        self.make_sps_kde_plot.stateChanged.connect(
-            lambda s: setattr(self.config, 'make_sps_kde_plot', s == 2)
+        self.make_sps_kde_plot.toggled.connect(
+            lambda checked: setattr(self.config, 'make_sps_kde_plot', checked)
         )
+        self.plot_options_group.addButton(self.make_sps_kde_plot)
         sps_plot_layout.addWidget(self.make_sps_kde_plot)
+        
+        # Set default selection
+        self.make_sps_plot.setChecked(True)
+        self.config.make_sps_plot = True
+        self.config.make_sps_kde_plot = False
         
         self.sps_plot_group.setLayout(sps_plot_layout)
         output_layout.addWidget(self.sps_plot_group)
@@ -854,19 +865,16 @@ class ParametersPage(BaseWizardPage):
         explanation.setWordWrap(True)
         del_cancel_layout.addWidget(explanation)
         
-        # Create form layout for the options
-        form_layout = QFormLayout()
-        
-        # Nix full deletions
-        self.nix_full_deletions = QCheckBox("Exclude fully deleted sites")
+        # Nix fully canceled genes
+        self.nix_full_deletions = QCheckBox("Exclude fully canceled genes")
         self.nix_full_deletions.setToolTip(
-            "If checked, sites that are fully deleted in any species will be excluded from analysis. "
+            "If checked, genes that are fully canceled in enough species will be excluded from analysis. "
             "This is equivalent to the --nix_full_deletions command line option."
         )
         self.nix_full_deletions.stateChanged.connect(
             lambda s: setattr(self.config, 'nix_full_deletions', s == 2)  # 2 is Qt.Checked
         )
-        form_layout.addRow("Exclusion:", self.nix_full_deletions)
+        del_cancel_layout.addWidget(self.nix_full_deletions)
         
         # Cancel only partner
         self.cancel_only_partner = QCheckBox("Only cancel partner deletions")
@@ -877,10 +885,11 @@ class ParametersPage(BaseWizardPage):
         self.cancel_only_partner.stateChanged.connect(
             lambda s: setattr(self.config, 'cancel_only_partner', s == 2)
         )
-        form_layout.addRow("Deletion Mode:", self.cancel_only_partner)
+        del_cancel_layout.addWidget(self.cancel_only_partner)
         
         # Minimum aligned pairs
         min_pairs_layout = QHBoxLayout()
+        min_pairs_layout.addWidget(QLabel("Minimum aligned pairs:"))
         self.min_pairs = QSpinBox()
         self.min_pairs.setRange(2, 100)  # Minimum is 2 as per requirements
         self.min_pairs.setValue(2)
@@ -894,10 +903,7 @@ class ParametersPage(BaseWizardPage):
         )
         min_pairs_layout.addWidget(self.min_pairs)
         min_pairs_layout.addStretch()
-        form_layout.addRow("Minimum aligned pairs:", min_pairs_layout)
-        
-        # Add form layout to the main layout
-        del_cancel_layout.addLayout(form_layout)
+        del_cancel_layout.addLayout(min_pairs_layout)
         
         del_cancel_group.setLayout(del_cancel_layout)
         self.container_layout.addWidget(del_cancel_group)
