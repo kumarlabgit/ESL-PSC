@@ -82,12 +82,21 @@ class FileSelector(QWidget):
         return self.path_edit.text()
     
     def set_path(self, path):
-        """Set the current path and emit the changed signal."""
+        """Set the current path and emit the changed signal.
+
+        An empty string should clear the field instead of displaying '.'.
+        """
+        if not path:                             # handle '' or None cleanly
+            self.path_edit.clear()
+            self.path_changed.emit("")
+            return
+
+        # Normal non-empty path
         path = os.path.normpath(path)
         self.path_edit.setText(path)
         self.path_changed.emit(path)
-        
-        # Update default path to the parent directory
+
+        # Update default path for the next browse action
         if os.path.exists(path):
             if os.path.isfile(path):
                 self.default_path = os.path.dirname(path)

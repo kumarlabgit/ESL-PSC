@@ -802,16 +802,81 @@ class ParametersPage(BaseWizardPage):
         self._update_phenotype_names_state()
         self.update_output_options_state()
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public helper: sync widgets when configuration is loaded
+    # ──────────────────────────────────────────────────────────────────────────
+    def update_ui_from_config(self):
+        """Synchronize all parameter widgets with values from self.config."""
+        if not getattr(self, 'widgets_initialized', False):
+            return  # widgets not ready yet
+        cfg = self.config
+        # Grid type & lambda values
+        self.logspace_btn.setChecked(cfg.grid_type == 'log')
+        self.linear_btn.setChecked(cfg.grid_type == 'linear')
+        self.initial_lambda1.setValue(cfg.initial_lambda1)
+        self.final_lambda1.setValue(cfg.final_lambda1)
+        self.initial_lambda2.setValue(cfg.initial_lambda2)
+        self.final_lambda2.setValue(cfg.final_lambda2)
+        if cfg.grid_type == 'log':
+            self.num_log_points.setValue(int(cfg.num_points))
+        else:
+            self.lambda_step.setValue(float(cfg.num_points))
+        # Group penalty
+        mapping = {
+            'median': 'median (Recommended)',
+            'standard': 'standard',
+            'sqrt': 'sqrt',
+            'linear': 'linear'
+        }
+        self.group_penalty_type.setCurrentText(mapping.get(cfg.group_penalty_type, cfg.group_penalty_type))
+        self.initial_gp_value.setValue(cfg.initial_gp_value)
+        self.final_gp_value.setValue(cfg.final_gp_value)
+        self.gp_step.setValue(cfg.gp_step)
+        # Top rank frac
+        self.top_rank_frac.setValue(cfg.top_rank_frac)
+        # Output basics
+        self.output_file_base_name.setText(cfg.output_file_base_name)
+        self.pheno_name1.setText(cfg.pheno_name1)
+        self.pheno_name2.setText(cfg.pheno_name2)
+        self.output_dir_edit.setText(cfg.output_dir)
+        # Toggles
+        self.keep_raw_output_chk.setChecked(cfg.keep_raw_output)
+        self.show_selected_sites.setChecked(cfg.show_selected_sites)
+        # Plot radios if exist
+        if hasattr(self, 'no_sps_plot'):
+            self.no_sps_plot.setChecked(cfg.no_sps_plot)
+        if hasattr(self, 'make_sps_plot'):
+            self.make_sps_plot.setChecked(cfg.make_sps_plot)
+        if hasattr(self, 'make_sps_kde_plot'):
+            self.make_sps_kde_plot.setChecked(cfg.make_sps_kde_plot)
+        # Deletion canceler
+        self.nix_full_deletions.setChecked(cfg.nix_full_deletions)
+        self.cancel_only_partner.setChecked(cfg.cancel_only_partner)
+        self.min_pairs.setValue(cfg.min_pairs)
+        # Output radio state
+        genes_only = cfg.no_pred_output and not cfg.no_genes_output
+        preds_only = cfg.no_genes_output and not cfg.no_pred_output
+        both = not cfg.no_genes_output and not cfg.no_pred_output
+        self.genes_only_btn.setChecked(genes_only)
+        self.preds_only_btn.setChecked(preds_only)
+        self.both_outputs_btn.setChecked(both)
+        # Null models
+        self.no_null_btn.setChecked(not (cfg.make_null_models or cfg.make_pair_randomized_null_models))
+        self.response_flip_btn.setChecked(cfg.make_null_models)
+        self.pair_randomized_btn.setChecked(cfg.make_pair_randomized_null_models)
+        self.num_rand.setValue(cfg.num_randomized_alignments)
+        # Trigger dependent updates
+        self._update_grid_type_view()
+        self._update_penalty_type(cfg.group_penalty_type)
+        self._update_phenotype_names_state()
+        self.update_output_options_state()
+
     # Qt calls this each time the page becomes current
     def initializePage(self):
         super().initializePage()
         wiz: QWizard = self.wizard()
         if wiz is None:
             return
-
-        # Ensure no leftover custom footer button
-        wiz.setButton(QWizard.WizardButton.CustomButton1, None)
-        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
 
         # Update UI that depends on input page
         if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):

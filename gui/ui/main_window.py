@@ -2,6 +2,8 @@
 Main window for the ESL-PSC Wizard application.
 """
 import os
+import json
+from dataclasses import asdict
 from PyQt6.QtWidgets import (
     QMainWindow, QWizard, QWizardPage, QVBoxLayout, QLabel, QWidget,
     QGroupBox, QFormLayout, QScrollArea, QSizePolicy, QSpacerItem, QFrame, QStackedWidget,
@@ -107,6 +109,23 @@ class ESLWizard(QWizard):
             self.setMinimumSize(1000, 700)  # Slightly larger minimum size
             print("ESLWizard: Window properties set")
 
+            # Create custom Save/Load buttons before setting cancel button text
+            save_btn = QPushButton("Save Config")
+            load_btn = QPushButton("Load Config")
+            save_btn.clicked.connect(self.save_config)
+            load_btn.clicked.connect(self.load_config)
+            # Assign to custom button slots and define layout (left-aligned)
+            self.setButton(QWizard.WizardButton.CustomButton1, save_btn)
+            self.setButton(QWizard.WizardButton.CustomButton2, load_btn)
+            self.setButtonLayout([
+                QWizard.WizardButton.CustomButton1,
+                QWizard.WizardButton.CustomButton2,
+                QWizard.WizardButton.Stretch,
+                QWizard.WizardButton.BackButton,
+                QWizard.WizardButton.NextButton,
+                QWizard.WizardButton.CancelButton,
+            ])
+
             self.setButtonText(QWizard.WizardButton.CancelButton, "Quit")
             quit_btn = self.button(QWizard.WizardButton.CancelButton)
             try:
@@ -180,6 +199,53 @@ class ESLWizard(QWizard):
         
         # Connect signals
         self.currentIdChanged.connect(self.on_current_id_changed)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Save / Load configuration helpers
+    # ──────────────────────────────────────────────────────────────────────────
+    def save_config(self):
+        """Prompt user to save current configuration to a JSON file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Configuration",
+            os.getcwd(),
+            "JSON Files (*.json)"
+        )
+        if path:
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(asdict(self.config), fh, indent=2)
+            except Exception as exc:
+                QMessageBox.critical(self, "Save Error", f"Could not save configuration:\n{exc}")
+
+    def load_config(self):
+        """Prompt user to load configuration from a JSON file and update UI."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Configuration",
+            os.getcwd(),
+            "JSON Files (*.json)"
+        )
+        if path:
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                # Update attributes that exist on ESLConfig
+                for key, val in data.items():
+                    if hasattr(self.config, key):
+                        setattr(self.config, key, val)
+                self.refresh_pages_from_config()
+            except Exception as exc:
+                QMessageBox.critical(self, "Load Error", f"Could not load configuration:\n{exc}")
+
+    def refresh_pages_from_config(self):
+        """Notify pages to sync their widgets with the current config."""
+        for page in [self.input_page, self.params_page, self.command_page]:
+            if hasattr(page, "update_ui_from_config"):
+                page.update_ui_from_config()
+        # If currently on the command page, refresh its display immediately
+        if self.currentPage() == self.command_page:
+            self.command_page.on_enter()
     
     def on_current_id_changed(self, page_id):
         """Handle page changes in the wizard."""

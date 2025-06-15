@@ -193,3 +193,27 @@ class InputPage(BaseWizardPage):
         
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public helpers for wizard
+    # ──────────────────────────────────────────────────────────────────────────
+    def update_ui_from_config(self):
+        """Synchronize widget states with values in self.config."""
+        # Set paths for file/directory selectors
+        if hasattr(self.config, 'alignments_dir'):
+            self.alignment_dir.set_path(self.config.alignments_dir)
+        if hasattr(self.config, 'species_groups_file'):
+            self.species_groups.set_path(self.config.species_groups_file)
+        if hasattr(self.config, 'response_dir'):
+            self.response_dir.set_path(self.config.response_dir)
+        if hasattr(self.config, 'species_phenotypes_file'):
+            self.species_phenotypes.set_path(self.config.species_phenotypes_file)
+        if hasattr(self.config, 'prediction_alignments_dir'):
+            self.prediction_alignments.set_path(self.config.prediction_alignments_dir)
+        if hasattr(self.config, 'limited_genes_file'):
+            self.limited_genes.set_path(self.config.limited_genes_file)
+
+        # Determine which input type is active based on populated paths
+        use_resp = bool(self.config.response_dir)
+        self.use_response_dir.setChecked(use_resp)
+        self.use_species_groups.setChecked(not use_resp)
