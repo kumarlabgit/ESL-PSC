@@ -4,6 +4,9 @@ from __future__ import annotations
 import os
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWizard
+from dataclasses import fields
+from gui.core.config import ESLConfig
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFormLayout, QHBoxLayout,
     QLabel, QButtonGroup, QRadioButton, QLineEdit, QDoubleSpinBox, QSpinBox,
@@ -22,6 +25,10 @@ class ParametersPage(BaseWizardPage):
         self.config = config
         self.has_species_pheno = False  # Track if we have a species phenotype file
         
+        # Restore Defaults button (will live in the wizard footer)
+        self.restore_defaults_btn = QPushButton("Restore Defaults")
+        self.restore_defaults_btn.clicked.connect(self.restore_defaults)
+
         # Store references to widgets that might be accessed after deletion
         self.widgets_initialized = False
         
@@ -54,33 +61,36 @@ class ParametersPage(BaseWizardPage):
         
         # Grid Type Selection
         grid_type_group = QHBoxLayout()
-        self.grid_type = QButtonGroup()
+        self.grid_type_btns = QButtonGroup()
         
         self.logspace_btn = QRadioButton("Logarithmic Grid (Recommended)")
         self.linear_btn = QRadioButton("Linear Grid")
         
-        self.grid_type.addButton(self.logspace_btn, 0)
-        self.grid_type.addButton(self.linear_btn, 1)
+        self.grid_type_btns.addButton(self.logspace_btn, 0)
+        self.grid_type_btns.addButton(self.linear_btn, 1)
         
+        # Set default grid type
+        self.config.grid_type = 'log'  # Default to log grid
         self.logspace_btn.setChecked(True)
-        self.use_logspace = True
         
+        # Connect signals to update config
         self.logspace_btn.toggled.connect(
-            lambda checked: setattr(self.config, 'use_logspace', checked)
+            lambda checked: setattr(self.config, 'grid_type', 'log' if checked else 'linear')
         )
         
         grid_type_group.addWidget(self.logspace_btn)
         grid_type_group.addWidget(self.linear_btn)
         grid_type_group.addStretch()
         
-        hyper_layout.addRow("Grid Type:", grid_type_group)
+        hyper_layout.addRow("Lambda Grid Type:", grid_type_group)
         
         # Lambda 1 (Position Sparsity)
         lambda1_group = QVBoxLayout()
         lambda1_range_group = QHBoxLayout()
         
         self.initial_lambda1 = QDoubleSpinBox()
-        self.initial_lambda1.setRange(0.0, 1.0)
+        self.initial_lambda1.setRange(0.001, 0.999)
+        self.initial_lambda1.setDecimals(3)
         self.initial_lambda1.setSingleStep(0.01)
         self.initial_lambda1.setValue(0.01)
         self.initial_lambda1.valueChanged.connect(
@@ -88,7 +98,8 @@ class ParametersPage(BaseWizardPage):
         )
         
         self.final_lambda1 = QDoubleSpinBox()
-        self.final_lambda1.setRange(0.0, 1.0)
+        self.final_lambda1.setRange(0.001, 0.999)
+        self.final_lambda1.setDecimals(3)
         self.final_lambda1.setSingleStep(0.01)
         self.final_lambda1.setValue(0.99)
         self.final_lambda1.valueChanged.connect(
@@ -110,11 +121,8 @@ class ParametersPage(BaseWizardPage):
         self.lambda_step = QDoubleSpinBox()
         self.lambda_step.setRange(0.01, 1.0)
         self.lambda_step.setSingleStep(0.01)
-        self.lambda_step.setValue(0.1)  # Default step size
+        self.lambda_step.setValue(0.1)  # Default step size for linear grid
         self.lambda_step.setDecimals(2)  # Show 2 decimal places
-        self.lambda_step.valueChanged.connect(
-            lambda v: setattr(self.config, 'lambda_step', v)
-        )
         
         step_layout.addWidget(QLabel("Step:"))
         step_layout.addWidget(self.lambda_step)
@@ -126,20 +134,16 @@ class ParametersPage(BaseWizardPage):
         log_layout.setContentsMargins(0, 0, 0, 0)
         
         self.num_log_points = QSpinBox()
-        self.num_log_points.setRange(2, 1000)
+        self.num_log_points.setRange(4, 1000)  # Minimum 4 points for log grid
         self.num_log_points.setValue(20)  # Default number of points
         self.num_log_points.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.UpDownArrows)
-        self.num_log_points.valueChanged.connect(
-            lambda v: setattr(self.config, 'num_log_points', v)
-        )
         
         log_layout.addWidget(QLabel("Points:"))
         log_layout.addWidget(self.num_log_points)
         log_layout.addStretch()
         
         # Set initial config values
-        self.config.lambda_step = 0.1
-        self.config.num_log_points = 20
+        self.config.num_points = 20  # Default number of points for log grid
         
         # Create stacked widgets for lambda1 and lambda2
         self.lambda1_stack = QStackedWidget()
@@ -155,7 +159,8 @@ class ParametersPage(BaseWizardPage):
         lambda2_range_group = QHBoxLayout()
         
         self.initial_lambda2 = QDoubleSpinBox()
-        self.initial_lambda2.setRange(0.0, 1.0)
+        self.initial_lambda2.setRange(0.001, 0.999)
+        self.initial_lambda2.setDecimals(3)
         self.initial_lambda2.setSingleStep(0.01)
         self.initial_lambda2.setValue(0.01)
         self.initial_lambda2.valueChanged.connect(
@@ -163,7 +168,8 @@ class ParametersPage(BaseWizardPage):
         )
         
         self.final_lambda2 = QDoubleSpinBox()
-        self.final_lambda2.setRange(0.0, 1.0)
+        self.final_lambda2.setRange(0.001, 0.999)
+        self.final_lambda2.setDecimals(3)
         self.final_lambda2.setSingleStep(0.01)
         self.final_lambda2.setValue(0.99)
         self.final_lambda2.valueChanged.connect(
@@ -189,9 +195,21 @@ class ParametersPage(BaseWizardPage):
         # Initially set the correct view based on grid type
         self._update_grid_type_view()
         
-        # Connect grid type change to update the stacks
+        # Connect grid type change to update the stacks and config
         self.logspace_btn.toggled.connect(self._update_grid_type_view)
         self.linear_btn.toggled.connect(self._update_grid_type_view)
+        
+        # Connect spinbox changes to update config
+        self.num_log_points.valueChanged.connect(
+            lambda v: setattr(self.config, 'num_points', int(v)) if self.logspace_btn.isChecked() else None
+        )
+        self.lambda_step.valueChanged.connect(
+            lambda v: setattr(self.config, 'num_points', float(v)) if self.linear_btn.isChecked() else None
+        )
+        
+        # Set initial values
+        self.num_log_points.setValue(20)  # Default for log grid
+        self.lambda_step.setValue(0.1)  # Default for linear grid
         
         # Add to the main layout
         hyper_layout.addRow("Lambda 1 (Position Sparsity):", lambda1_group)
@@ -455,12 +473,14 @@ class ParametersPage(BaseWizardPage):
         output_layout.addSpacing(10)  # Add 10px spacing
         
         # Keep raw output
-        self.keep_raw = QCheckBox("Keep raw output files")
-        self.keep_raw.setToolTip("If checked, keep intermediate files generated during analysis.")
-        self.keep_raw.stateChanged.connect(
-            lambda s: setattr(self.config, 'keep_raw', s == 2)  # 2 is Qt.Checked
+        self.keep_raw_output_chk = QCheckBox("Keep raw output files")
+        self.keep_raw_output_chk.setToolTip("If checked, keep intermediate/intermediate files generated during analysis.")
+        self.keep_raw_output_chk.stateChanged.connect(
+            lambda s: setattr(self.config, 'keep_raw_output', s == 2)  # 2 is Qt.Checked
         )
-        output_layout.addWidget(self.keep_raw)
+        # Reflect existing state if re-entering the page
+        self.keep_raw_output_chk.setChecked(getattr(self.config, 'keep_raw_output', False))
+        output_layout.addWidget(self.keep_raw_output_chk)
         
         # Show selected sites
         self.show_selected_sites = QCheckBox("Show selected sites in output")
@@ -708,12 +728,175 @@ class ParametersPage(BaseWizardPage):
         
         null_models_group.setLayout(null_models_layout)
         self.container_layout.addWidget(null_models_group)
+        # --- Restore Defaults button (placed at bottom of Parameters page) ---
+        self.container_layout.addSpacing(12)
+        # Create a horizontal layout for the button to prevent it from stretching
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.restore_defaults_btn)
+        button_layout.addStretch()  # Push button to the left
+        self.container_layout.addLayout(button_layout)
         
         # Mark widgets as initialized
         self.widgets_initialized = True
         
-    def on_enter(self):
-        """Called when the page is entered."""
+    def restore_defaults(self):
+        """Reset all parameters to their default ESLConfig values and update the UI."""
+        defaults = ESLConfig()
+        # Do NOT reset input file paths or other pages' settings
+        skip_fields = {
+            "alignments_dir", "species_groups_file", "species_phenotypes_file",
+            "prediction_alignments_dir", "limited_genes_file", "response_dir"
+        }
+        for f in fields(ESLConfig):
+            if f.name in skip_fields:
+                continue
+            setattr(self.config, f.name, getattr(defaults, f.name))
+
+        # ─── Update widgets ────────────────────────────────────────────────────
+        # Grid type & lambda grids
+        self.logspace_btn.setChecked(self.config.grid_type == 'log')
+        self.linear_btn.setChecked(self.config.grid_type == 'linear')
+        self.initial_lambda1.setValue(self.config.initial_lambda1)
+        self.final_lambda1.setValue(self.config.final_lambda1)
+        self.initial_lambda2.setValue(self.config.initial_lambda2)
+        self.final_lambda2.setValue(self.config.final_lambda2)
+        self.lambda_step.setValue(self.config.lambda_step)
+        self.num_log_points.setValue(self.config.num_points)
+
+        # Group penalty
+        self.group_penalty_type.setCurrentText("median (Recommended)")
+        self.initial_gp_value.setValue(self.config.initial_gp_value)
+        self.final_gp_value.setValue(self.config.final_gp_value)
+        self.gp_step.setValue(self.config.gp_step)
+
+        # Top-rank frac
+        self.top_rank_frac.setValue(self.config.top_rank_frac)
+
+        # Output options
+        self.genes_only_btn.setChecked(False)
+        self.preds_only_btn.setChecked(False)
+        self.both_outputs_btn.setChecked(True)
+
+        self.output_file_base_name.setText(self.config.output_file_base_name)
+        self.pheno_name1.setText(self.config.pheno_name1)
+        self.pheno_name2.setText(self.config.pheno_name2)
+        self.output_dir_edit.setText(self.config.output_dir)
+
+        self.keep_raw_output_chk.setChecked(self.config.keep_raw_output)
+        self.show_selected_sites.setChecked(self.config.show_selected_sites)
+
+        # SPS plot radios
+        self.no_sps_plot.setChecked(True)
+
+        # Deletion-canceler
+        self.nix_full_deletions.setChecked(self.config.nix_full_deletions)
+        self.cancel_only_partner.setChecked(self.config.cancel_only_partner)
+        self.min_pairs.setValue(self.config.min_pairs)
+
+        # Null models
+        self.no_null_btn.setChecked(True)
+
+        # Trigger dependent UI updates
+        self._update_grid_type_view()
+        self._update_penalty_type(self.config.group_penalty_type)
+        self._update_phenotype_names_state()
+        self.update_output_options_state()
+
+    # Qt calls this each time the page becomes current
+    def initializePage(self):
+        super().initializePage()
+        wiz: QWizard = self.wizard()
+        if wiz is None:
+            return
+
+        # Ensure no leftover custom footer button
+        wiz.setButton(QWizard.WizardButton.CustomButton1, None)
+        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
+
+        # Update UI that depends on input page
+        if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
+            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
+        self.update_output_options_state()
+        return
+        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, True)
+        wiz.setButton(QWizard.WizardButton.CustomButton1, self.restore_defaults_btn)
+        wiz.setButtonText(QWizard.WizardButton.CustomButton1, "Restore Defaults")
+        wiz.button(QWizard.WizardButton.CustomButton1).show()
+
+        # Move it to the far-left side of the footer
+        if self._old_button_layout:
+            remaining = [b for b in self._old_button_layout if b not in (QWizard.WizardButton.CustomButton1, QWizard.WizardButton.Stretch)]
+        else:
+            # Fallback default order if we couldn't query existing layout
+            remaining = [QWizard.WizardButton.BackButton,
+                         QWizard.WizardButton.NextButton,
+                         QWizard.WizardButton.CommitButton,
+                         QWizard.WizardButton.FinishButton,
+                         QWizard.WizardButton.CancelButton]
+        # Save default (without Restore button) so we can put it back later
+        self._default_button_layout = remaining
+
+        new_layout = [QWizard.WizardButton.CustomButton1, QWizard.WizardButton.Stretch] + remaining
+        wiz.setButtonLayout(new_layout)
+
+        # Ensure button is removed when we navigate away (forward or back)
+        wiz.currentIdChanged.connect(self._on_wizard_page_changed)
+
+        # Update phenotype-file flag and dependent UI
+        if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
+            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
+        self.update_output_options_state()
+
+    def _on_wizard_page_changed(self, page_id):
+        wiz: QWizard = self.wizard()
+        if wiz.currentPage() is self:
+            return  # Still on this page
+        # Disconnect this slot to avoid repeated calls
+        try:
+            wiz.currentIdChanged.disconnect(self._on_wizard_page_changed)
+        except TypeError:
+            pass
+        # Hide/disable button and restore old layout
+        if wiz.button(QWizard.WizardButton.CustomButton1):
+            wiz.button(QWizard.WizardButton.CustomButton1).hide()
+        wiz.setButton(QWizard.WizardButton.CustomButton1, None)
+        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
+        # Restore default button layout so Restore button slot disappears
+        if hasattr(self, "_default_button_layout"):
+            wiz.setButtonLayout(self._default_button_layout)
+        if getattr(self, "_old_button_layout", None):
+             wiz.setButtonLayout(self._old_button_layout)
+             del self._old_button_layout
+
+    # Also handle Qt Back navigation (cleanupPage called only on Back)
+    def cleanupPage(self):
+        """Called by QWizard when leaving the page. Ensure no custom footer button remains."""
+        super().cleanupPage()
+        wiz: QWizard = self.wizard()
+        if wiz is not None:
+            wiz.setButton(QWizard.WizardButton.CustomButton1, None)
+            wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
+        return
+        super().cleanupPage()
+        # No special cleanup needed now that the button is within the page
+        return
+        if wiz is None:
+            return
+
+        # Hide and disable custom button so other pages don't inherit it
+        if wiz.button(QWizard.WizardButton.CustomButton1):
+            wiz.button(QWizard.WizardButton.CustomButton1).hide()
+        wiz.setButton(QWizard.WizardButton.CustomButton1, None)
+        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
+        # Restore default button layout so Restore button slot disappears
+        if hasattr(self, "_default_button_layout"):
+            wiz.setButtonLayout(self._default_button_layout)
+
+        # Restore original layout if saved
+        if getattr(self, "_old_button_layout", None):
+             wiz.setButtonLayout(self._old_button_layout)
+             del self._old_button_layout
+
         # Update our state based on the input page
         if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
             self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
@@ -869,7 +1052,7 @@ class ParametersPage(BaseWizardPage):
         self.container_layout.addWidget(del_group)
     
     def _update_grid_type_view(self):
-        """Update the UI based on the selected grid type (linear or logspace)."""
+        """Update the UI and config based on the selected grid type (linear or log)."""
         is_logspace = self.logspace_btn.isChecked()
         
         # Update the stacked widgets
@@ -878,11 +1061,14 @@ class ParametersPage(BaseWizardPage):
         
         # Update the config based on the selected grid type
         if is_logspace:
-            # When switching to logspace, store the current step value
-            self.config.lambda_step = self.lambda_step.value()
+            # When switching to logspace, use num_log_points value
+            self.config.num_points = self.num_log_points.value()
         else:
-            # When switching to linear, store the current num_log_points
-            self.config.num_log_points = self.num_log_points.value()
+            # When switching to linear, use lambda_step value
+            self.config.num_points = self.lambda_step.value()
+            
+        # Update the config's grid type
+        self.config.grid_type = 'log' if is_logspace else 'linear'
     
     def _update_deletion_canceler_state(self, state):
         """

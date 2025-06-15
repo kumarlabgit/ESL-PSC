@@ -6,8 +6,9 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLabel,
-    QTextEdit, QPushButton, QLineEdit, QApplication, QFileDialog
+    QWizardPage, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
+    QPushButton, QGroupBox, QFormLayout, QLineEdit, 
+    QSizePolicy, QWidget, QScrollArea, QApplication, QFileDialog
 )
 
 from .base_page import BaseWizardPage
@@ -36,23 +37,33 @@ class CommandPage(BaseWizardPage):
         cmd_group = QGroupBox("ESL-PSC Command")
         cmd_layout = QVBoxLayout()
         
-        # Command display with monospace font
+        # Command display with larger, resizable monospace font
         self.cmd_display = QTextEdit()
         self.cmd_display.setReadOnly(True)
-        font = QFont("Monospace")
-        font.setStyleHint(QFont.StyleHint.TypeWriter)
+        font = QFont("Courier New")
+        font.setPointSize(12)  # Increased font size
         self.cmd_display.setFont(font)
         self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.cmd_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.cmd_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
-        # Copy to clipboard button
+        # Set size policy to allow resizing
+        size_policy = self.cmd_display.sizePolicy()
+        size_policy.setVerticalPolicy(QSizePolicy.Policy.Expanding)
+        size_policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
+        self.cmd_display.setSizePolicy(size_policy)
+        
+        # Set minimum size and make it larger
+        self.cmd_display.setMinimumSize(600, 300)  # Wider and taller by default
+        
+        # Copy to clipboard button with fixed size
         copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.setMaximumWidth(150)  # Make the button a normal width
         copy_btn.clicked.connect(self.copy_command_to_clipboard)
         
-        # Add widgets to command layout
+        # Add widgets to command layout with proper spacing
         cmd_layout.addWidget(self.cmd_display)
-        cmd_layout.addWidget(copy_btn)
+        cmd_layout.addWidget(copy_btn, alignment=Qt.AlignmentFlag.AlignRight)  # Right-align the button
         cmd_group.setLayout(cmd_layout)
         
         # Add command group to container
@@ -60,6 +71,7 @@ class CommandPage(BaseWizardPage):
         
         # Configuration summary section
         summary_group = QGroupBox("Configuration Summary")
+        summary_group.setObjectName("Configuration Summary")  # Set object name for finding later
         summary_layout = QFormLayout()
         summary_group.setLayout(summary_layout)
         
@@ -114,7 +126,7 @@ class CommandPage(BaseWizardPage):
         self.update_summary()
     
     def update_summary(self):
-        """Update the configuration summary section."""
+        """Update the configuration summary section with organized and formatted information."""
         # Get the summary group box
         summary_group = self.findChild(QGroupBox, "Configuration Summary")
         if not summary_group:
@@ -124,114 +136,209 @@ class CommandPage(BaseWizardPage):
         layout = summary_group.layout()
         self.clear_layout(layout)
         
-        # Add configuration items
-        # Required parameters
+        # Set styles for headers
+        header_style = """
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 12px;
+            margin-bottom: 6px;
+            color: #2c3e50;
+        """
+        
+        # Add a header for input files
+        input_header = QLabel("Input Files")
+        input_header.setStyleSheet(header_style)
+        layout.addRow(input_header)
+        
+        # Add input files
         if hasattr(self.config, 'alignments_dir') and self.config.alignments_dir:
             self.add_summary_item(layout, "Alignment Directory:", self.config.alignments_dir)
         if hasattr(self.config, 'species_groups_file') and self.config.species_groups_file:
-            self.add_summary_item(layout, "Species Groups File:", self.config.species_groups_file)
-        
-        # Optional input files
+            self.add_summary_item(layout, "Species Groups:", self.config.species_groups_file)
         if hasattr(self.config, 'species_phenotypes_file') and self.config.species_phenotypes_file:
             self.add_summary_item(layout, "Phenotypes File:", self.config.species_phenotypes_file)
         if hasattr(self.config, 'prediction_alignments_dir') and self.config.prediction_alignments_dir:
-            self.add_summary_item(layout, "Prediction Alignments Dir:", self.config.prediction_alignments_dir)
+            self.add_summary_item(layout, "Prediction Alignments:", self.config.prediction_alignments_dir)
         if hasattr(self.config, 'limited_genes_file') and self.config.limited_genes_file:
-            self.add_summary_item(layout, "Limited Genes File:", self.config.limited_genes_file)
+            self.add_summary_item(layout, "Limited Genes:", self.config.limited_genes_file)
+        if hasattr(self.config, 'response_dir') and self.config.response_dir:
+            self.add_summary_item(layout, "Response Directory:", self.config.response_dir)
         
-        # Hyperparameters
-        if hasattr(self.config, 'initial_lambda1') and hasattr(self.config, 'final_lambda1') and hasattr(self.config, 'lambda_step'):
-            lambda1_str = f"{self.config.initial_lambda1} to {self.config.final_lambda1} (step: {self.config.lambda_step})"
+        # Add a header for analysis parameters
+        params_header = QLabel("Analysis Parameters")
+        params_header.setStyleSheet(header_style)
+        layout.addRow(params_header)
+        
+        # Add hyperparameters
+        if hasattr(self.config, 'initial_lambda1') and hasattr(self.config, 'final_lambda1'):
+            lambda1_str = f"{self.config.initial_lambda1} → {self.config.final_lambda1}"
+            # Show step size for linear grid
+            if hasattr(self.config, 'grid_type') and self.config.grid_type == 'linear' and hasattr(self.config, 'num_points') and self.config.num_points:
+                lambda1_str += f" (step: {self.config.num_points})"
             self.add_summary_item(layout, "Lambda 1 Range:", lambda1_str)
         
-        if hasattr(self.config, 'initial_lambda2') and hasattr(self.config, 'final_lambda2') and hasattr(self.config, 'lambda2_step'):
-            lambda2_str = f"{self.config.initial_lambda2} to {self.config.final_lambda2} (step: {self.config.lambda2_step})"
+        if hasattr(self.config, 'initial_lambda2') and hasattr(self.config, 'final_lambda2'):
+            lambda2_str = f"{self.config.initial_lambda2} → {self.config.final_lambda2}"
+            # Show step size for linear grid
+            if hasattr(self.config, 'grid_type') and self.config.grid_type == 'linear' and hasattr(self.config, 'num_points') and self.config.num_points:
+                lambda2_str += f" (step: {self.config.num_points})"
             self.add_summary_item(layout, "Lambda 2 Range:", lambda2_str)
         
         # Group penalty settings
-        if hasattr(self.config, 'group_penalty_type') and hasattr(self.config, 'initial_gp_value') and hasattr(self.config, 'final_gp_value') and hasattr(self.config, 'gp_step'):
-            gp_str = f"{self.config.group_penalty_type}: {self.config.initial_gp_value} to {self.config.final_gp_value} (step: {self.config.gp_step})"
+        if hasattr(self.config, 'group_penalty_type'):
+            gp_str = self.config.group_penalty_type.capitalize()
+            if (hasattr(self.config, 'initial_gp_value') and 
+                hasattr(self.config, 'final_gp_value') and 
+                hasattr(self.config, 'gp_step') and 
+                self.config.group_penalty_type not in ['median', 'standard']):
+                gp_str = f"{gp_str}: {self.config.initial_gp_value} → {self.config.final_gp_value} (step: {self.config.gp_step})"
             self.add_summary_item(layout, "Group Penalty:", gp_str)
         
-        # Logspace and other settings
-        if hasattr(self.config, 'use_logspace'):
-            logspace_str = f"{'Yes' if self.config.use_logspace else 'No'}"
-            if self.config.use_logspace and hasattr(self.config, 'num_log_points'):
-                logspace_str += f" ({self.config.num_log_points} points)"
-            self.add_summary_item(layout, "Use Logspace:", logspace_str)
+        # Grid type and parameters
+        if hasattr(self.config, 'grid_type'):
+            grid_info = self.config.grid_type.capitalize()
+            if hasattr(self.config, 'num_points'):
+                if self.config.grid_type == 'log':
+                    grid_info += f" ({self.config.num_points} points)"
+                else:  # linear
+                    grid_info += f" (step: {self.config.num_points})"
+            self.add_summary_item(layout, "Lambda Grid Type:", grid_info)
+        
+        # Top rank fraction (always show)
+        if hasattr(self.config, 'top_rank_frac'):
+            self.add_summary_item(layout, "Top Rank Fraction:", str(self.config.top_rank_frac))
         
         # Phenotype names
         if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
-            self.add_summary_item(layout, "Phenotype Names:", f"{self.config.pheno_name1} vs {self.config.pheno_name2}")
+            self.add_summary_item(layout, "Phenotype Comparison:", 
+                               f"{self.config.pheno_name1} vs {self.config.pheno_name2}")
         
-        # Deletion canceler options
-        if hasattr(self.config, 'nix_full_deletions') or hasattr(self.config, 'cancel_only_partner') or hasattr(self.config, 'min_pairs'):
-            del_opts = []
-            if hasattr(self.config, 'nix_full_deletions') and self.config.nix_full_deletions:
-                del_opts.append("Exclude full deletions")
-            if hasattr(self.config, 'cancel_only_partner') and not self.config.cancel_only_partner:
-                del_opts.append("Cancel all partners")
-            if hasattr(self.config, 'min_pairs') and self.config.min_pairs > 1:
-                del_opts.append(f"Min pairs: {self.config.min_pairs}")
-            
-            if del_opts:
-                self.add_summary_item(layout, "Deletion Options:", ", ".join(del_opts))
+        # Add a header for output options
+        output_header = QLabel("Output Options")
+        output_header.setStyleSheet(header_style)
+        layout.addRow(output_header)
         
-        # Output options
+        # Output directory and base name
         if hasattr(self.config, 'output_dir') and self.config.output_dir:
             self.add_summary_item(layout, "Output Directory:", self.config.output_dir)
         
         if hasattr(self.config, 'output_file_base_name') and self.config.output_file_base_name:
             self.add_summary_item(layout, "Output Base Name:", self.config.output_file_base_name)
-        
-        # Output toggles
-        if hasattr(self.config, 'keep_raw_output') or hasattr(self.config, 'show_selected_sites'):
-            toggles = []
-            if hasattr(self.config, 'keep_raw_output') and self.config.keep_raw_output:
-                toggles.append("Keep raw output")
-            if hasattr(self.config, 'show_selected_sites') and self.config.show_selected_sites:
-                toggles.append("Show selected sites")
             
-            if toggles:
-                self.add_summary_item(layout, "Output Options:", ", ".join(toggles))
+        # Output settings
+        output_settings = []
         
-        # Plot options
-        if hasattr(self.config, 'make_sps_plot') or hasattr(self.config, 'make_sps_kde_plot'):
-            plots = []
-            if hasattr(self.config, 'make_sps_plot') and self.config.make_sps_plot:
-                plots.append("SPS Plot")
-            if hasattr(self.config, 'make_sps_kde_plot') and self.config.make_sps_kde_plot:
-                plots.append("SPS KDE Plot")
+        # Keep raw output
+        if hasattr(self.config, 'keep_raw_output') and self.config.keep_raw_output:
+            output_settings.append("Keep raw output files")
             
-            if plots:
-                self.add_summary_item(layout, "Generate Plots:", ", ".join(plots))
+        # Show selected sites
+        if hasattr(self.config, 'show_selected_sites') and self.config.show_selected_sites:
+            output_settings.append("Show selected sites")
+            
+        # Output type settings – list which output files will actually be generated
+        gene_ranks_output = not getattr(self.config, 'no_genes_output', False)
+        species_pred_output = not getattr(self.config, 'no_pred_output', False)
+
+        if gene_ranks_output:
+            output_settings.append("Gene ranks file")
+        if species_pred_output:
+            output_settings.append("Species predictions file")
+
+        # If both primary outputs are disabled, make this explicit for the user
+        if not gene_ranks_output and not species_pred_output:
+            output_settings.append("No primary output files will be saved")
         
-        # Multi-matrix options
-        multi_opts = []
-        if hasattr(self.config, 'top_rank_frac') and self.config.top_rank_frac != 0.01:
-            multi_opts.append(f"Top rank frac: {self.config.top_rank_frac}")
-        if hasattr(self.config, 'response_dir') and self.config.response_dir:
-            multi_opts.append(f"Response dir: {self.config.response_dir}")
+        # SPS plot settings – show SPS, KDE, or both depending on selections
+        make_sps_plot = getattr(self.config, 'make_sps_plot', False)
+        make_kde_plot = getattr(self.config, 'make_sps_kde_plot', False)
+
+        if make_sps_plot and make_kde_plot:
+            output_settings.append("Generate SPS and KDE plots")
+        elif make_sps_plot:
+            output_settings.append("Generate SPS plots")
+        elif make_kde_plot:
+            output_settings.append("Generate SPS KDE plots")
+            
+        if output_settings:
+            self.add_summary_item(layout, "Output Settings:", "; ".join(output_settings))
+            
+        # Add a header for advanced options
+        advanced_header = QLabel("Advanced Options")
+        advanced_header.setStyleSheet(header_style)
+        layout.addRow(advanced_header)
         
+        # Deletion canceler options
+        deletion_text = ""
+        cancel_only_partner = getattr(self.config, 'cancel_only_partner', True)
+        min_pairs = getattr(self.config, 'min_pairs', 1)
+        nix_full_del = getattr(self.config, 'nix_full_deletions', False)
+
+        if cancel_only_partner:
+            deletion_text = "Cancel only partner sequences with gaps"
+            if min_pairs > 1:
+                deletion_text += f" (min pairs: {min_pairs})"
+        else:
+            deletion_text = "Eliminate any site with one or more gaps"
+
+        if nix_full_del:
+            deletion_text += "; Exclude full deletions"
+
+        self.add_summary_item(layout, "Deletion Handling:", deletion_text)
+            
         # Null model options
+        null_opts = []
         if hasattr(self.config, 'make_null_models') and self.config.make_null_models:
-            multi_opts.append("Generate null models")
+            null_opts.append("Standard null models")
         if hasattr(self.config, 'make_pair_randomized_null_models') and self.config.make_pair_randomized_null_models:
-            rand_str = "Generate pair-randomized nulls"
-            if hasattr(self.config, 'num_randomized_alignments') and self.config.num_randomized_alignments != 10:
+            rand_str = "Pair-randomized null models"
+            if hasattr(self.config, 'num_randomized_alignments'):
                 rand_str += f" ({self.config.num_randomized_alignments} randomizations)"
-            multi_opts.append(rand_str)
+            null_opts.append(rand_str)
+            
+        if null_opts:
+            self.add_summary_item(layout, "Null Models:", "; ".join(null_opts))
         
-        if multi_opts:
-            self.add_summary_item(layout, "Multi-matrix Options:", "; ".join(multi_opts))
+        # Plot options are now consolidated into the output settings above
+            
+        # Response directory if specified
+        if hasattr(self.config, 'response_dir') and self.config.response_dir:
+            self.add_summary_item(layout, "Response Directory:", self.config.response_dir)
     
     def add_summary_item(self, layout, label, value):
         """Add a single item to the configuration summary."""
         label_widget = QLabel(label)
-        value_widget = QLineEdit(value)
+        label_widget.setStyleSheet("font-size: 11px;")
+        label_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        
+        value_widget = QLineEdit(str(value))
         value_widget.setReadOnly(True)
-        value_widget.setStyleSheet("background: #f8f8f8; border: 1px solid #ddd;")
-        layout.addRow(label_widget, value_widget)
+        value_widget.setStyleSheet("""
+            QLineEdit {
+                font-size: 11px;
+                background: #f8f8f8; 
+                border: 1px solid #ddd;
+                padding: 4px;
+                min-width: 500px;
+            }
+        """)
+        
+        # Set size policy to allow horizontal expansion
+        value_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        
+        # Enable horizontal scrolling for long paths
+        value_widget.setCursorPosition(0)  # Start scrolled to the beginning
+        
+        # Create a container widget with horizontal layout to ensure proper expansion
+        container = QWidget()
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(value_widget)
+        
+        # Add a stretch to push the field to the left
+        container_layout.addStretch()
+        
+        layout.addRow(label_widget, container)
     
     def clear_layout(self, layout):
         """Clear all widgets from a layout."""
