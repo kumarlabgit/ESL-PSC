@@ -4,26 +4,27 @@ import os, subprocess, math, re, time, datetime, shutil, argparse, sys
 from collections import defaultdict, Counter
 from Bio import SeqIO
 import numpy as np
-import sps_density
+from . import sps_density
 import pandas as pd
 import matplotlib.pyplot as plt
 from itertools import combinations, chain
 from statistics import median
 
 
-def parse_args_with_config(parser):
+def parse_args_with_config(parser, raw_args=None):
     '''will parse args in the esl-psc_config.txt file if it exists and also
     get args from sys.argv[1:] and return the args namespace'''
+    cmdline = raw_args if raw_args is not None else sys.argv[1:]
     if os.path.exists("esl_psc_config.txt"): # check for the config file
         print("getting args from esl_psc_config.txt...")
         with open("esl_psc_config.txt") as file:
             args, remaining = parser.parse_known_args(file.read().split()
-                                                      + sys.argv[1:])
+                                                      + cmdline)
             if len(remaining) > 0:
                 print("unrecognized args: ", remaining) 
     else: 
         print("did not find an esl_psc_config.txt in this directory")
-        args = parser.parse_args()
+        args = parser.parse_args(cmdline)
     # the following path was an arg in earlier versions but will be static here
     args.esl_main_dir = os.path.dirname(os.path.abspath(__file__))
     # Ensure esl_inputs_outputs_dir is set if not already provided

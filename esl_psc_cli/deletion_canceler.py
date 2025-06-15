@@ -1,5 +1,5 @@
-import os, sys, argparse, itertools, time, datetime
-import esl_psc_functions as ecf 
+import os, argparse, itertools, time
+from . import esl_psc_functions as ecf
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -265,7 +265,7 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
     return
 
 
-if __name__ == '__main__':
+def main(raw_args=None):
     start_time = time.time()
 
     # Create the parser
@@ -279,7 +279,7 @@ if __name__ == '__main__':
 
     parser = get_deletion_canceler_args(parser)
 
-    args = ecf.parse_args_with_config(parser) # checks for args in config file
+    args = ecf.parse_args_with_config(parser, raw_args) # checks for args in config file
     
     # get species lists 
     if args.response_file: 
@@ -313,3 +313,5 @@ if __name__ == '__main__':
 
     ecf.report_elapsed_time(start_time) # print time taken for execution
     
+if __name__ == '__main__':
+    main()

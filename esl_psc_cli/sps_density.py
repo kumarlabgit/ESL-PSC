@@ -1,10 +1,8 @@
 #Author: Louise Dupont (with some additions by John)
-import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
-import os
 from textwrap import wrap
 
 ##matplotlib.use('svg')

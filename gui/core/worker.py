@@ -1,8 +1,11 @@
 """
 Worker thread for running ESL-PSC commands.
 """
-import subprocess
 import sys
+import shlex
+import contextlib
+import io
+from esl_psc_cli import esl_multimatrix
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot, QThreadPool
 
 class WorkerSignals(QObject):
@@ -25,41 +28,36 @@ class ESLWorker(QRunnable):
     
     @pyqtSlot()
     def run(self):
-        """Run the command and emit signals for output/errors."""
+        """Execute esl_multimatrix in-process and relay its output."""
         self.is_running = True
-        
         try:
-            # Create process
-            process = subprocess.Popen(
-                self.command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                shell=True,
-                bufsize=1
-            )
-            
-            # Read output in real-time
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    self.signals.output.emit(output.strip())
-            
-            # Get any remaining output/error
-            stdout, stderr = process.communicate()
-            
-            if stdout:
-                self.signals.output.emit(stdout.strip())
-            if stderr:
-                self.signals.error.emit(stderr.strip())
-            
-            # Emit finished signal with exit code
-            self.signals.finished.emit(process.returncode)
-            
+            # Split the raw command string exactly as a shell would
+            args = shlex.split(self.command)
+
+            stdout_buf = io.StringIO()
+            stderr_buf = io.StringIO()
+            exit_code = 0
+
+            # Capture everything the script prints
+            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+                try:
+                    esl_multimatrix.main(args)
+                except SystemExit as se:
+                    # esl_multimatrix calls sys.exit() → convert to int
+                    exit_code = se.code if isinstance(se.code, int) else 1
+
+            # Stream captured stdout
+            for line in stdout_buf.getvalue().splitlines():
+                self.signals.output.emit(line)
+
+            # Stream captured stderr
+            for line in stderr_buf.getvalue().splitlines():
+                self.signals.error.emit(line)
+
+            self.signals.finished.emit(exit_code)
+
         except Exception as e:
-            self.signals.error.emit(f"Error running command: {str(e)}")
+            self.signals.error.emit(f"Error running ESL-PSC: {e}")
             self.signals.finished.emit(1)
         finally:
             self.is_running = False

@@ -159,7 +159,7 @@ class ESLConfig:
             str: The command string with each flag and its value on the same line,
                  and each flag-value pair on a new line.
         """
-        parts = ["python -m esl_multimatrix"]
+        parts = []
         args = self.to_cli_args()
         
         # Process arguments, grouping flags with their values

@@ -1,8 +1,7 @@
 # a unified script for running integrated ESL analyses
 
-import argparse, os, subprocess, sys, math, re, shutil, time, datetime
-import esl_psc_functions as ecf
-from Bio import SeqIO
+import argparse, os, time
+from . import esl_psc_functions as ecf
 from collections import defaultdict
 
 
