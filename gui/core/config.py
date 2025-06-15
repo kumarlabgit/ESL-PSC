@@ -85,7 +85,7 @@ class ESLConfig:
         if self.species_groups_file:
             a += ["--species_groups_file", self.species_groups_file]
         if self.species_phenotypes_file:
-            a += ["--species_phenotypes_file", self.species_phenotypes_file]
+            a += ["--species_pheno_path", self.species_phenotypes_file]
         if self.response_dir:
             a += ["--response_dir", self.response_dir]
             

@@ -291,7 +291,7 @@ if __name__ == '__main__':
                     type = str)
     group.add_argument('--top_rank_frac',
                         help = 'Fraction of genes to count as "top genes"',
-                        type = int, default = .01)
+                        type = float, default = .01)
     
     # Options 
     group.add_argument('--response_dir',
