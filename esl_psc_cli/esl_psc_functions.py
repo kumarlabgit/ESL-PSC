@@ -25,8 +25,14 @@ def parse_args_with_config(parser, raw_args=None):
     else: 
         print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args(cmdline)
-    # the following path was an arg in earlier versions but will be static here
-    args.esl_main_dir = os.path.dirname(os.path.abspath(__file__))
+    # Point esl_main_dir at the *project root* (one level above this package)
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+    # sanity-check: make sure the ESL binaries are actually there
+    if not os.path.exists(os.path.join(args.esl_main_dir, "bin", "preprocess")):
+        raise FileNotFoundError(
+            f"Expected ESL binaries in {args.esl_main_dir!s}/bin but none were found"
+        )
     # Ensure esl_inputs_outputs_dir is set if not already provided
     if not hasattr(args, 'esl_inputs_outputs_dir') or not args.esl_inputs_outputs_dir:
         args.esl_inputs_outputs_dir = os.path.join(
