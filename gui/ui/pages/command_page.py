@@ -41,7 +41,7 @@ class CommandPage(BaseWizardPage):
         self.cmd_display = QTextEdit()
         self.cmd_display.setReadOnly(True)
         font = QFont("Courier New")
-        font.setPointSize(12)  # Increased font size
+        font.setPointSize(11)  # Increased font size
         self.cmd_display.setFont(font)
         self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.cmd_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -74,6 +74,11 @@ class CommandPage(BaseWizardPage):
         summary_group.setObjectName("Configuration Summary")  # Set object name for finding later
         summary_layout = QFormLayout()
         summary_group.setLayout(summary_layout)
+
+        # create one monospace QFont that every summary label / value will share
+        self.summary_font = QFont("Courier New")
+        self.summary_font.setPointSize(10)
+        summary_group.setFont(self.summary_font)
         
         # Summary fields will be populated in on_enter()
         self.summary_labels = {}
@@ -120,7 +125,9 @@ class CommandPage(BaseWizardPage):
             cmd_str = f"Error generating command: {str(e)}"
             
         # Display the command
-        self.cmd_display.setPlainText(cmd_str)
+        # Prefix with the full python invocation for display
+        full_cmd = f"python -m esl_multimatrix {cmd_str}"
+        self.cmd_display.setPlainText(full_cmd)
         
         # Update the configuration summary
         self.update_summary()
@@ -308,11 +315,12 @@ class CommandPage(BaseWizardPage):
     def add_summary_item(self, layout, label, value):
         """Add a single item to the configuration summary."""
         label_widget = QLabel(label)
-        label_widget.setStyleSheet("font-size: 11px;")
+        label_widget.setFont(self.summary_font)
         label_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         
         value_widget = QLineEdit(str(value))
         value_widget.setReadOnly(True)
+        value_widget.setFont(self.summary_font)
         value_widget.setStyleSheet("""
             QLineEdit {
                 font-size: 11px;

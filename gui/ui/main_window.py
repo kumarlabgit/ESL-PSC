@@ -9,13 +9,11 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLineEdit, QPushButton, QProgressBar, QHBoxLayout, QApplication, QRadioButton,
     QFileDialog, QAbstractSpinBox
 )
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool
 from PyQt6.QtGui import QFont, QTextCursor
 
-from gui.core.worker import ESLWorker
-
 from gui.core.config import ESLConfig
-from gui.ui.widgets.file_selectors import FileSelector
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -104,10 +102,18 @@ class ESLWizard(QWizard):
             self.setOption(QWizard.WizardOption.HaveHelpButton, False)
             self.setOption(QWizard.WizardOption.HaveNextButtonOnLastPage, False)
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
-            self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, True)
+            self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
             self.setOption(QWizard.WizardOption.NoCancelButton, False)
             self.setMinimumSize(1000, 700)  # Slightly larger minimum size
             print("ESLWizard: Window properties set")
+
+            self.setButtonText(QWizard.WizardButton.CancelButton, "Quit")
+            quit_btn = self.button(QWizard.WizardButton.CancelButton)
+            try:
+                quit_btn.clicked.disconnect()
+            except TypeError:
+                pass
+            quit_btn.clicked.connect(self.confirm_quit)
             
             # Apply stylesheet
             self.setStyleSheet("""
@@ -158,6 +164,9 @@ class ESLWizard(QWizard):
             print("ESLWizard: Added CommandPage")
             self.addPage(self.run_page)
             print("ESLWizard: Added RunPage")
+
+            # Hide the default “Finish” button – we use only Back / Next / Quit
+            self.button(QWizard.WizardButton.FinishButton).hide()
             
             # Connect signals
             self.currentIdChanged.connect(self.on_current_id_changed)
@@ -177,6 +186,24 @@ class ESLWizard(QWizard):
         current_page = self.currentPage()
         if hasattr(current_page, 'on_enter'):
             current_page.on_enter()
+
+    def confirm_quit(self):
+        """
+        Ask the user to confirm quitting. Called when the Quit button is pressed.
+        """
+        reply = QMessageBox.question(
+            self,
+            "Quit ESL-PSC Wizard",
+            "Are you sure you want to quit?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            QApplication.instance().quit()
+
+    # When the user presses Esc or some code calls reject(), show the same dialog
+    def reject(self):
+        self.confirm_quit()
     
     def validateCurrentPage(self):
         """Validate the current page before allowing the user to proceed."""
@@ -202,14 +229,3 @@ from gui.ui.pages.input_page import InputPage
 from gui.ui.pages.parameters_page import ParametersPage
 from gui.ui.pages.command_page import CommandPage
 from gui.ui.pages.run_page import RunPage
-
-
-
-
-    
-
-
-
-
-
-

@@ -5,6 +5,7 @@ import sys
 import shlex
 import contextlib
 import io
+import re
 from esl_psc_cli import esl_multimatrix
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot, QThreadPool
 
@@ -28,38 +29,68 @@ class ESLWorker(QRunnable):
     
     @pyqtSlot()
     def run(self):
-        """Execute esl_multimatrix in-process and relay its output."""
+        """Execute esl_multimatrix in‑process, stream its output, and update progress."""
         self.is_running = True
+        exit_code = 0
+
+        class StreamEmitter(io.TextIOBase):
+            """A minimal text IO object that forwards every complete line via Qt signals."""
+            def __init__(self, out_sig, err_sig, prog_sig):
+                super().__init__()
+                self.out_sig = out_sig
+                self.err_sig = err_sig
+                self.prog_sig = prog_sig
+                self._buf = ""
+
+            # stdout handler ----------------------------------------------------
+            def write(self, s):
+                self._buf += s
+                while "\n" in self._buf:
+                    line, self._buf = self._buf.split("\n", 1)
+                    self.out_sig.emit(line)
+                    self._parse_progress(line)
+                return len(s)
+
+            def flush(self):
+                if self._buf:
+                    self.out_sig.emit(self._buf)
+                    self._parse_progress(self._buf)
+                    self._buf = ""
+
+            # stderr handler ----------------------------------------------------
+            def _parse_progress(self, line):
+                m = re.search(r'run\s+(\d+)\s+of\s+(\d+)', line, re.IGNORECASE)
+                if m:
+                    cur, total = map(int, m.groups())
+                    if total > 0:
+                        pct = int(cur / total * 100)
+                        self.prog_sig.emit(pct)
+
         try:
-            # Split the raw command string exactly as a shell would
             args = shlex.split(self.command)
 
-            stdout_buf = io.StringIO()
-            stderr_buf = io.StringIO()
-            exit_code = 0
+            out_stream = StreamEmitter(self.signals.output,
+                                    self.signals.error,
+                                    self.signals.progress)
+            err_stream = StreamEmitter(self.signals.error,
+                                    self.signals.error,
+                                    self.signals.progress)
 
-            # Capture everything the script prints
-            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+            # Redirect stdout/stderr so every write() is pushed immediately
+            with contextlib.redirect_stdout(out_stream), contextlib.redirect_stderr(err_stream):
                 try:
                     esl_multimatrix.main(args)
                 except SystemExit as se:
-                    # esl_multimatrix calls sys.exit() → convert to int
                     exit_code = se.code if isinstance(se.code, int) else 1
 
-            # Stream captured stdout
-            for line in stdout_buf.getvalue().splitlines():
-                self.signals.output.emit(line)
-
-            # Stream captured stderr
-            for line in stderr_buf.getvalue().splitlines():
-                self.signals.error.emit(line)
-
-            self.signals.finished.emit(exit_code)
+            if exit_code == 0:
+                self.signals.progress.emit(100)  # force 100 % on clean exit
 
         except Exception as e:
             self.signals.error.emit(f"Error running ESL-PSC: {e}")
-            self.signals.finished.emit(1)
+            exit_code = 1
         finally:
+            self.signals.finished.emit(exit_code)
             self.is_running = False
     
     def stop(self):

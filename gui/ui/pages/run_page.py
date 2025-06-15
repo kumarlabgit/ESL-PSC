@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QApplication
+    QLabel, QProgressBar, QHBoxLayout, QWizard
 )
 
 from gui.core.worker import ESLWorker
@@ -36,7 +36,7 @@ class RunPage(BaseWizardPage):
         container_layout = QVBoxLayout(container)
         
         # Command display section
-        cmd_group = QGroupBox("ESL-PSC Command")
+        cmd_group = QGroupBox("Analysis Terminal Output")
         cmd_layout = QVBoxLayout()
         
         # Command display with monospace font for better readability
@@ -46,42 +46,19 @@ class RunPage(BaseWizardPage):
         self.cmd_display.setPlaceholderText("The ESL-PSC command will be executed...")
         self.cmd_display.setMinimumHeight(100)
         
-        # Copy button
-        self.copy_btn = QPushButton("Copy to Clipboard")
-        self.copy_btn.clicked.connect(self.copy_command_to_clipboard)
-        
         # Add widgets to command layout
-        cmd_layout.addWidget(QLabel("Command being executed:"))
         cmd_layout.addWidget(self.cmd_display)
-        cmd_layout.addWidget(self.copy_btn, 0, Qt.AlignmentFlag.AlignRight)
-        cmd_group.setLayout(cmd_layout)
-        container_layout.addWidget(cmd_group)
-        
-        # Output display
-        output_group = QGroupBox("Analysis Output")
-        output_layout = QVBoxLayout()
-        
-        self.output_display = QTextEdit()
-        self.output_display.setReadOnly(True)
-        self.output_display.setFont(QFont("Courier", 10))
-        self.output_display.setPlaceholderText("Analysis output will appear here...")
-        output_layout.addWidget(self.output_display)
-        
-        # Progress bar
+        # Progress bar (live during the run)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setTextVisible(True)
-        output_layout.addWidget(QLabel("Progress:"))
-        output_layout.addWidget(self.progress_bar)
-        
-        output_group.setLayout(output_layout)
-        container_layout.addWidget(output_group, 1)  # Take remaining space
+        cmd_layout.addWidget(QLabel("Progress:"))
+        cmd_layout.addWidget(self.progress_bar)
+        cmd_group.setLayout(cmd_layout)
+        container_layout.addWidget(cmd_group)
         
         # Buttons
         btn_layout = QHBoxLayout()
-        
-        self.back_btn = QPushButton("Back")
-        self.back_btn.clicked.connect(self.go_back)
         
         self.run_btn = QPushButton("Run Analysis")
         self.run_btn.clicked.connect(self.run_analysis)
@@ -90,7 +67,6 @@ class RunPage(BaseWizardPage):
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_analysis)
         
-        btn_layout.addWidget(self.back_btn)
         btn_layout.addStretch()
         btn_layout.addWidget(self.run_btn)
         btn_layout.addWidget(self.stop_btn)
@@ -99,15 +75,6 @@ class RunPage(BaseWizardPage):
         
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
-    
-    def copy_command_to_clipboard(self):
-        """Copy the current command to the system clipboard."""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(self.cmd_display.toPlainText())
-    
-    def go_back(self):
-        """Go back to the previous page."""
-        self.wizard().back()
     
     def on_enter(self):
         """Update the command display when the page is shown."""
@@ -118,11 +85,18 @@ class RunPage(BaseWizardPage):
             # Display the command
             self.cmd_display.setPlainText(cmd_str)
             
-            # Clear previous output
-            self.output_display.clear()
-            
             # Reset progress
             self.progress_bar.setValue(0)
+
+            # Enable built‑in Back button whenever we (re)enter this page
+            back_btn = self.wizard().button(QWizard.WizardButton.BackButton)
+            if back_btn:
+                back_btn.setEnabled(True)
+
+            # Hide the Finish button – it does nothing useful on this page
+            finish_btn = self.wizard().button(QWizard.WizardButton.FinishButton)
+            if finish_btn:
+                finish_btn.hide()
             
             # Enable/disable buttons
             self.run_btn.setEnabled(True)
@@ -142,6 +116,10 @@ class RunPage(BaseWizardPage):
             # Update UI
             self.run_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
+            # Disable Back while the job is running
+            back_btn = self.wizard().button(QWizard.WizardButton.BackButton)
+            if back_btn:
+                back_btn.setEnabled(False)
             self.cmd_display.clear()
             self.cmd_display.append(f"$ {cmd}\n")
             
@@ -188,8 +166,14 @@ class RunPage(BaseWizardPage):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+
+        # Re‑enable Back once the run ends
+        back_btn = self.wizard().button(QWizard.WizardButton.BackButton)
+        if back_btn:
+            back_btn.setEnabled(True)
         
         if exit_code == 0:
+            self.progress_bar.setValue(100)
             self.append_output("\nAnalysis completed successfully!")
         elif exit_code == -1:
             self.append_output("\nAnalysis was stopped.")

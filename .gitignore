@@ -3,7 +3,6 @@ photo_single_LC_matrix_species_groups_response_matrices/
 photosynthesis_alignments/
 preprocessed_data_and_outputs/
 fullcode.txt
-code/
 demo_output_gene_ranks.csv
 demo_output_pred_sps_plot.svg
 demo_output_species_predictions.csv
@@ -16,3 +15,4 @@ __pycache__/
 
 esl_psc_output/esl_psc_results_gene_ranks.csv
 esl_psc_output/esl_psc_results_species_predictions.csv
+esl_psc_output/esl_psc_results_pred_sps_plot.svg

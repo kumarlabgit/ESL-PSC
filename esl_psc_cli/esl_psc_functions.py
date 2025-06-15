@@ -34,10 +34,16 @@ def parse_args_with_config(parser, raw_args=None):
             f"Expected ESL binaries in {args.esl_main_dir!s}/bin but none were found"
         )
     # Ensure esl_inputs_outputs_dir is set if not already provided
-    if not hasattr(args, 'esl_inputs_outputs_dir') or not args.esl_inputs_outputs_dir:
+    if not getattr(args, "esl_inputs_outputs_dir", None):
+        this_dir  = os.path.dirname(os.path.abspath(__file__))    # …/esl_psc_cli
+        root_dir  = os.path.abspath(os.path.join(this_dir, os.pardir))  # project root
         args.esl_inputs_outputs_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "preprocessed_data_and_outputs/")
+            root_dir,
+            "preprocessed_data_and_outputs"
+        )
+
+    # Create the directory if it does not yet exist
+    os.makedirs(args.esl_inputs_outputs_dir, exist_ok=True)
 
     # Conditional error for missing species_pheno_path when plot generation is requested
     plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)

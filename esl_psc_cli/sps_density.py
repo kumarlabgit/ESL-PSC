@@ -4,6 +4,10 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 from textwrap import wrap
+import warnings
+# silence noisy FutureWarnings & generic matplotlib UserWarnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="seaborn")
+warnings.filterwarnings("ignore", category=UserWarning,  module="matplotlib")
 
 ##matplotlib.use('svg')
 

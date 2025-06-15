@@ -3,23 +3,27 @@
 ## Table of Contents ##
 
 1. [Description](#description)
-2. [Usage](#usage)
-3. [Installation and Dependncies](#installation-and-dependncies)
-4. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-5. [Input Data](#input-data)
-6. [Output Data](#output-data)
-7. [Additional Options and Parameters](#additional-options-and-parameters)
-8. [Included Data](#included-data)
-9. [Demo](#demo)
-10. [Troubleshooting](#troubleshooting)
-11. [Citation](#citation)
+2. [New: Graphical Interface now available!](#new-graphical-interface-now-available)
+3. [CLI Usage](#cli-usage)
+4. [Installation and Dependncies](#installation-and-dependncies)
+5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
+6. [Input Data](#input-data)
+7. [Output Data](#output-data)
+8. [Additional Options and Parameters](#additional-options-and-parameters)
+9. [Included Data](#included-data)
+10. [Demo](#demo)
+11. [Troubleshooting](#troubleshooting)
+12. [Citation](#citation)
 
 ## Description ##
 The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
-## Usage ##
+## New: Graphical Interface now available! ##
+More details coming very soon.
+
+## CLI Usage ##
 To use ESL-PSC, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
