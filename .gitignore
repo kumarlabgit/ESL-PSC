@@ -16,3 +16,8 @@ __pycache__/
 esl_psc_output/esl_psc_results_gene_ranks.csv
 esl_psc_output/esl_psc_results_species_predictions.csv
 esl_psc_output/esl_psc_results_pred_sps_plot.svg
+demo_pred_sps_plot.svg
+demo_gene_ranks.csv
+.gitignore
+.gitignore
+demo_species_predictions.csv

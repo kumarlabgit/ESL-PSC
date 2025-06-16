@@ -178,7 +178,7 @@ class ESLConfig:
         # Join with newlines and proper indentation
         return " \\\n  ".join(parts)
 
-    def get_command_args(self) -> list[str]:
+    def get_command_args(self) -> List[str]:
         """
         Return the *raw* list of CLI arguments for passing directly
         into esl_multimatrix.main().

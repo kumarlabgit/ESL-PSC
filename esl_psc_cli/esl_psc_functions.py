@@ -1,6 +1,11 @@
 # ESL-PSC functions
 
 import os, subprocess, math, re, time, datetime, shutil, argparse, sys
+import threading
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from collections import defaultdict, Counter
 from Bio import SeqIO
 import numpy as np

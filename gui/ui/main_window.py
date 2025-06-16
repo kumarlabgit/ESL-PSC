@@ -232,6 +232,9 @@ class ESLWizard(QWizard):
             "JSON Files (*.json)"
         )
         if path:
+            # Ensure .json extension
+            if not path.lower().endswith('.json'):
+                path += '.json'
             try:
                 with open(path, "w", encoding="utf-8") as fh:
                     json.dump(asdict(self.config), fh, indent=2)
