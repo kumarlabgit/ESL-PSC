@@ -633,9 +633,8 @@ class ParametersPage(BaseWizardPage):
         
         # Add explanatory text
         explanation = QLabel(
-            "In order to test that the composition of your top genes reflects real convergent signal and not "
-            "either of these methods can be used to generate null models. Note that you will get *only* null "
-            "models, so you should do a separate run first to generate non-null models."
+            "These methods can be used to generate null models in which the convergent signal is scrambled. "
+            "Note that you will get *only* null models, so you should do a separate run first to generate non-null models."
         )
         explanation.setWordWrap(True)
         null_models_layout.addWidget(explanation)
