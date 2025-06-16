@@ -106,7 +106,7 @@ class ESLWizard(QWizard):
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
             self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
             self.setOption(QWizard.WizardOption.NoCancelButton, False)
-            self.setMinimumSize(1000, 700)  # Slightly larger minimum size
+            self.setMinimumSize(800, 700)  # Reduced minimum width to align with MainWindow
             print("ESLWizard: Window properties set")
 
             # Create custom Save/Load buttons before setting cancel button text
