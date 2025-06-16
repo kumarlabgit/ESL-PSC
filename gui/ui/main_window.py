@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QAbstractSpinBox
 )
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool
+from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool, QEvent
 from PyQt6.QtGui import QFont, QTextCursor
 
 from gui.core.config import ESLConfig
