@@ -322,16 +322,8 @@ class CommandPage(BaseWizardPage):
         value_widget = QLineEdit(str(value))
         value_widget.setReadOnly(True)
         value_widget.setFont(self.summary_font)
-        value_widget.setStyleSheet("""
-            QLineEdit {
-                /* use the system background/text colors */
-                background: palette(base);
-                color: palette(text);
-                border: 1px solid palette(mid);
-                padding: 4px;
-                min-width: 500px;
-            }
-        """)
+        # No inline stylesheet – rely on global wizard stylesheet so borders adapt to theme.
+        value_widget.setMinimumWidth(500)
         
         # Set size policy to allow horizontal expansion
         value_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)

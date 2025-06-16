@@ -189,46 +189,84 @@ class ESLWizard(QWizard):
     # ──────────────────────────────────────────────────────────────────────
     def apply_stylesheet(self):
         """(Re)apply the wizard‑wide stylesheet using the current QPalette."""
-        self.setStyleSheet("""
+        # Determine border color for inputs based on theme, as palette(mid) is unreliable
+        is_dark_mode = QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        # Brighter border in dark mode for good contrast; keep the existing light-mode value
+        border_color = "rgba(255, 255, 255, 180)" if is_dark_mode else "rgba(0, 0, 0, 80)"
+
+        # Build the stylesheet with a placeholder token then replace it with the
+        # actual border color.  This avoids the heavy brace-escaping needed in
+        # f-strings when embedding large chunks of QSS.
+        css = """
             /* Use the current system palette for backgrounds */
-            QWizard            { background: palette(window); }
-            QWizardPage        { background: palette(window); padding: 20px; }
+            QWizard            {{ background: palette(window); }}
+            QWizardPage        {{ background: palette(window); padding: 20px; }}
 
             /* Page labels/text */
-            QWizardPage > QLabel {
+            QWizardPage > QLabel {{
                 font-size: 14px;
                 margin-bottom: 10px;
                 color: palette(text);
-            }
+            }}
 
             /* Section group‑boxes */
-            QWizardPage > QGroupBox {
+            QWizardPage > QGroupBox {{
                 font-weight: bold;
                 border: 1px solid palette(mid);
                 border-radius: 5px;
                 margin-top: 2ex;
                 padding: 10px;
                 color: palette(text);
-            }
-            QWizardPage > QGroupBox::title {
+            }}
+            QWizardPage > QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 3px 0 3px;
                 color: palette(text);
-            }
+            }}
 
-            /* Command‑summary group */
-            QGroupBox#configSummaryGroup > QLabel { color: palette(text); }
-            QGroupBox#configSummaryGroup QLineEdit {
-                background: palette(base);
+            /* General input widgets – give them a visible border */
+            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit {
+                background-color: palette(base);
                 color: palette(text);
-                border: 1px solid palette(mid);
                 padding: 4px;
             }
-        """)
-        # Force Qt to re‑polish the widget hierarchy so that every child
-        # immediately picks up the new palette‑derived colours.
-        self.style().polish(self)
+            QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QComboBox:focus {{
+                border: 1px solid palette(highlight);
+            }}
+
+            /* Read-only summary fields */
+            QLineEdit[readOnly="true"] {{
+                background-color: palette(window);
+                color: palette(text);
+                border: 1px solid __BORDER__;
+            }}
+
+            /* Use built-in plus/minus buttons for spinboxes */
+            QSpinBox, QDoubleSpinBox {{
+                qproperty-buttonSymbols: UpDownArrows;
+            }}
+
+            /* Command-summary group labels & fields */
+            QGroupBox#configSummaryGroup > QLabel {{ color: palette(text); }}
+            QGroupBox#configSummaryGroup QLineEdit {{
+                background-color: palette(window);
+                color: palette(text);
+                border: 1px solid __BORDER__;
+                padding: 4px;
+            }}
+        """
+        # Substitute the placeholder token with the real colour
+        css = css.replace("__BORDER__", border_color)
+
+        # Apply to the entire application so every widget—present and future—
+        # inherits the same QSS, and dark-mode borders cannot be overridden
+        # later by Qt’s internal style.
+        qApp = QApplication.instance()
+        if qApp:
+            qApp.setStyleSheet(css)
+            # Force a full refresh of the style system
+            qApp.style().polish(qApp)
 
     # --- Automatic palette-change support ----------------------------------
     def _connect_color_scheme_updates(self):
