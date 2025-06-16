@@ -52,13 +52,13 @@ class InputPage(BaseWizardPage):
         self.use_species_groups.setChecked(True)
         self.use_species_groups.setToolTip(
             "Provide a text file with species groups, one per line. Each line should contain species "
-            "names separated by tabs. This is the recommended approach as it allows for more flexible analysis."
+            "names separated by tabs."
         )
         
         self.use_response_dir = QRadioButton("Use response matrix directory")
         self.use_response_dir.setToolTip(
             "Provide a directory containing pre-computed response matrix files. Use this only if you have "
-            "already generated response matrices for your species groups."
+            "already generated response matrices for your species combinations."
         )
         
         self.input_type_group.addButton(self.use_species_groups)
@@ -82,7 +82,7 @@ class InputPage(BaseWizardPage):
             description=(
                 "Directory containing alignment files in 2-line FASTA format. Each file must have the .fas extension. "
                 "Each sequence must be entirely on a single line below its identifier. "
-                "Each file should represent a different genomic component (gene, protein, exon, domain, etc.)."
+                "All sequences in a file must be aligned. Only standard amino acid and gap characters are allowed."
             )
         )
         self.alignment_dir.path_changed.connect(
@@ -100,7 +100,8 @@ class InputPage(BaseWizardPage):
                 "The second line contains control species (assigned value -1). "
                 "Each line should be a comma-separated list of species. Example:\n\n"
                 "species1,species2,species3\n"
-                "control1,control2,control3"
+                "control1,control2,control3\n\n"
+                "You can also have one species per group, and you will get a single combination run."
             )
         )
         self.species_groups.path_changed.connect(
@@ -115,7 +116,6 @@ class InputPage(BaseWizardPage):
             description=(
                 "Directory containing pre-computed response matrix files. "
                 "Only use this if you have already generated response matrices. "
-                "Each file should be a text file with a .txt extension, where each line represents a response matrix. "
                 "Typically used for advanced analyses or when reusing previously computed matrices."
             )
         )
@@ -156,7 +156,8 @@ class InputPage(BaseWizardPage):
         self.species_phenotypes = FileSelector(
             "Species Phenotypes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: Tab-delimited file with species phenotypes. First column is species ID, subsequent columns are phenotype values."
+            description="Optional: comma-separated file with species phenotypes. "
+            "First column is species ID, second column is phenotype value (1 or -1)."
         )
         self.species_phenotypes.path_changed.connect(
             lambda p: setattr(self.config, 'species_phenotypes_file', p)
@@ -178,7 +179,8 @@ class InputPage(BaseWizardPage):
         self.limited_genes = FileSelector(
             "Limited Genes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: File containing list of gene IDs to analyze. If not provided, all genes in the alignment directory will be used."
+            description="Optional: File containing list of alignment files. "
+            "The analysis will be limited to only those alignments even if more are in your alignments directory"
         )
         self.limited_genes.path_changed.connect(
             lambda p: setattr(self.config, 'limited_genes_file', p)

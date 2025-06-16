@@ -113,7 +113,7 @@ class ParametersPage(BaseWizardPage):
         self.genes_only_btn = QRadioButton("Gene ranks only (fastest)")
         self.genes_only_btn.setToolTip(
             "Only generate gene ranks output. This is the fastest option and is "
-            "recommended for initial exploration."
+            "recommended for finding genes that might be related to a convergent phenotype."
         )
         self.genes_only_btn.setChecked(True)  # Set as default
         self.output_options_group.addButton(self.genes_only_btn)
@@ -941,52 +941,6 @@ class ParametersPage(BaseWizardPage):
             wiz.setButton(QWizard.WizardButton.CustomButton1, None)
             wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
         return
-        super().cleanupPage()
-        # No special cleanup needed now that the button is within the page
-        return
-        if wiz is None:
-            return
-
-        # Hide and disable custom button so other pages don't inherit it
-        if wiz.button(QWizard.WizardButton.CustomButton1):
-            wiz.button(QWizard.WizardButton.CustomButton1).hide()
-        wiz.setButton(QWizard.WizardButton.CustomButton1, None)
-        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
-        # Restore default button layout so Restore button slot disappears
-        if hasattr(self, "_default_button_layout"):
-            wiz.setButtonLayout(self._default_button_layout)
-
-        # Restore original layout if saved
-        if getattr(self, "_old_button_layout", None):
-             wiz.setButtonLayout(self._old_button_layout)
-             del self._old_button_layout
-
-        # Update our state based on the input page
-        if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
-            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
-        
-        # Update output options state when entering the page
-        self.update_output_options_state()
-        
-        print("ParametersPage: Entering page")
-        try:
-            # Connect to update UI when input changes
-            print("ParametersPage: Connecting to path_changed signal")
-            self.wizard().input_page.species_phenotypes.path_changed.connect(
-                self.update_output_options_state
-            )
-            # Initial update of output options state
-            print("ParametersPage: Initial update of output options")
-            self.update_output_options_state()
-        except Exception as e:
-            print(f"ParametersPage: Error in on_enter: {str(e)}")
-            import traceback
-            traceback.print_exc()
-        
-        # Connect signals
-        self.wizard().input_page.species_phenotypes.path_changed.connect(
-            self.update_output_options_state
-        )
     
     def browse_output_dir(self):
         """Open a dialog to select the output directory."""
