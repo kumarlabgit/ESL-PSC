@@ -22,7 +22,7 @@
   "nix_full_deletions": false,
   "cancel_only_partner": true,
   "min_pairs": 2,
-  "output_dir": "/home/john/Repos/ESL-PSC",
+  "output_dir": "/home/john/Repos/ESL-PSC/demo_output",
   "output_file_base_name": "demo",
   "keep_raw_output": false,
   "show_selected_sites": false,

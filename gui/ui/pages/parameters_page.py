@@ -851,13 +851,22 @@ class ParametersPage(BaseWizardPage):
         self.nix_full_deletions.setChecked(cfg.nix_full_deletions)
         self.cancel_only_partner.setChecked(cfg.cancel_only_partner)
         self.min_pairs.setValue(cfg.min_pairs)
-        # Output radio state
-        genes_only = cfg.no_pred_output and not cfg.no_genes_output
-        preds_only = cfg.no_genes_output and not cfg.no_pred_output
-        both = not cfg.no_genes_output and not cfg.no_pred_output
-        self.genes_only_btn.setChecked(genes_only)
-        self.preds_only_btn.setChecked(preds_only)
-        self.both_outputs_btn.setChecked(both)
+        # Update Output Files radios from config (block signals so we don’t write back immediately)
+        for btn in (self.genes_only_btn, self.preds_only_btn, self.both_outputs_btn):
+            btn.blockSignals(True)
+
+        if cfg.no_genes_output and not cfg.no_pred_output:
+            # only species predictions
+            self.preds_only_btn.setChecked(True)
+        elif cfg.no_pred_output and not cfg.no_genes_output:
+            # only gene ranks
+            self.genes_only_btn.setChecked(True)
+        else:
+            # both outputs
+            self.both_outputs_btn.setChecked(True)
+
+        for btn in (self.genes_only_btn, self.preds_only_btn, self.both_outputs_btn):
+            btn.blockSignals(False)
         # Null models
         self.no_null_btn.setChecked(not (cfg.make_null_models or cfg.make_pair_randomized_null_models))
         self.response_flip_btn.setChecked(cfg.make_null_models)
@@ -881,34 +890,6 @@ class ParametersPage(BaseWizardPage):
             self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
         self.update_output_options_state()
         return
-        wiz.setOption(QWizard.WizardOption.HaveCustomButton1, True)
-        wiz.setButton(QWizard.WizardButton.CustomButton1, self.restore_defaults_btn)
-        wiz.setButtonText(QWizard.WizardButton.CustomButton1, "Restore Defaults")
-        wiz.button(QWizard.WizardButton.CustomButton1).show()
-
-        # Move it to the far-left side of the footer
-        if self._old_button_layout:
-            remaining = [b for b in self._old_button_layout if b not in (QWizard.WizardButton.CustomButton1, QWizard.WizardButton.Stretch)]
-        else:
-            # Fallback default order if we couldn't query existing layout
-            remaining = [QWizard.WizardButton.BackButton,
-                         QWizard.WizardButton.NextButton,
-                         QWizard.WizardButton.CommitButton,
-                         QWizard.WizardButton.FinishButton,
-                         QWizard.WizardButton.CancelButton]
-        # Save default (without Restore button) so we can put it back later
-        self._default_button_layout = remaining
-
-        new_layout = [QWizard.WizardButton.CustomButton1, QWizard.WizardButton.Stretch] + remaining
-        wiz.setButtonLayout(new_layout)
-
-        # Ensure button is removed when we navigate away (forward or back)
-        wiz.currentIdChanged.connect(self._on_wizard_page_changed)
-
-        # Update phenotype-file flag and dependent UI
-        if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
-            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
-        self.update_output_options_state()
 
     def _on_wizard_page_changed(self, page_id):
         wiz: QWizard = self.wizard()
@@ -958,8 +939,19 @@ class ParametersPage(BaseWizardPage):
             print(f"Error browsing for output directory: {e}")
             
     def update_output_options_state(self):
-        """Update the state of output options based on whether a species phenotype file is provided."""
-        if not hasattr(self, 'widgets_initialized') or not self.widgets_initialized:
+        """Update radio-button availability after the phenotype file changes or a config is loaded."""
+        # Always re-evaluate whether a phenotype file is present
+        try:
+            wiz = self.wizard()
+            if wiz and hasattr(wiz, 'input_page'):
+                self.has_species_pheno = bool(wiz.input_page.species_phenotypes.get_path())
+            else:
+                # Fallback to the value already stored in the config
+                self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+        except Exception:
+            self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+
+        if not getattr(self, 'widgets_initialized', False):
             return
             
         try:

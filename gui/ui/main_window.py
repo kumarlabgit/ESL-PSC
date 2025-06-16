@@ -95,6 +95,8 @@ class ESLWizard(QWizard):
         print("ESLWizard: Initializing...")
         super().__init__(parent)
         print("ESLWizard: Parent initialized")
+        # Width of the Next button used as an invisible placeholder on the last page
+        self._next_btn_placeholder_width = None
         
         try:
             # Set window properties first
@@ -102,7 +104,11 @@ class ESLWizard(QWizard):
             self.setWindowTitle("ESL-PSC Analysis Wizard")
             self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
             self.setOption(QWizard.WizardOption.HaveHelpButton, False)
-            self.setOption(QWizard.WizardOption.HaveNextButtonOnLastPage, False)
+            # Keep the (disabled) Next button present on the last page so that the
+            # Back button does not shift position when the user navigates there.
+            # We will later disable and blank the button, but leaving it in the
+            # layout preserves the spacing that users rely on.
+            self.setOption(QWizard.WizardOption.HaveNextButtonOnLastPage, True)
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
             self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
             self.setOption(QWizard.WizardOption.NoCancelButton, False)
@@ -275,6 +281,31 @@ class ESLWizard(QWizard):
         current_page = self.currentPage()
         if hasattr(current_page, 'on_enter'):
             current_page.on_enter()
+
+        # Keep Back button from shifting when on last page.
+        next_btn = self.button(QWizard.WizardButton.NextButton)
+        if next_btn is None:
+            return  # Safety – should not happen
+
+        # Cache the natural width of a normal "Next" button the first time
+        if self._next_btn_placeholder_width is None:
+            self._next_btn_placeholder_width = next_btn.sizeHint().width()
+
+        # If on the last page, disable and visually blank the Next button so it
+        # takes up space but is not interactable or confusing to users.
+        if self.currentId() == self.pageIds()[-1]:
+            next_btn.setEnabled(False)
+            next_btn.setText("")
+            next_btn.setFixedWidth(self._next_btn_placeholder_width)
+            # Remove borders to make it appear invisible while still reserving space
+            next_btn.setStyleSheet("border: none; background: transparent;")
+        else:
+            # Restore the normal appearance/behaviour on non-last pages
+            next_btn.setEnabled(True)
+            next_btn.setFixedWidth(self._next_btn_placeholder_width)
+            next_btn.setStyleSheet("")
+            if next_btn.text() == "":
+                next_btn.setText("Next")
 
     def confirm_quit(self):
         """

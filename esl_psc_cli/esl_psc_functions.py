@@ -406,6 +406,12 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     start_time = time.time()
     print("making sps density plot figure...")
     rmse_cutoffs = [.05, .1]
+
+    # headless in worker thread
+    if threading.current_thread().name != "MainThread":
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+
     if plot_type == 'violin':
         fig, axes = plt.subplots(ncols = len(rmse_cutoffs), figsize=(8, 7),
                              constrained_layout=True)
@@ -449,8 +455,14 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
             axes[index].axhline(y=0, linestyle='--', color='lightgray')
     fig.set_tight_layout(True)
     plt.savefig(fig_path)
+
+    # close or show depending on thread
+    if threading.current_thread().name == "MainThread":
+        plt.show()
+    else:
+        plt.close(fig)
+
     report_elapsed_time(start_time)
-    plt.show()
     print("\npredictions density plot figure saved at: " + fig_path)
 
     
