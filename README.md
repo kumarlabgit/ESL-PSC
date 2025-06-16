@@ -3,7 +3,7 @@
 ## Table of Contents ##
 
 1. [Description](#description)
-2. [New: Graphical Interface now available!](#new-graphical-interface-now-available)
+2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
 3. [CLI Usage](#cli-usage)
 4. [Installation and Dependncies](#installation-and-dependncies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
@@ -20,8 +20,40 @@ The tools presented in this repository allow one to analyse signatures of molecu
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
-## New: Graphical Interface now available! ##
-More details coming very soon.
+## New: Graphical User Interface (beta) ##
+
+We have introduced an experimental GUI built with PyQt6 that wraps all of the CLI functionality in an easy-to-use wizard:
+
+• Step-by-step workflow guiding you through:
+  1. Input selection – Select files and directories for each required and optional input.
+  2. Analysis parameters – adjust settings within allowed ranges using controls with helpful tooltips
+  3. Command preview – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
+  4. Run – Esecute the analysis and view the results within the GUI. No need to use a separate terminal.
+• Save/Load buttons to store configuration JSON files and re-load them later.
+• Contextual validation so you cannot progress until required fields are populated.
+• Restore defaults button to reset all parameters to their default values.
+• Load the included `demo_config_for_gui.json` to run the C4/C3 demo.
+
+### Running the GUI
+1. Ensure the GUI dependencies are installed:
+   ```bash
+   pip install -r requirements-gui.txt  
+   ```
+   (You also need the core ESL-PSC requirements listed below.)
+2. From the repository root folder, run:
+   ```bash
+   python -m gui.main
+   ```
+   The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
+
+### Additional dependencies
+The GUI introduces **PyQt6** (and its Qt-GUI runtime) on top of the CLI packages (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+
+### Roadmap
+• **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
+• **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows users can run ESL-PSC without installing Python dependencies.
+
+Feedback on the beta is welcome!
 
 ## CLI Usage ##
 To use ESL-PSC, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
