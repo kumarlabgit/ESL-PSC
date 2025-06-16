@@ -140,52 +140,10 @@ class ESLWizard(QWizard):
                 pass
             quit_btn.clicked.connect(self.confirm_quit)
             
-            # Apply stylesheet
-            self.setStyleSheet("""
-                /* Use the system palette for both wizard and pages */
-                QWizard {
-                    background: palette(window);
-                }
-                QWizardPage {
-                    background: palette(window);
-                    padding: 20px;
-                }
-
-                /* Page labels/text */
-                QWizardPage > QLabel {
-                    font-size: 14px;
-                    margin-bottom: 10px;
-                    color: palette(text);
-                }
-
-                /* Sections */
-                QWizardPage > QGroupBox {
-                    font-weight: bold;
-                    border: 1px solid palette(mid);
-                    border-radius: 5px;
-                    margin-top: 2ex;
-                    padding: 10px;
-                    color: palette(text);
-                }
-                QWizardPage > QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px 0 3px;
-                    color: palette(text);
-                }
-
-                /* Configuration Summary labels */
-                QGroupBox#configSummaryGroup > QLabel {
-                    color: palette(text);
-                }
-
-                /* Configuration Summary value fields */
-                QGroupBox#configSummaryGroup QLineEdit {
-                    background: palette(base);
-                    color: palette(text);
-                    border: 1px solid palette(mid);
-                    padding: 4px;
-            """)
+            # Apply stylesheet once now (it will be refreshed on any palette change)
+            self.apply_stylesheet()
+            # Enable automatic dark / light switching
+            self._connect_color_scheme_updates()
             
             # Initialize configuration
             print("ESLWizard: Initializing config...")
@@ -225,6 +183,75 @@ class ESLWizard(QWizard):
         
         # Connect signals
         self.currentIdChanged.connect(self.on_current_id_changed)
+    
+    # ──────────────────────────────────────────────────────────────────────
+    #   Dynamic dark / light‑mode support
+    # ──────────────────────────────────────────────────────────────────────
+    def apply_stylesheet(self):
+        """(Re)apply the wizard‑wide stylesheet using the current QPalette."""
+        self.setStyleSheet("""
+            /* Use the current system palette for backgrounds */
+            QWizard            { background: palette(window); }
+            QWizardPage        { background: palette(window); padding: 20px; }
+
+            /* Page labels/text */
+            QWizardPage > QLabel {
+                font-size: 14px;
+                margin-bottom: 10px;
+                color: palette(text);
+            }
+
+            /* Section group‑boxes */
+            QWizardPage > QGroupBox {
+                font-weight: bold;
+                border: 1px solid palette(mid);
+                border-radius: 5px;
+                margin-top: 2ex;
+                padding: 10px;
+                color: palette(text);
+            }
+            QWizardPage > QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+                color: palette(text);
+            }
+
+            /* Command‑summary group */
+            QGroupBox#configSummaryGroup > QLabel { color: palette(text); }
+            QGroupBox#configSummaryGroup QLineEdit {
+                background: palette(base);
+                color: palette(text);
+                border: 1px solid palette(mid);
+                padding: 4px;
+            }
+        """)
+        # Force Qt to re‑polish the widget hierarchy so that every child
+        # immediately picks up the new palette‑derived colours.
+        self.style().polish(self)
+
+    # --- Automatic palette-change support ----------------------------------
+    def _connect_color_scheme_updates(self):
+        """
+        Re-apply the palette-aware stylesheet whenever the OS theme flips
+        between dark and light.  Qt 6.3+ has a colour-scheme signal; for
+        earlier Qt 6 we fall back to ApplicationPaletteChange events.
+        """
+        sh = QApplication.styleHints()
+        if hasattr(sh, "colorSchemeChanged"):          # Qt 6.3 and newer
+            sh.colorSchemeChanged.connect(self.apply_stylesheet)
+        else:                                          # Older Qt 6
+            self._palette_guard = False
+            self.installEventFilter(self)
+
+    # Fallback event-filter – only used on Qt < 6.3
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.ApplicationPaletteChange:
+            if not getattr(self, "_palette_guard", False):
+                self._palette_guard = True          # prevent recursion
+                self.apply_stylesheet()
+                self._palette_guard = False
+        return super().eventFilter(obj, event)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Save / Load configuration helpers
