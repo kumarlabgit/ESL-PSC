@@ -136,29 +136,49 @@ class ESLWizard(QWizard):
             
             # Apply stylesheet
             self.setStyleSheet("""
+                /* Use the system palette for both wizard and pages */
                 QWizard {
-                    background-color: #f5f5f5;
+                    background: palette(window);
                 }
                 QWizardPage {
-                    background-color: white;
+                    background: palette(window);
                     padding: 20px;
                 }
+
+                /* Page labels/text */
                 QWizardPage > QLabel {
                     font-size: 14px;
                     margin-bottom: 10px;
+                    color: palette(text);
                 }
+
+                /* Sections */
                 QWizardPage > QGroupBox {
                     font-weight: bold;
-                    border: 1px solid #ccc;
+                    border: 1px solid palette(mid);
                     border-radius: 5px;
                     margin-top: 2ex;
                     padding: 10px;
+                    color: palette(text);
                 }
                 QWizardPage > QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0 3px 0 3px;
+                    color: palette(text);
                 }
+
+                /* Configuration Summary labels */
+                QGroupBox#configSummaryGroup > QLabel {
+                    color: palette(text);
+                }
+
+                /* Configuration Summary value fields */
+                QGroupBox#configSummaryGroup QLineEdit {
+                    background: palette(base);
+                    color: palette(text);
+                    border: 1px solid palette(mid);
+                    padding: 4px;
             """)
             
             # Initialize configuration
@@ -279,13 +299,21 @@ class ESLWizard(QWizard):
         if current_page == self.input_page:
             if not self.config.alignments_dir:
                 QMessageBox.warning(self, "Missing Required Field", 
-                                  "Please select an alignment directory.")
+                                    "Please select an alignment directory.")
                 return False
-            if not self.config.species_groups_file:
-                QMessageBox.warning(self, "Missing Required Field",
-                                  "Please select a species groups file.")
-                return False
-        
+
+            # Depending on which input type is selected, require the correct path
+            if self.input_page.use_species_groups.isChecked():
+                if not self.config.species_groups_file:
+                    QMessageBox.warning(self, "Missing Required Field",
+                                        "Please select a species groups file.")
+                    return False
+            else:
+                if not self.config.response_dir:
+                    QMessageBox.warning(self, "Missing Required Field",
+                                        "Please select a response matrix directory.")
+                    return False
+
         return super().validateCurrentPage()
 
 

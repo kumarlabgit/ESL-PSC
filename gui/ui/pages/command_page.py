@@ -71,7 +71,8 @@ class CommandPage(BaseWizardPage):
         
         # Configuration summary section
         summary_group = QGroupBox("Configuration Summary")
-        summary_group.setObjectName("Configuration Summary")  # Set object name for finding later
+        summary_group.setObjectName("configSummaryGroup")  # Set object name for finding later
+        self.summary_group = summary_group 
         summary_layout = QFormLayout()
         summary_group.setLayout(summary_layout)
 
@@ -134,9 +135,9 @@ class CommandPage(BaseWizardPage):
     
     def update_summary(self):
         """Update the configuration summary section with organized and formatted information."""
-        # Get the summary group box
-        summary_group = self.findChild(QGroupBox, "Configuration Summary")
-        if not summary_group:
+        # Use the reference saved in __init__
+        summary_group = self.summary_group
+        if summary_group is None:
             return
             
         # Get the layout and clear existing widgets
@@ -149,7 +150,7 @@ class CommandPage(BaseWizardPage):
             font-weight: bold;
             margin-top: 12px;
             margin-bottom: 6px;
-            color: #2c3e50;
+            color: palette(text);
         """
         
         # Add a header for input files
@@ -323,9 +324,10 @@ class CommandPage(BaseWizardPage):
         value_widget.setFont(self.summary_font)
         value_widget.setStyleSheet("""
             QLineEdit {
-                font-size: 11px;
-                background: #f8f8f8; 
-                border: 1px solid #ddd;
+                /* use the system background/text colors */
+                background: palette(base);
+                color: palette(text);
+                border: 1px solid palette(mid);
                 padding: 4px;
                 min-width: 500px;
             }

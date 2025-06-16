@@ -112,19 +112,19 @@ class RunPage(BaseWizardPage):
         """Run the ESL-PSC analysis."""
         try:
             cmd = self.config.get_command_string()
-            
+            args = self.config.get_command_args()
+
             # Update UI
             self.run_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
-            # Disable Back while the job is running
             back_btn = self.wizard().button(QWizard.WizardButton.BackButton)
             if back_btn:
                 back_btn.setEnabled(False)
             self.cmd_display.clear()
             self.cmd_display.append(f"$ {cmd}\n")
-            
-            # Create and configure worker
-            self.worker = ESLWorker(cmd)
+
+            # Create and configure worker (give it the raw arg‐list, not the pretty string)
+            self.worker = ESLWorker(args)
             self.worker.signals.output.connect(self.append_output)
             self.worker.signals.error.connect(self.append_error)
             self.worker.signals.finished.connect(self.analysis_finished)

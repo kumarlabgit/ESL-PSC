@@ -181,7 +181,7 @@ class InputPage(BaseWizardPage):
             "Limited Genes File:", 'file',
             default_path=os.getcwd(),
             description="Optional: File containing list of alignment files. "
-            "The analysis will be limited to only those alignments even if more are in your alignments directory"
+            "The analysis will be limited to only those alignments even if more are in your alignments directory."
         )
         self.limited_genes.path_changed.connect(
             lambda p: setattr(self.config, 'limited_genes_file', p)

@@ -1,13 +1,11 @@
 """
 Worker thread for running ESL-PSC commands.
 """
-import sys
-import shlex
 import contextlib
 import io
 import re
 from esl_psc_cli import esl_multimatrix
-from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot, QThreadPool
+from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
@@ -67,7 +65,7 @@ class ESLWorker(QRunnable):
                         self.prog_sig.emit(pct)
 
         try:
-            args = shlex.split(self.command)
+            args = self.command
 
             out_stream = StreamEmitter(self.signals.output,
                                     self.signals.error,
