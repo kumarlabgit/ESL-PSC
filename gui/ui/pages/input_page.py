@@ -157,7 +157,8 @@ class InputPage(BaseWizardPage):
             "Species Phenotypes File:", 'file',
             default_path=os.getcwd(),
             description="Optional: comma-separated file with species phenotypes. "
-            "First column is species ID, second column is phenotype value (1 or -1)."
+            "First column is species ID, second column is phenotype value (1 or -1).\n"
+            "This is *required* for species prediction analyses."
         )
         self.species_phenotypes.path_changed.connect(
             lambda p: setattr(self.config, 'species_phenotypes_file', p)

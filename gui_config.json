@@ -27,7 +27,7 @@
   "keep_raw_output": false,
   "show_selected_sites": false,
   "no_genes_output": false,
-  "no_pred_output": false,
+  "no_pred_output": true,
   "no_sps_plot": true,
   "make_sps_plot": false,
   "make_sps_kde_plot": false,

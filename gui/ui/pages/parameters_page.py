@@ -934,13 +934,8 @@ class ParametersPage(BaseWizardPage):
 
     # Also handle Qt Back navigation (cleanupPage called only on Back)
     def cleanupPage(self):
-        """Called by QWizard when leaving the page. Ensure no custom footer button remains."""
+        """Called by QWizard when leaving the page. No per-page cleanup needed."""
         super().cleanupPage()
-        wiz: QWizard = self.wizard()
-        if wiz is not None:
-            wiz.setButton(QWizard.WizardButton.CustomButton1, None)
-            wiz.setOption(QWizard.WizardOption.HaveCustomButton1, False)
-        return
     
     def browse_output_dir(self):
         """Open a dialog to select the output directory."""
