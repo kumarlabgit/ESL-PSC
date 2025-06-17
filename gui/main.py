@@ -29,7 +29,6 @@ def main():
         print("Creating QApplication...")
         app = QApplication(sys.argv)
         print("QApplication created")
-        print("QApplication created")
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")

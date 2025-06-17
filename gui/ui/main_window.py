@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool, QEvent
 from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtGui import QPalette
 
 from gui.core.config import ESLConfig
 
@@ -190,9 +191,16 @@ class ESLWizard(QWizard):
     def apply_stylesheet(self):
         """(Re)apply the wizard‑wide stylesheet using the current QPalette."""
         # Determine border color for inputs based on theme, as palette(mid) is unreliable
-        is_dark_mode = QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
-        # Brighter border in dark mode for good contrast; keep the existing light-mode value
+        # --- Robust dark‑mode detection (Qt 6.5+ palette‑based) -------------
+        pal = QApplication.palette()
+        window_lum = pal.color(QPalette.ColorRole.Window).lightness()
+        text_lum   = pal.color(QPalette.ColorRole.WindowText).lightness()
+        is_dark_mode = window_lum < text_lum          # darker background → dark theme
         border_color = "rgba(255, 255, 255, 180)" if is_dark_mode else "rgba(0, 0, 0, 80)"
+
+        # DEBUG: print once every time the stylesheet is (re)applied
+        print(f"[apply_stylesheet] dark_mode={is_dark_mode}  "
+              f"window_lum={window_lum}  text_lum={text_lum}  border={border_color}")
 
         # Build the stylesheet with a placeholder token then replace it with the
         # actual border color.  This avoids the heavy brace-escaping needed in
@@ -229,6 +237,8 @@ class ESLWizard(QWizard):
             QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit {
                 background-color: palette(base);
                 color: palette(text);
+                border: 1px solid __BORDER__;
+                border-radius: 3px;
                 padding: 4px;
             }
             QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QComboBox:focus {{
@@ -269,18 +279,22 @@ class ESLWizard(QWizard):
             qApp.style().polish(qApp)
 
     # --- Automatic palette-change support ----------------------------------
+    # --- Automatic palette-change support ----------------------------------
     def _connect_color_scheme_updates(self):
         """
-        Re-apply the palette-aware stylesheet whenever the OS theme flips
-        between dark and light.  Qt 6.3+ has a colour-scheme signal; for
-        earlier Qt 6 we fall back to ApplicationPaletteChange events.
+        Re-apply the palette-aware stylesheet whenever the OS theme flips.
+        We listen to two independent signals so the code works on every
+        platform / Qt build:
+          1) QApplication.instance().paletteChanged  – emits on macOS, Wayland
+          2) QStyleHints.colorSchemeChanged          – emits on X11, Windows
         """
+        app = QApplication.instance()
+        if app and hasattr(app, "paletteChanged"):
+            app.paletteChanged.connect(self.apply_stylesheet)
+
         sh = QApplication.styleHints()
-        if hasattr(sh, "colorSchemeChanged"):          # Qt 6.3 and newer
+        if hasattr(sh, "colorSchemeChanged"):
             sh.colorSchemeChanged.connect(self.apply_stylesheet)
-        else:                                          # Older Qt 6
-            self._palette_guard = False
-            self.installEventFilter(self)
 
     # Fallback event-filter – only used on Qt < 6.3
     def eventFilter(self, obj, event):
