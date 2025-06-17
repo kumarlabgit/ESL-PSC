@@ -614,6 +614,9 @@ class ParametersPage(BaseWizardPage):
         self.top_rank_frac = QDoubleSpinBox()
         self.top_rank_frac.setRange(0.0001, 1.0)
         self.top_rank_frac.setSingleStep(0.01)
+        # Ensure the widget doesn't expand excessively on some platforms (e.g., Linux)
+        self.top_rank_frac.setDecimals(4)
+        self.top_rank_frac.setMaximumWidth(120)
         self.top_rank_frac.setValue(0.01)
         self.top_rank_frac.setToolTip(
             "Fraction of genes to consider top-ranked for the purpose of ranking genes in multimatrix runs. "

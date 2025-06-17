@@ -105,6 +105,8 @@ class ESLWizard(QWizard):
             self.setWindowTitle("ESL-PSC Analysis Wizard")
             self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
             self.setOption(QWizard.WizardOption.HaveHelpButton, False)
+            # Hide the Back button completely on the first page for consistency
+            self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
             # Keep the (disabled) Next button present on the last page so that the
             # Back button does not shift position when the user navigates there.
             # We will later disable and blank the button, but leaving it in the
