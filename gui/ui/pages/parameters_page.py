@@ -545,7 +545,7 @@ class ParametersPage(BaseWizardPage):
         # Penalty type selection
         type_group = QHBoxLayout()
         self.group_penalty_type = QComboBox()
-        self.group_penalty_type.addItems(["median (Recommended)", "standard", "sqrt", "linear"])
+        self.group_penalty_type.addItems(["median (Recommended)", "std", "sqrt", "linear"])
         self.group_penalty_type.setCurrentText("median (Recommended)")
         self.group_penalty_type.currentTextChanged.connect(
             lambda t: self._update_penalty_type(t.split(' ')[0])  # Remove " (Recommended)" from text
@@ -1100,20 +1100,20 @@ class ParametersPage(BaseWizardPage):
         Update the UI based on the selected group penalty type.
         
         Args:
-            penalty_type: The selected penalty type ('median', 'standard', 'sqrt', or 'linear')
+            penalty_type: The selected penalty type ('median', 'std', 'sqrt', or 'linear')
         """
         # Update the config
         self.config.group_penalty_type = penalty_type
         
-        # For standard type, set initial and final values to be the same
-        if penalty_type == 'standard':
+        # For std type, set initial and final values to be the same
+        if penalty_type == 'std':
             current_value = self.initial_gp_value.value()
             self.final_gp_value.setValue(current_value)
             self.config.initial_gp_value = current_value
             self.config.final_gp_value = current_value
             
         # Show/hide the range settings based on the penalty type
-        should_show = penalty_type not in ['median', 'standard']
+        should_show = penalty_type not in ['median', 'std']
         if hasattr(self, 'penalty_range_group'):
             self.penalty_range_group.setVisible(should_show)
     

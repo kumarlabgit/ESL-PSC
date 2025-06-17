@@ -105,9 +105,9 @@ class ESLConfig:
         else:  # linear
             a += ["--lambda_step", str(self.num_points)]  # Using num_points as step size for linear grid
             
-        # Group penalty - only include values if not using 'median' or 'standard' type
+        # Group penalty - only include values if not using 'median' or 'std' type
         a += ["--group_penalty_type", self.group_penalty_type]
-        if self.group_penalty_type not in ['median', 'standard']:
+        if self.group_penalty_type not in ['median', 'std']:
             a += [
                 "--initial_gp_value", str(self.initial_gp_value),
                 "--final_gp_value", str(self.final_gp_value),

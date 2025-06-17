@@ -198,7 +198,7 @@ class CommandPage(BaseWizardPage):
             if (hasattr(self.config, 'initial_gp_value') and 
                 hasattr(self.config, 'final_gp_value') and 
                 hasattr(self.config, 'gp_step') and 
-                self.config.group_penalty_type not in ['median', 'standard']):
+                self.config.group_penalty_type not in ['median', 'std']):
                 gp_str = f"{gp_str}: {self.config.initial_gp_value} → {self.config.final_gp_value} (step: {self.config.gp_step})"
             self.add_summary_item(layout, "Group Penalty:", gp_str)
         

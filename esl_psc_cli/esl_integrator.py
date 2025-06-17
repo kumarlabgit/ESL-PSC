@@ -75,10 +75,10 @@ def get_esl_args(parser = None):
     number of variable sites across all alignments with at least one variable
     site as the constant term will be used. In this case, any other settings
     for the group penalty terms (final, initial, step) will be ignored. The
-    type can also be "default" which results in the lasso default sqrt penalty.
+    type can also be "std" which results in the lasso default sqrt penalty.
     Beware when reusing existing preprocess in which the group penalties were
     rewritten by a previous run with a different penalty calculation type. In
-    this case, the preprocess must be repeated to get default penalties back.
+    this case, the preprocess must be repeated to get std penalties back.
     '''
     group.add_argument('--group_penalty_type', help = help_txt,
                         type = str, default = "median")
@@ -123,7 +123,7 @@ def get_esl_args(parser = None):
     group.add_argument('--use_existing_preprocess', help = help_txt,
                         action = 'store_true', default = False)
     help_txt = '''don't replace group penalties. This is automatically set to
-    True if the group_penalty_type is "default"'''
+    True if the group_penalty_type is "std"'''
     group.add_argument('--use_default_gp', help = help_txt,
                         action = 'store_true', default = False)
     help_txt = '''don't delete the raw model output files for each run'''
@@ -265,8 +265,8 @@ def esl_integration(args,
         ########## Replace Group Penalties ##########
         # count variable sites in each alignment file and replace group
         # penalties in the group indices file
-        if (args.use_default_gp or (args.group_penalty_type == "default")):
-            pass # skip replacing penalties and use default sqrt penalties 
+        if (args.use_default_gp or (args.group_penalty_type == "std")):
+            pass # skip replacing penalties and use std sqrt penalties 
         else:
             # make penalty function which will take num var sites as its arg
             penalty_function = ecf.penalty_function_maker(penalty_term,
@@ -421,8 +421,8 @@ if __name__ == '__main__':
     if not args.output_dir:
         args.output_dir = args.esl_main_dir
 
-    # set group penalty default if necessary
-    if args.group_penalty_type == "default":
+    # set group penalty std if necessary
+    if args.group_penalty_type == "std":
         args.use_default_gp = True
 
     # generate preprocess name and path file if they were not given in args

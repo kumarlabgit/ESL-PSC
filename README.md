@@ -49,7 +49,7 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
 
 ### Additional dependencies
-The GUI introduces **PyQt6** (and its Qt-GUI runtime) on top of the CLI packages (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+The GUI requires **PyQt6** on top of the CLI packages (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
 * **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
@@ -58,7 +58,7 @@ The GUI introduces **PyQt6** (and its Qt-GUI runtime) on top of the CLI packages
 Feedback on the beta is welcome!
 
 ## CLI Usage ##
-To use the ESL-PSC CLI, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+To use the ESL-PSC command line interface, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
@@ -96,7 +96,7 @@ To use this feature:
 
 1. An existing esl_psc_config.txt file is included in the directory with the ESL-PSC scripts. 
 
-2. Add any desired arguments to the esl_psc_config.txt file, using the same format as you would when providing them on the command line. Each argument should be on a new line, followed by its corresponding value. For example: `--pheno_names phenotype_1 phenotype_2`
+2. Add any desired arguments to the esl_psc_config.txt file, using the same format as you would when providing them on the command line. Each argument should be on a new line, followed by its corresponding value. For example: `--pheno_names C4 C3`
 
 3. Save the `esl_psc_config.txt` file.
 
@@ -108,9 +108,9 @@ To use this feature:
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in Allard et al., 2025). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
 
-2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see Allard et al., 2025 for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
+2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8) for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
 
 #### Optional input files: ####
 
@@ -133,8 +133,8 @@ The predictions file contains every prediction made by every model generated usi
 2. Lambda1 (first sparsity hyperparameter)
 3. Lambda2 (second sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
-5. Number of genes (the number of genes/protein
-6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by Allard et al. (2025))
+5. Number of genes (the number of genes/proteins with sites included in the model)
+6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
 7. Species being predicted
 8. Sequence Prediction Score (SPS) (a negative value indicates a prediction of the phenotype assigned a response value of -1 and a positive value indicates a prediction of opposite phenotype) 
 9. True phenotype for the species (taken from the species_pheno_file if provided)
@@ -160,10 +160,10 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--initial_lambda2`: Initial lambda 2 value (group sparsity parameter). Default = .01.
 * `--final_lambda2`: Final lambda 2 value (group sparsity parameter). Default = .99.
 * `--lambda_step`: The increment to increase the lambda values with each step. It is recommended to use a logspace (see options below) but in a linear gridsearch of sparsity hyperparameters, this controls the step between values.
-* `--group_penalty_type`: Group penalty calculation type ("sqrt", "median", "linear", or "default"). Median will be used by default (see Methods in Allard et al., 2025)
-* `--initial_gp_value`: Group penalty constant term initial value. If a linear group lenalty type is selected, the group penalties for each gene will be equal to the number of variable sites in the gene's alignment plus a constant term that is the same across all genes. By default, this will be 1 for all genes, but it is also possible to use a range of different constant terms and repeat all model ensembles for each group penalty term. In order to do this, the initial, final and step can be set using this and the following two arguments.
-* `--final_gp_value`: Group penalty constant term final value. See initial_gp_value above for explanation.
-* `--gp_step`: Group penalty constant term increment. The default is 6. See initial_gp_value above for explanation.
+* `--group_penalty_type`: Group penalty calculation type ("median", "sqrt", "linear", or "std"). Median will be used by default (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). The setting called "std" (not recommended) will leave the standard lasso group penalties in place. The "linear" option will calculate group penalties as the number of variable sites in the gene's alignment plus a constant term that is the same across all genes. By default, this will be 1 for all genes, but it is also possible to use a range of different constant terms and repeat all model ensembles for each group penalty term. In order to do this, the initial, final and step can be set using the following three arguments.
+* `--initial_gp_value`: Group penalty constant term initial value. See group_penalty_type above for explanation.
+* `--final_gp_value`: Group penalty constant term final value. See group_penalty_type above for explanation.
+* `--gp_step`: Group penalty constant term increment. The default is 6. See group_penalty_type above for explanation.
 * `--num_log_points`: The number of values per sparsity hyperparameter (lambda1 and lambda2) in a logspace of values to test. Include the `--use_logspace` flag (see options below).
 * `--pheno_names`: The names of the two phenotypes separated by a space, with the convergent phenotype coming first. by default "1" and "-1" will be used
 * `--min_genes`: Minimum number of genes a model must have in order for that model to be included in the prediction scores plots. Default = 0.
@@ -171,13 +171,13 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ##### Options:
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
 * `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
-* `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "default").
+* `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
 * `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the preprocessed_data_and_outputs directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in .txt will be cleared from this directory before each ESL-PSC run.
 * `--show_selected_sites`: Print a dictionary of all selected sites with their highest model score for every gene in the gene_ranks output file.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
-* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in Allard et al., 2025)
+* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
 
 ##### Deletion Canceler Options:
 * `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire alignment is excluded.
@@ -191,15 +191,15 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
 * `--delete_preprocess`: Clear preprocess folders after each matrix run.
-* `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in Allard et al., 2025). 
-* `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL-PSC integration will be repeated for each one. The results are then aggregated for all (see Methods in Allard et al., 2025).
+* `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). 
+* `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL-PSC integration will be repeated for each one. The results are then aggregated for all (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)).
 * `--num_randomized_alignments`: Number of pair-randomized alignments to make. Default is 10.
 
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in Allard et al., (2025))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations (Allard et al., 2025) 
+1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
+2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)) 
 
 A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
 
@@ -224,6 +224,8 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 3. Having an extra blank new line in one of the input files.
 4. having a duplicate alignment file name.
 5. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
+6. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
+7. Sequences must be aligned to each other in each file.
 
 ## Demo ##
 You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 

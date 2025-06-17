@@ -5,7 +5,7 @@ A graphical user interface for running ESL-PSC analyses with an intuitive wizard
 ## Features
 
 - Step-by-step wizard for configuring ESL-PSC analyses
-- Intuitive file selection with drag-and-drop support
+- Intuitive file selection
 - Parameter configuration with sensible defaults
 - Real-time progress tracking
 - Cross-platform support (Windows, macOS, Linux)
