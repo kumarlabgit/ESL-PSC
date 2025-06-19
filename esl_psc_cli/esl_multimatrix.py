@@ -169,7 +169,11 @@ def run_multi_matrix_integration(args, list_of_species_combos,
     for combo_num, response_file in enumerate(response_file_list):
         combo = list_of_species_combos[combo_num]
         combo_name = 'combo_' + str(combo_num)
-        print('Running integration for ' + combo_name)
+        total_combos = len(list_of_species_combos)
+        
+        # MODIFICATION: Announce combo processing in a parsable way
+        print(f"\n--- Processing combo {combo_num + 1} of {total_combos} ({combo_name}) ---")
+        
         response_path = response_file_list[combo_num]
 
         # get name of one alignment directory in the canceled_alignments_dir

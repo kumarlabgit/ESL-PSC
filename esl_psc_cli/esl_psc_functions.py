@@ -573,12 +573,14 @@ class ESLRunFamily():
         self.run_all_runs()
 
     def run_all_runs(self):
-        for run in self.runs_list:
-            print('Lambda1: ' + str(run.lambda1) +
-                  '  Lambda2: ' + str(run.lambda2))
+        print('Building models...')
+        num_runs = len(self.runs_list)
+        for i, run in enumerate(self.runs_list, 1):
+            print(f"--> Building model (run {i} of {num_runs}): l1={run.lambda1}, l2={run.lambda2}")
             run.run_lasso()
 
     def do_all_calculations(self):
+        print('Calculating predictions and/or weights...')
         num_runs = str(len(self.runs_list))
         for run_num, run in enumerate(self.runs_list, 1):
             print('Calculating predictions and/or weights for: ' + str(run)

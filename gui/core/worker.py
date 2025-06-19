@@ -12,85 +12,112 @@ class WorkerSignals(QObject):
     output = pyqtSignal(str)
     error = pyqtSignal(str)
     finished = pyqtSignal(int)  # exit code
-    progress = pyqtSignal(int)  # progress percentage
+
+    overall_progress = pyqtSignal(int) # Overall progress (0-100)
+    step_progress = pyqtSignal(int)    # Progress of current step (0-100)
+    step_status = pyqtSignal(str)      # Text description of current step
 
 
 class ESLWorker(QRunnable):
     """Worker thread for running ESL-PSC commands."""
     
-    def __init__(self, command):
+    def __init__(self, command_args):
         """Initialize the worker with the command to run."""
         super().__init__()
-        self.command = command
+        self.command_args = command_args
         self.signals = WorkerSignals()
         self.is_running = False
+        self.was_stopped = False # Flag to indicate if stop() was called
     
     @pyqtSlot()
     def run(self):
-        """Execute esl_multimatrix in‑process, stream its output, and update progress."""
+        """Execute esl_multimatrix in-process and stream its output."""
         self.is_running = True
         exit_code = 0
 
         class StreamEmitter(io.TextIOBase):
-            """A minimal text IO object that forwards every complete line via Qt signals."""
-            def __init__(self, out_sig, err_sig, prog_sig):
+            def __init__(self, worker, stream_type='stdout'):
                 super().__init__()
-                self.out_sig = out_sig
-                self.err_sig = err_sig
-                self.prog_sig = prog_sig
+                self.worker = worker
+                self.signals = worker.signals
                 self._buf = ""
+                self.stream_type = stream_type # 'stdout' or 'stderr'
 
-            # stdout handler ----------------------------------------------------
             def write(self, s):
+                if not self.worker.is_running: return 0
                 self._buf += s
                 while "\n" in self._buf:
                     line, self._buf = self._buf.split("\n", 1)
-                    self.out_sig.emit(line)
-                    self._parse_progress(line)
+                    line = line.strip()
+                    if not line: continue
+
+                    if self.stream_type == 'stdout':
+                        # Only parse stdout for progress updates
+                        is_progress = self._parse_progress(line)
+                        if not is_progress:
+                            self.signals.output.emit(line)
+                    else: # stderr
+                        self.signals.error.emit(line)
                 return len(s)
 
             def flush(self):
-                if self._buf:
-                    self.out_sig.emit(self._buf)
-                    self._parse_progress(self._buf)
-                    self._buf = ""
+                pass # Writes are handled immediately
 
-            # stderr handler ----------------------------------------------------
             def _parse_progress(self, line):
-                m = re.search(r'run\s+(\d+)\s+of\s+(\d+)', line, re.IGNORECASE)
-                if m:
-                    cur, total = map(int, m.groups())
+                # Overall combo progress: "--- Processing combo 1 of 16 (combo_0) ---"
+                m_combo = re.search(r"Processing combo (\d+) of (\d+)", line)
+                if m_combo:
+                    current, total = map(int, m_combo.groups())
                     if total > 0:
-                        pct = int(cur / total * 100)
-                        self.prog_sig.emit(pct)
+                        self.signals.overall_progress.emit(int(current / total * 100))
+                    self.signals.step_status.emit(line.strip().replace("---", "").strip())
+                    self.signals.step_progress.emit(0)
+                    return True
+
+                # Step progress: "run 123 of 400"
+                m_step = re.search(r"run (\d+) of (\d+)", line, re.IGNORECASE)
+                if m_step:
+                    current, total = map(int, m_step.groups())
+                    if total > 0:
+                        self.signals.step_progress.emit(int(current / total * 100))
+                    # This is a progress update, but we still want to see it in the log
+                    return False
+
+                # Step status for major phases
+                status_keywords = ["Building models...", "Calculating predictions and/or weights...", "Running ESL preprocess...", "Generating alignments for"]
+                for keyword in status_keywords:
+                    if keyword in line:
+                        self.signals.step_status.emit(line)
+                        self.signals.step_progress.emit(0)
+                        return False # Also show this status in the log
+
+                return False # Not a progress line
 
         try:
-            args = self.command
+            # Create two separate streams
+            out_stream = StreamEmitter(self, stream_type='stdout')
+            err_stream = StreamEmitter(self, stream_type='stderr')
 
-            out_stream = StreamEmitter(self.signals.output,
-                                    self.signals.error,
-                                    self.signals.progress)
-            err_stream = StreamEmitter(self.signals.error,
-                                    self.signals.error,
-                                    self.signals.progress)
-
-            # Redirect stdout/stderr so every write() is pushed immediately
+            # Redirect streams and run the main function
             with contextlib.redirect_stdout(out_stream), contextlib.redirect_stderr(err_stream):
-                try:
-                    esl_multimatrix.main(args)
-                except SystemExit as se:
-                    exit_code = se.code if isinstance(se.code, int) else 1
+                if self.is_running:
+                    esl_multimatrix.main(self.command_args)
 
-            if exit_code == 0:
-                self.signals.progress.emit(100)  # force 100 % on clean exit
-
+        except SystemExit as se:
+            exit_code = se.code if isinstance(se.code, int) else 1
         except Exception as e:
-            self.signals.error.emit(f"Error running ESL-PSC: {e}")
+            import traceback
+            self.signals.error.emit(f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}")
             exit_code = 1
         finally:
-            self.signals.finished.emit(exit_code)
             self.is_running = False
+            # Only emit finished signal if it wasn't stopped by the user
+            if not self.was_stopped:
+                self.signals.finished.emit(exit_code)
     
     def stop(self):
-        """Stop the running process."""
-        self.is_running = False
+        """Flags the worker to stop and emits the finished signal."""
+        if self.is_running:
+            self.is_running = False
+            self.was_stopped = True
+            self.signals.finished.emit(-1) # Emit a special code for user stop

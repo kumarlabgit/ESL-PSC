@@ -114,7 +114,7 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
         else: # if only 1 combo no need for subfolders
             new_alignments_dir = args.canceled_alignments_dir
                 
-        print('generating alignments for ' + ' '.join(species_to_scan_list))
+        print(f"Generating alignments for: {' '.join(species_to_scan_list)}")
 
         # get list of files to loop through
         os.chdir(args.alignments_dir)
