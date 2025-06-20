@@ -104,18 +104,23 @@ def get_species_to_check(response_matrix_path, check_order = False):
     return species_list
 
 def make_taxa_list(alignments_dir_path):
-    '''takes a directory path and checks files in the directory for
-    lines starting with '>' and assumes those are species IDs and returns
-    a list of all of the unique ones found in all files, thus all taxa in
-    appearing in the alignments will be represented'''
-    previous_dir = os.getcwd()
-    os.chdir(alignments_dir_path)
-    subprocess.run('grep -h ">" * | sort | uniq | sed "s/>//" > temp___.txt',
-                   shell=True, check=True)
-    taxa_list = file_lines_to_list('temp___.txt')
-    os.remove('temp___.txt')
-    os.chdir(previous_dir)
-    return taxa_list
+    """Return a sorted list of all species IDs found in FASTA files.
+
+    This function previously relied on external ``grep`` and ``sed``
+    commands which are not available on Windows.  Instead we parse the
+    files directly with Python which remains efficient while being
+    portable.
+    """
+
+    taxa_set = set()
+    for entry in os.scandir(alignments_dir_path):
+        if entry.is_file() and is_fasta(entry.name):
+            with open(entry.path, "r") as handle:
+                for line in handle:
+                    if line.startswith(">"):
+                        taxa_set.add(line[1:].strip())
+
+    return sorted(taxa_set)
 
 def get_pos_and_neg_list(position_list):
     ''' takes an ordered list of positions at a site in which the order is
@@ -657,20 +662,21 @@ class ESLRun():
         # run esl
         subprocess.run(' '.join(esl_command_list), shell=True, check=True)
         
-        # command to pull out feature weights and create text files
-        grep_command = (r'grep -P "<item>.*</item>" ' +
-                        preprocessed_dir_name + self.get_lambda_tag() +
-                        r'_out_feature_weights.xml | sed' +
-                        r' -re "s/.*<item>(.*)<\/item>.*/\1/" > ' +
-                        r'temp_out_feature_weights.txt') 
-        # creates 'temp_out_feature_weights.txt' (this is fast)          
-        subprocess.run(grep_command, shell=True, check=True)
-        
-        # generate text output from temp file by removing zero lines
-        with open('temp_out_feature_weights.txt','r') as temp_file:
-            temp_lines = temp_file.readlines()
-        with open(preprocessed_dir_name + '/feature_mapping_' +
-                  preprocessed_dir_name + '.txt', 'r') as map_file:
+        # Extract feature weights directly from the generated XML.  The
+        # original implementation relied on external ``grep``/``sed``
+        # commands which are not available on Windows.  Using regular
+        # expressions keeps the parsing fast and portable.
+        xml_path = (
+            f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
+        )
+        with open(xml_path, "r") as xf:
+            xml_txt = xf.read()
+
+        temp_lines = [w + "\n" for w in re.findall(r"<item>(.*?)</item>", xml_txt)]
+        with open(
+            preprocessed_dir_name + "/feature_mapping_" + preprocessed_dir_name + ".txt",
+            "r",
+        ) as map_file:
             map_lines = map_file.readlines()
 
         # paste lines together but filter out zeros
@@ -682,11 +688,6 @@ class ESLRun():
             output_line_list.append(f"{feature_path}\t{weight}")
         
         # ---- intercept ----------------------------------------------------
-        xml_path = (
-            f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
-        )
-        with open(xml_path) as xf:
-            xml_txt = xf.read()
         intercept_val = float(
             re.search(r"<intercept_value>(.*?)</intercept_value>", xml_txt).group(1)
         )
@@ -697,8 +698,7 @@ class ESLRun():
         with open(self.output, 'w') as oh:
             oh.writelines(output_line_list)
 
-        os.remove('temp_out_feature_weights.txt') # temp weights
-        os.remove(xml_path) # XML now redundant
+        os.remove(xml_path)  # XML now redundant
         return
 
     def calc_preds_and_weights(self, only_pos_gss = False,
