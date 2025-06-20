@@ -2,7 +2,6 @@ import argparse
 import os
 from tqdm import tqdm
 import pandas as pd
-import numpy as np
 import re
 
 def read_background(background_csv, type):

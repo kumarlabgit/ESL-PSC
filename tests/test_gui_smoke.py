@@ -1,6 +1,5 @@
 # tests/test_gui_smoke.py
 
-from PyQt6.QtWidgets import QApplication
 
 from gui.main import MainWindow
 

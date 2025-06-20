@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QAbstractSpinBox
 )
 
-from gui.ui.widgets.file_selectors import FileSelector
 from .base_page import BaseWizardPage
 
 class ParametersPage(BaseWizardPage):

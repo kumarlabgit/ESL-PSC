@@ -1,7 +1,6 @@
 import os
 import subprocess
 import argparse
-import json
 from Bio import AlignIO
 
 def alignment_length_check(alignment_path):

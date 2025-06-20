@@ -2,19 +2,10 @@
 Main window for the ESL-PSC Wizard application.
 """
 import os
-import json
-from dataclasses import asdict
 from PyQt6.QtWidgets import (
-    QMainWindow, QWizard, QWizardPage, QVBoxLayout, QLabel, QWidget,
-    QGroupBox, QFormLayout, QScrollArea, QSizePolicy, QSpacerItem, QFrame, QStackedWidget,
-    QDoubleSpinBox, QSpinBox, QComboBox, QCheckBox, QMessageBox, QButtonGroup,
-    QTextEdit, QLineEdit, QPushButton, QProgressBar, QHBoxLayout, QApplication, QRadioButton,
-    QFileDialog, QAbstractSpinBox
+    QMainWindow, QWizard, QVBoxLayout, QWidget, QPushButton, QApplication,
+    QFileDialog, QMessageBox
 )
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool, QEvent
-from PyQt6.QtGui import QFont, QTextCursor
-from PyQt6.QtGui import QPalette
 
 from gui.core.config import ESLConfig
 
@@ -433,7 +424,6 @@ class ESLWizard(QWizard):
 
 
 # --- pulled-out page classes live in gui.ui.pages ---
-from gui.ui.pages.base_page import BaseWizardPage
 from gui.ui.pages.input_page import InputPage
 from gui.ui.pages.parameters_page import ParametersPage
 from gui.ui.pages.command_page import CommandPage

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QThreadPool
-from PyQt6.QtGui import QFont, QTextCursor, QFontDatabase
+from PyQt6.QtGui import QTextCursor, QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard

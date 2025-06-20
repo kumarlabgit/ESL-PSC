@@ -1,9 +1,8 @@
 """Input-selection page of the ESL-PSC wizard."""
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QHBoxLayout, QRadioButton,
+    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout
 )
-from PyQt6.QtCore import Qt
 import os
 
 from gui.ui.widgets.file_selectors import FileSelector

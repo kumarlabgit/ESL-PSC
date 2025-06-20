@@ -1,8 +1,7 @@
 """
 Configuration model for ESL-PSC analysis.
 """
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import List
 import os
 
