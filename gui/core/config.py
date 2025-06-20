@@ -61,8 +61,6 @@ class ESLConfig:
     num_randomized_alignments: int = 10
 
     # ─── Helpers ────────────────────────────────────────────────────────────────
-    def _flag(self, switch: bool, name: str) -> List[str]:
-        return [name] if switch else []
 
     # ─── Public API ─────────────────────────────────────────────────────────────
     def _flag(self, b: bool, name: str) -> List[str]:

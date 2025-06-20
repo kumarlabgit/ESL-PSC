@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .base_page import BaseWizardPage
+from .run_page import RunPage
 
 class CommandPage(BaseWizardPage):
     """Page for reviewing configuration before running the analysis."""

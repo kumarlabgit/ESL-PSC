@@ -35,15 +35,24 @@ The repository is organized as follows:
 
 ## 3. Verification Workflow
 
-Before submitting a pull request, please run the following checks to ensure code quality and functionality. It is assumed the necessary development dependencies (`pytest`, `pytest-qt`, `flake8`) are already installed in the environment.
-
-### Step 3.1: Code Linting (Check for Errors)
-
-This project uses `flake8` to check for logical errors in the code, such as undefined names or unused imports. The following command is configured to **ignore purely stylistic warnings** (like line length or whitespace) and focus only on potential bugs.
+Before submitting a pull request, please run the following checks to ensure code quality and functionality. Ensure the development dependencies are installed:
 
 ```bash
-# Run the linter to find logical code errors (F-codes) and ignore stylistic warnings (E/W-codes)
-flake8 . --ignore=E,W
+# 1. Core + GUI dependencies
+pip install -r requirements-gui.txt
+
+# 2. Dev-only tools
+pip install pytest pytest-qt flake8
+```
+
+
+### Step 3.1: Code Linting – Logical Errors Only
+
+We lint only for `F`-codes (potential bugs).  The research helpers in `additional_code/` are *not* part of the main library and are excluded.
+
+```bash
+# Lint for F-codes, skip stylistic issues and the research helpers
+flake8 --select=F --exclude additional_code .
 ```
 
 ### Step 3.2: Automated Testing (Check for Functionality)
@@ -52,10 +61,11 @@ The project contains smoke tests to verify that both the CLI and GUI components 
 
 * `test_cli_smoke.py`: Runs the command-line tool with demo data to ensure it produces the correct output files.
 * `test_gui_smoke.py`: Instantiates the GUI application in an "offscreen" mode to ensure the UI can be built without crashing.
-Run all tests using the pytest command:
+Run all tests:
 
 ```bash
-# Run all tests in the 'tests/' directory
-pytest
+pytest -q
 ```
+
+The `tests/conftest.py` file automatically adds the project root to `sys.path` and provides a compatibility fixture so **no environment variables need to be set**.
 All tests must pass.

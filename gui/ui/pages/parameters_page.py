@@ -999,63 +999,7 @@ class ParametersPage(BaseWizardPage):
             # Ignore any other errors
             pass
             
-    # ===== Deletion Canceler Options =====
-    def _create_deletion_canceler_options(self):
-        del_group = QGroupBox("Deletion Canceler Options")
-        del_layout = QVBoxLayout()
-        
-        # Add the deletion canceler options to the container layout
-        self.container_layout.addWidget(del_group)
-        
-        # Add explanatory text
-        explanation = QLabel(
-            "The deletion canceler identifies and removes alignment columns where gaps may be due to sequencing artifacts "
-            "rather than true biological deletions. These settings control how the cancellation is performed."
-        )
-        
-        # Add the deletion canceler options to the container layout
-        self.container_layout.addWidget(del_group)
-        
-        # Add stretch to push everything to the top
-        self.container_layout.addStretch()
-        
-        # Set the container as the widget for the scroll area
-        scroll.setWidget(container)
-        
-        # Add the scroll area to the page layout
-        layout = QVBoxLayout(self)
-        layout.addWidget(scroll)
-        
-        # Set the layout for the page
-        self.setLayout(layout)
-        
-        # Mark widgets as initialized
-        self.widgets_initialized = True
-        
-        # Connect signals last to avoid triggering updates during initialization
-        if hasattr(self.wizard(), 'input_page'):
-            if hasattr(self.wizard().input_page, 'species_phenotypes'):
-                self.wizard().input_page.species_phenotypes.path_changed.connect(
-                    self.update_output_options_state
-                )
-    
-    def _create_deletion_canceler_options(self):
-        """Create the deletion canceler options section."""
-        del_group = QGroupBox("Deletion Canceler Options")
-        del_layout = QVBoxLayout()
-        
-        # Add explanatory text
-        explanation = QLabel(
-            "The deletion canceler identifies and removes alignment columns where gaps may be due to sequencing artifacts "
-            "rather than true biological deletions. These settings control how the cancellation is performed."
-        )
-        explanation.setWordWrap(True)
-        del_layout.addWidget(explanation)
-        
-        # Add your deletion canceler options here
-        
-        del_group.setLayout(del_layout)
-        self.container_layout.addWidget(del_group)
+
     
     def _update_grid_type_view(self):
         """Update the UI and config based on the selected grid type (linear or log)."""

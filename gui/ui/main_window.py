@@ -6,6 +6,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWizard, QVBoxLayout, QWidget, QPushButton, QApplication,
     QFileDialog, QMessageBox
 )
+from PyQt6.QtCore import QEvent
+from PyQt6.QtGui import QPalette
+import json
+from dataclasses import asdict
 
 from gui.core.config import ESLConfig
 
