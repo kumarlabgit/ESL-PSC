@@ -51,7 +51,7 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
 
 ### Additional dependencies
-The GUI requires **PyQt6** on top of the CLI packages (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+The GUI requires **PyQt6** on top of the CLI requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
 * **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
@@ -66,7 +66,7 @@ Here is an example of how to run the script:
 
 `python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
-##### We also include `esl_multimatrix.exe` which can be substituted for `esl_multimatrix.py` in the above command and will run on Windows. 
+##### We also include `esl_multimatrix.exe` which can be substituted for `python esl_multimatrix.py` in the above command and will run on Windows. 
 
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 

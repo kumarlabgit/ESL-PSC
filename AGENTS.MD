@@ -68,4 +68,6 @@ pytest -q
 ```
 
 The `tests/conftest.py` file automatically adds the project root to `sys.path` and provides a compatibility fixture so **no environment variables need to be set**.
+
 All tests must pass.
+
