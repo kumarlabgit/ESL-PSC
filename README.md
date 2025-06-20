@@ -51,7 +51,7 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
 
 ### Additional dependencies
-The GUI requires **PyQt6** on top of the CLI packages (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+The GUI requires **PyQt6** on top of the CLI requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
 * **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
@@ -66,7 +66,7 @@ Here is an example of how to run the script:
 
 `python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
-##### We also include `esl_multimatrix.exe` which can be substituted for `esl_multimatrix.py` in the above command and will run on Windows. 
+##### We also include `esl_multimatrix.exe` which can be substituted for `python esl_multimatrix.py` in the above command and will run on Windows. 
 
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
@@ -234,13 +234,12 @@ You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
 3. Navigate to the `ESL_PSC/` directory on your computer
-4. Unzip the `photosynthesis_alignments.zip` archive: `tar -xf photosynthesis_alignments.zip`
-5. Run this command from the ESL-PSC directory: `python esl_multimatrix.py --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
-6. The expected run time is approximately 30 seconds on a standard desktop computer.
-7. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
+4. Run this command from the ESL-PSC directory: `python esl_multimatrix.py --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
+5. The expected run time is approximately 30 seconds on a standard desktop computer.
+6. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
 the plot should look like this:
 ![predictions violin plot](./images/demo_output_image.png)
-8. See [Output Data](#output-data) above for descriptions of the fields in the output csv files.
+7. See [Output Data](#output-data) above for descriptions of the fields in the output csv files.
 
 ## Citation ##
 If you use this software in your research, please cite our paper:

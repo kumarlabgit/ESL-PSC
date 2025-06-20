@@ -55,7 +55,7 @@ def main():
         
         # Try to show error in a message box if possible
         try:
-            error_msg = f"Fatal error: {str(e)}\n\n{traceback.format_exc()}"
+
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Icon.Critical)
             msg.setText("Fatal Error")
