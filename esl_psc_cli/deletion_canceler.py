@@ -4,7 +4,6 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-
 def parse_species_groups(species_group_file_path):
     '''open a species groups file and read it and make a list of combos'''
     with open(species_group_file_path) as species_file:
@@ -76,7 +75,6 @@ def get_deletion_canceler_args(parser):
     #   species in the response as keys and a list of alternate species from
     #   which to impute missing sequences as the values.  It's converted from
     #   string to dict must be proper format
-    group.add_argument('--impute', help = 'not fully implemented', type = str)
     group.add_argument('--limited_genes_list',
                         help = 'Use only genes in this list. One file per line',
                         type = str, default = None)
@@ -152,20 +150,6 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                 if species in record_dict:
                     # if its there add it from the record_dict
                     records.append(record_dict[species])
-                    species_canceled.append(False)
-                elif (args.impute and any(
-                    [True for backup_species in imputation_dict[species] if
-                     backup_species in record_dict])):
-                    # this means at least one back up species is available so
-                    # find first one and add that sequence for this species
-                    for backup_species in imputation_dict[species]:
-                        if backup_species in record_dict:
-                            # add the sequence
-                            seq_to_sub_in = record_dict[backup_species].seq
-                            records.append(SeqRecord(seq_to_sub_in,
-                                             id = species,
-                                             description = ""))
-                            break
                     species_canceled.append(False)
                 else:
                     records.append(SeqRecord(Seq('-' * sequence_length),
@@ -302,10 +286,6 @@ def main(raw_args=None):
         dir_name += '_gap-canceled_alignments'
         args.canceled_alignments_dir = os.path.join(aligns_parent_dir, dir_name)
 
-    # if imputation dict has been included get it
-    if args.impute:
-        with open(args.impute) as imputation_dict_file:
-            imputation_dict = dict(imputation_dict_file.read)
 
     generate_gap_canceled_alignments(args, list_of_species_combos)
 

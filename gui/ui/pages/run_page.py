@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QThreadPool
-from PyQt6.QtGui import QFont, QTextCursor, QFontDatabase
+from PyQt6.QtGui import QTextCursor, QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard
@@ -182,5 +182,5 @@ class RunPage(BaseWizardPage):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_error("\n🛑 Analysis was stopped.")
         else:
-            self.step_status_label.setText(f"Analysis failed.")
+            self.step_status_label.setText("Analysis failed.")
             self.append_error(f"\n❌ Analysis failed with exit code {exit_code}.")

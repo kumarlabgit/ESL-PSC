@@ -1,6 +1,6 @@
 # ESL-PSC functions
 
-import os, subprocess, math, re, time, datetime, shutil, argparse, sys
+import os, subprocess, math, re, time, datetime, shutil, sys
 import threading
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)

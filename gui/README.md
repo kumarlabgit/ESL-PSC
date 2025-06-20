@@ -32,7 +32,8 @@ python -m gui.main
 
 - `gui/main.py` - Application entry point
 - `gui/ui/` - User interface components
-  - `main_window.py` - Main window and wizard implementation
+- `gui/ui/pages/` - Wizard pages
+- `gui/ui/widgets/` - Reusable UI widgets
 - `gui/core/` - Business logic and data handling
 - `gui/resources/` - Icons, styles, and other resources
 
