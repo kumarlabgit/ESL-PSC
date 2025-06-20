@@ -385,7 +385,21 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
         preprocess_command_list.append("is") # add this to ignore singletons
     # make sure the input file names are right including ".txt" or get seg fault
     print(' '.join(preprocess_command_list))
-    subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
+    try:
+        subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 126:
+            executable_name = e.cmd.split()[0].split('/')[-1]
+            error_message = (
+                f"\nFATAL ERROR: Cannot execute '{executable_name}' (Exit Code 126).\n"
+                "This means the program is not compatible with your operating system (e.g., a Linux binary on macOS)\n"
+                "or it does not have the necessary execute permissions."
+            )
+            print(error_message, file=sys.stderr)
+            sys.exit(e.returncode)
+        else:
+            print(f"\nFATAL ERROR: An external command failed with exit code {e.returncode}:\n{e.cmd}", file=sys.stderr)
+            sys.exit(e.returncode)
 
     # move the input folder from preprocess to its folder
     clear_existing_folder(os.path.join(esl_inputs_folder_name,

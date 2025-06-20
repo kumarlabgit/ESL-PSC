@@ -36,6 +36,8 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
 * Restore defaults button to reset all parameters to their default values.
 * You can load the included `demo_config_for_gui.json` to run the C4/C3 demo.
 
+6/19/2025: Currently, the GUI may only be compatible with linux, but in the coming days we will add Windows compatibility.
+
 ### Running the GUI
 1. Ensure the GUI dependencies are installed:
    ```bash
