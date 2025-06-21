@@ -175,7 +175,10 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
 * `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
 * `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the preprocessed_data_and_outputs directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in .txt will be cleared from this directory before each ESL-PSC run.
-* `--show_selected_sites`: Print a dictionary of all selected sites with their highest model score for every gene in the gene_ranks output file.
+* `--show_selected_sites`: Include the top-scoring sites for each gene. When
+  enabled, the gene ranks file gains a `num_selected_sites` column and a
+  separate `<output_name>_selected_sites.csv` file lists each site with its GSS
+  score.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
