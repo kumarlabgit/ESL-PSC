@@ -30,7 +30,7 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
   1. Input selection – Select files and directories for each required and optional input.
   2. Analysis parameters – adjust settings within allowed ranges using controls with helpful tooltips
   3. Command preview – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
-  4. Run – Esecute the analysis and view the terminal output within the GUI. In a future update, we plan to embed analysis results visualisations directly in the GUI.
+  4. Run – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, the resulting SVG automatically opens in your default viewer.
 * Save/Load buttons to store configuration JSON files and re-load them later.
 * Contextual validation so you cannot progress until required fields are populated.
 * Restore defaults button to reset all parameters to their default values.
@@ -54,7 +54,7 @@ Now compatible with Windows, Mac, and Linux.
 The GUI requires **PyQt6** on top of the CLI requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
-* **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
+* **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app. For now, SPS plots open automatically after a run.
 * **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows users can run ESL-PSC without installing Python dependencies.
 
 Feedback on the beta is welcome!
