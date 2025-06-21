@@ -129,8 +129,9 @@ def get_esl_args(parser = None):
     help_txt = '''don't delete the raw model output files for each run'''
     group.add_argument('--keep_raw_output', help = help_txt,
                         action = 'store_true', default = False)
-    help_txt = '''print a dictionary of all selected sites with their highest
-    model score for every gene in the gene_ranks output file.'''
+    help_txt = '''output each gene's selected sites with their highest model
+    score. Adds a num_selected_sites column to the gene ranks file and writes
+    a separate selected_sites CSV.'''
     group.add_argument('--show_selected_sites', help = help_txt,
                         action = 'store_true', default = False)
     help_txt = ''' don't output a gene ranks file'''
@@ -335,8 +336,7 @@ def generate_gene_ranks_output(gene_objects_dict, output_dir, output_file_name,
                     str(gene.highest_ever_gss),
                     str(gene.best_ever_rank)]
     if show_sites:
-        column_names.extend(['num_selected_sites',
-                             'sites_and_weights'])
+        column_names.append('num_selected_sites')
     # sort the list of gene objects, if multimatrix it will sort accordingly
     sorted_genes = gene_objects_dict.get_sorted_list(multimatrix = multimatrix)
         
@@ -344,10 +344,9 @@ def generate_gene_ranks_output(gene_objects_dict, output_dir, output_file_name,
     headers = ','.join(column_names)
     output_data_lines = [headers] # keep data lines in a list. start w headers
     for gene in sorted_genes:
-        line = get_line(gene) # this is defined above for single or multimatrix
-        if show_sites: # if true, add the number of sites and the sites dict
-            line.extend([str(len(gene.selected_sites)),
-                         str(dict(gene.selected_sites))]) 
+        line = get_line(gene)  # this is defined above for single or multimatrix
+        if show_sites:
+            line.append(str(len(gene.selected_sites)))
         output_data_lines.append(','.join(line))
     # make output file path
     output_path = os.path.join(output_dir,
@@ -356,6 +355,28 @@ def generate_gene_ranks_output(gene_objects_dict, output_dir, output_file_name,
     with open(output_path, 'w') as file:
         file.write('\n'.join(output_data_lines))
     print("Gene ranks file written as: " + output_path)
+    return
+
+def generate_selected_sites_output(gene_objects_dict, output_dir, output_file_name,
+                                   multimatrix=False):
+    """Generate a CSV file listing each selected site for every gene."""
+    print("Generating selected sites output file...")
+    sorted_genes = gene_objects_dict.get_sorted_list(multimatrix=multimatrix)
+    column_names = ['gene_name', 'position', 'gss']
+    output_lines = [','.join(column_names)]
+
+    for gene in sorted_genes:
+        if not gene.selected_sites:
+            continue
+        for position in sorted(gene.selected_sites.keys()):
+            score = gene.selected_sites[position]
+            output_lines.append(f"{gene.name},{position},{score}")
+
+    output_path = os.path.join(output_dir,
+                               output_file_name + '_selected_sites.csv')
+    with open(output_path, 'w') as file:
+        file.write('\n'.join(output_lines))
+    print("Selected sites file written as: " + output_path)
     return
 
 def generate_predictions_output(esl_run_list, output_path, phenofile = None):
@@ -485,10 +506,13 @@ if __name__ == '__main__':
         print(f"{key} = {value}")
     
     # call output functions which should generate output text files
-    if not args.no_genes_output: # skip this output if flag is true
+    if not args.no_genes_output:  # skip this output if flag is true
         generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
                                    args.output_file_base_name,
-                                   show_sites = args.show_selected_sites)
+                                   show_sites=args.show_selected_sites)
+        if args.show_selected_sites:
+            generate_selected_sites_output(gene_objects_dict, args.esl_main_dir,
+                                           args.output_file_base_name)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file

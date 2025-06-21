@@ -501,11 +501,16 @@ def main(raw_args=None):
           args.canceled_alignments_dir)
     
     # call output functions which should generate output files
-    if not args.no_genes_output: # skip genes output if flag is true
+    if not args.no_genes_output:  # skip genes output if flag is true
         esl_int.generate_gene_ranks_output(gene_objects_dict, args.output_dir,
                                       args.output_file_base_name,
-                                      show_sites = args.show_selected_sites,
-                                           multimatrix = True)
+                                      show_sites=args.show_selected_sites,
+                                      multimatrix=True)
+        if args.show_selected_sites:
+            esl_int.generate_selected_sites_output(gene_objects_dict,
+                                                  args.output_dir,
+                                                  args.output_file_base_name,
+                                                  multimatrix=True)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
