@@ -488,17 +488,17 @@ def main(raw_args=None):
                                                     list_of_species_combos,
                                                     response_file_list)
     # 4) generate output
-    print("\nmultimatrix integration finished! ",
-          "A total of " + str(len(master_run_list))
-          + " ESL models were built\n",
-          "The arguments for this integration run were:\n")
-    for key, value in vars(args).items(): # repeat the input of args at the end
-          print(str(key) + ' = ' + str(value))
+    # Print a clear, multi-line summary so the GUI output isn't squished
+    print("\nmultimatrix integration finished!")
+    print(f"A total of {len(master_run_list)} ESL models were built")
+    print("The arguments for this integration run were:")
+    for key, value in vars(args).items():
+        print(f"{key} = {value}")
 
     # print these paths so they don't get lost
-    print('\nResponse matrices directory: ' + response_dir,
-          '\nGap-canceled alignments directory: '
-          + args.canceled_alignments_dir)
+    print("\nResponse matrices directory:", response_dir)
+    print("Gap-canceled alignments directory:",
+          args.canceled_alignments_dir)
     
     # call output functions which should generate output files
     if not args.no_genes_output: # skip genes output if flag is true

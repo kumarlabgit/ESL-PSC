@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QThreadPool
-from PyQt6.QtGui import QTextCursor, QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard
@@ -143,15 +143,13 @@ class RunPage(BaseWizardPage):
     
     def append_output(self, text):
         """Append text to the output display."""
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
-        self.cmd_display.insertPlainText(text + "\n")
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
+        # Using append ensures new lines display correctly in rich text mode
+        for line in text.splitlines() or [""]:
+            self.cmd_display.append(line)
 
     def append_error(self, text):
         """Append error text to the output display."""
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
-        self.cmd_display.insertHtml(f"<span style='color:red'>{text}</span><br>")
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
+        self.cmd_display.appendHtml(f"<span style='color:red'>{text}</span>")
     
     def update_overall_progress(self, value):
         """Update the overall progress bar."""
