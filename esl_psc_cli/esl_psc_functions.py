@@ -116,13 +116,7 @@ def get_species_to_check(response_matrix_path, check_order = False):
     return species_list
 
 def make_taxa_list(alignments_dir_path):
-    """Return a sorted list of all species IDs found in FASTA files.
-
-    This function previously relied on external ``grep`` and ``sed``
-    commands which are not available on Windows.  Instead we parse the
-    files directly with Python which remains efficient while being
-    portable.
-    """
+    """Return a sorted list of all species IDs found in FASTA files."""
 
     taxa_set = set()
     for entry in os.scandir(alignments_dir_path):
