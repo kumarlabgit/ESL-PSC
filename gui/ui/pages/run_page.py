@@ -119,13 +119,27 @@ class RunPage(BaseWizardPage):
             output_dir = self.config.output_dir
             base_name = self.config.output_file_base_name
             if os.path.isdir(output_dir):
-                any_existing = any(f.startswith(base_name) for f in os.listdir(output_dir))
-                if any_existing:
+                # Determine if the current run will overwrite existing files by
+                # checking for *exact* filename matches of the outputs that will
+                # be produced. This is more precise than the previous
+                # startswith-based heuristic.
+                expected_output_filenames = [
+                    f"{base_name}_gene_ranks.csv",
+                    f"{base_name}_species_predictions.csv",
+                ]
+                existing_conflicts = [
+                    fn for fn in expected_output_filenames
+                    if os.path.isfile(os.path.join(output_dir, fn))
+                ]
+                if existing_conflicts:
                     reply = QMessageBox.warning(
                         self,
                         "Overwrite Existing Output?",
-                        f"Files starting with '{base_name}' already exist in '{output_dir}'. "
-                        "Running the analysis again will overwrite them.\n\nContinue?",
+                        (
+                            "Existing outputs with the same basename, "
+                            f"'{base_name}', in the folder '{output_dir}' will "
+                            "be overwritten by the outputs from this run.\n\nContinue?"
+                        ),
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                         QMessageBox.StandardButton.No,
                     )
