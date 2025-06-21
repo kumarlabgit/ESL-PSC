@@ -149,7 +149,8 @@ class RunPage(BaseWizardPage):
 
     def append_error(self, text):
         """Append error text to the output display."""
-        self.cmd_display.appendHtml(f"<span style='color:red'>{text}</span>")
+        for line in text.splitlines() or [""]:
+            self.cmd_display.append(f"<span style='color:red'>{line}</span>")
     
     def update_overall_progress(self, value):
         """Update the overall progress bar."""
