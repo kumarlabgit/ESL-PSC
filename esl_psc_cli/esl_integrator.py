@@ -477,11 +477,12 @@ if __name__ == '__main__':
                                                     gene_objects_dict)
     
     
-    print("\nESL-PSC integration finished! ",
-          "A total of " + str(len(esl_run_list)) + " ESL models were built\n",
-          "The arguments for this integration run were:\n")
-    for key, value in vars(args).items(): # repeat the input of args at the end
-          print(str(key) + ' = ' + str(value))
+    # Print a clear, multi-line summary so the GUI output isn't squished
+    print("\nESL-PSC integration finished!")
+    print(f"A total of {len(esl_run_list)} ESL models were built")
+    print("The arguments for this integration run were:")
+    for key, value in vars(args).items():
+        print(f"{key} = {value}")
     
     # call output functions which should generate output text files
     if not args.no_genes_output: # skip this output if flag is true
