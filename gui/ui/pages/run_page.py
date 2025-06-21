@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QThreadPool
+import os
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
 )
 
 from gui.core.worker import ESLWorker
@@ -94,6 +95,8 @@ class RunPage(BaseWizardPage):
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
             self.step_status_label.setText("Ready to run.")
+            # Reset run button text
+            self.run_btn.setText("Run Analysis")
 
             # Enable/disable wizard buttons
             if self.wizard():
@@ -110,6 +113,23 @@ class RunPage(BaseWizardPage):
     def run_analysis(self):
         """Run the ESL-PSC analysis."""
         try:
+            # Ask for confirmation if output will be overwritten
+            output_dir = self.config.output_dir
+            base_name = self.config.output_file_base_name
+            if os.path.isdir(output_dir):
+                any_existing = any(f.startswith(base_name) for f in os.listdir(output_dir))
+                if any_existing:
+                    reply = QMessageBox.warning(
+                        self,
+                        "Overwrite Existing Output?",
+                        f"Files starting with '{base_name}' already exist in '{output_dir}'. "
+                        "Running the analysis again will overwrite them.\n\nContinue?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+
             args = self.config.get_command_args()
 
             # Update UI for running state
@@ -170,6 +190,7 @@ class RunPage(BaseWizardPage):
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
+        self.run_btn.setText("Run New Analysis")
         self.stop_btn.setEnabled(False)
 
         if self.wizard():
