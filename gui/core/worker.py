@@ -52,12 +52,12 @@ class ESLWorker(QRunnable):
                     if self.stream_type == 'stdout':
                         # Only parse stdout for progress updates
                         is_progress = self._parse_progress(line)
-                        if not is_progress and line:
-                            # Preserve existing spacing to avoid squishing lines
+                        if not is_progress:
+                            # Emit the line even if it's empty to preserve original spacing
                             self.signals.output.emit(line)
                     else:  # stderr
-                        if line:
-                            self.signals.error.emit(line)
+                        # Always forward stderr lines to preserve spacing
+                        self.signals.error.emit(line)
                 return len(s)
 
             def flush(self):

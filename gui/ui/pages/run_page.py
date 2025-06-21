@@ -4,7 +4,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QThreadPool
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
+    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard
 )
 
@@ -35,13 +35,15 @@ class RunPage(BaseWizardPage):
         cmd_group = QGroupBox("Analysis Terminal Output")
         cmd_layout = QVBoxLayout(cmd_group)
         
-        self.cmd_display = QTextEdit()
+        self.cmd_display = QPlainTextEdit()
         self.cmd_display.setReadOnly(True)
         # Use a robust method to find the system's preferred monospace font
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setPointSize(10)
         self.cmd_display.setFont(font)
-        self.cmd_display.setPlaceholderText("Click 'Run Analysis' to start the ESL-PSC process...")
+        # Placeholder text is supported by QPlainTextEdit starting Qt 6.2+
+        if hasattr(self.cmd_display, "setPlaceholderText"):
+            self.cmd_display.setPlaceholderText("Click 'Run Analysis' to start the ESL-PSC process...")
         cmd_layout.addWidget(self.cmd_display)
         container_layout.addWidget(cmd_group)
 
@@ -117,7 +119,7 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(False)
             
             self.cmd_display.clear()
-            self.cmd_display.append(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}\n")
+            self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis...")
 
             # Create and configure worker
@@ -145,12 +147,13 @@ class RunPage(BaseWizardPage):
         """Append text to the output display."""
         # Using append ensures new lines display correctly in rich text mode
         for line in text.splitlines() or [""]:
-            self.cmd_display.append(line)
+            self.cmd_display.appendPlainText(line)
 
     def append_error(self, text):
         """Append error text to the output display."""
         for line in text.splitlines() or [""]:
-            self.cmd_display.append(f"<span style='color:red'>{line}</span>")
+            # Prepend 'ERROR' tag to make error lines stand out while keeping plain text formatting
+            self.cmd_display.appendPlainText(f"[ERROR] {line}")
     
     def update_overall_progress(self, value):
         """Update the overall progress bar."""
