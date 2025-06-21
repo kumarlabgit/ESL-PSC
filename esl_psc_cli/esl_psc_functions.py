@@ -438,11 +438,15 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         matplotlib.use("Agg", force=True)
 
     if plot_type == 'violin':
-        fig, axes = plt.subplots(ncols = len(rmse_cutoffs), figsize=(8, 7),
-                             constrained_layout=True)
+        # Create side-by-side subplots and widen the figure slightly so axis
+        # labels don’t collide. We’ll manually add horizontal spacing.
+        fig, axes = plt.subplots(
+            ncols=len(rmse_cutoffs), figsize=(8, 7)
+        )
     elif plot_type == 'kde':
-        fig, axes = plt.subplots(ncols = 1, nrows = len(rmse_cutoffs),
-                                 figsize=(8, 7))
+        fig, axes = plt.subplots(nrows=len(rmse_cutoffs), ncols=1, figsize=(8, 7))
+    # Add extra horizontal padding between subplots to avoid label overlap
+    fig.subplots_adjust(wspace=0.35)
     
     df = pd.read_csv(pred_csv_path, dtype = {'species':str,
                                              'SPS':float,
@@ -478,7 +482,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     min_genes = min_genes)
             axes[index].set_ylim([-1.1, 1.1])
             axes[index].axhline(y=0, linestyle='--', color='lightgray')
-    fig.set_tight_layout(True)
+    fig.tight_layout(pad=2.0, w_pad=0.5)
     plt.savefig(fig_path)
 
     # close or show depending on thread

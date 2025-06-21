@@ -1,18 +1,22 @@
 """Run-analysis page of the ESL-PSC wizard (live output & progress)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QThreadPool, QUrl
+from PyQt6.QtCore import QThreadPool, QUrl, Qt
 import os
+import sys
+import subprocess
 from PyQt6.QtGui import QFontDatabase, QDesktopServices
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QDialog, QSizePolicy
 )
+from PyQt6.QtSvgWidgets import QSvgWidget
 
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 
 class RunPage(BaseWizardPage):
+    _open_svg_dialogs = []  # Keep references so dialogs aren't GC'd
     """Page for running the analysis and displaying progress."""
     
     def __init__(self, config):
@@ -38,6 +42,11 @@ class RunPage(BaseWizardPage):
         
         self.cmd_display = QPlainTextEdit()
         self.cmd_display.setReadOnly(True)
+        # Allow copying / selection on macOS and other platforms
+        self.cmd_display.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.cmd_display.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         # Use a robust method to find the system's preferred monospace font
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setPointSize(10)
@@ -203,6 +212,19 @@ class RunPage(BaseWizardPage):
         """Update the status label for the current step."""
         self.step_status_label.setText(text)
     
+    def _show_svg_dialog(self, svg_path):
+        """Display the given SVG file in a modal dialog using QSvgWidget."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("SPS Prediction Plot")
+        layout = QVBoxLayout(dialog)
+        svg_widget = QSvgWidget(svg_path)
+        svg_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(svg_widget)
+        dialog.resize(800, 600)
+        dialog.show()
+        # Store reference to prevent garbage collection
+        RunPage._open_svg_dialogs.append(dialog)
+
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
@@ -223,9 +245,17 @@ class RunPage(BaseWizardPage):
                 or getattr(self.config, "make_sps_kde_plot", False)
             ) and not getattr(self.config, "no_pred_output", False):
                 fig_name = f"{self.config.output_file_base_name}_pred_sps_plot.svg"
-                fig_path = os.path.join(self.config.output_dir, fig_name)
+                fig_path = os.path.abspath(os.path.join(self.config.output_dir, fig_name))
                 if os.path.exists(fig_path):
-                    QDesktopServices.openUrl(QUrl.fromLocalFile(fig_path))
+                    # Prefer an in-app SVG viewer for an integrated experience.
+                    try:
+                        self._show_svg_dialog(fig_path)
+                        self.append_output(f"Displayed SPS plot in-app: {fig_path}")
+                        return  # Already shown, skip external viewer fall-backs
+                    except Exception as e:
+                        self.append_error(f"⚠️  Could not display SVG in-app: {e}")
+                else:
+                    self.append_error(f"⚠️  Expected SPS plot not found at: {fig_path}")
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_error("\n🛑 Analysis was stopped.")

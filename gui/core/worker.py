@@ -2,6 +2,7 @@
 Worker thread for running ESL-PSC commands.
 """
 import contextlib
+import os
 import io
 import re
 from esl_psc_cli import esl_multimatrix
@@ -33,6 +34,7 @@ class ESLWorker(QRunnable):
     def run(self):
         """Execute esl_multimatrix in-process and stream its output."""
         self.is_running = True
+        original_cwd = os.getcwd()  # Preserve GUI's working directory
         exit_code = 0
 
         class StreamEmitter(io.TextIOBase):
@@ -111,6 +113,12 @@ class ESLWorker(QRunnable):
             exit_code = 1
         finally:
             self.is_running = False
+            # Restore the GUI's original working directory in case esl_multimatrix changed it
+            try:
+                os.chdir(original_cwd)
+            except Exception:
+                # Silently ignore – worst case, the old path no longer exists
+                pass
             # Only emit finished signal if it wasn't stopped by the user
             if not self.was_stopped:
                 self.signals.finished.emit(exit_code)

@@ -41,6 +41,11 @@ class CommandPage(BaseWizardPage):
         # Command display with larger, resizable monospace font
         self.cmd_display = QTextEdit()
         self.cmd_display.setReadOnly(True)
+        # Allow selection & copying on macOS and other platforms
+        self.cmd_display.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.cmd_display.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         font = QFont("Courier New")
         font.setPointSize(11)  # Increased font size
         self.cmd_display.setFont(font)
