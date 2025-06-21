@@ -16,6 +16,17 @@ from itertools import combinations, chain
 from statistics import median
 
 
+def get_binary_path(esl_dir, base_name):
+    """Return the absolute path to an ESL binary appropriate for this OS."""
+    if sys.platform.startswith("win"):
+        exe = f"{base_name}.exe"
+    elif sys.platform == "darwin":
+        exe = f"{base_name}_mac"
+    else:
+        exe = base_name
+    return os.path.join(esl_dir, "bin", exe)
+
+
 def parse_args_with_config(parser, raw_args=None):
     '''will parse args in the esl-psc_config.txt file if it exists and also
     get args from sys.argv[1:] and return the args namespace'''
@@ -33,8 +44,9 @@ def parse_args_with_config(parser, raw_args=None):
     # Point esl_main_dir at the *project root* (one level above this package)
     this_dir = os.path.dirname(os.path.abspath(__file__))
     args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
-    # sanity-check: make sure the ESL binaries are actually there
-    if not os.path.exists(os.path.join(args.esl_main_dir, "bin", "preprocess")):
+    # sanity-check: make sure the ESL preprocess binary is actually there
+    preprocess_bin = get_binary_path(args.esl_main_dir, "preprocess")
+    if not os.path.exists(preprocess_bin):
         raise FileNotFoundError(
             f"Expected ESL binaries in {args.esl_main_dir!s}/bin but none were found"
         )
@@ -104,13 +116,7 @@ def get_species_to_check(response_matrix_path, check_order = False):
     return species_list
 
 def make_taxa_list(alignments_dir_path):
-    """Return a sorted list of all species IDs found in FASTA files.
-
-    This function previously relied on external ``grep`` and ``sed``
-    commands which are not available on Windows.  Instead we parse the
-    files directly with Python which remains efficient while being
-    portable.
-    """
+    """Return a sorted list of all species IDs found in FASTA files."""
 
     taxa_set = set()
     for entry in os.scandir(alignments_dir_path):
@@ -381,8 +387,8 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
                         "supposed to be moved to. So that won't work")
     #construct command to run ESL preprocess
     print(os.getcwd())
-    preprocess_command_list = [os.path.join(esl_dir_path,
-                               'bin/preprocess'),
+    preprocess_command_list = [
+                               get_binary_path(esl_dir_path, 'preprocess'),
                                response_matrix_file_path,
                                path_file_path,
                                preprocessed_input_folder]
@@ -648,8 +654,9 @@ class ESLRun():
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
         # generate the command for calling ESL logistic lasso
-        esl_command_list = [os.path.join(self.run_family.args.esl_main_dir,
-                            'bin/sg_lasso'),
+        esl_command_list = [
+                            get_binary_path(self.run_family.args.esl_main_dir,
+                                           'sg_lasso'),
                             '-f', preprocessed_dir_name + '/feature_' +
                             preprocessed_dir_name + '.txt',
                             '-z', str(self.lambda1),

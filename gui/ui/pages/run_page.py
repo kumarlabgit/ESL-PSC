@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QThreadPool
-from PyQt6.QtGui import QTextCursor, QFontDatabase
+import os
+from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard
+    QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
 )
 
 from gui.core.worker import ESLWorker
@@ -35,13 +36,15 @@ class RunPage(BaseWizardPage):
         cmd_group = QGroupBox("Analysis Terminal Output")
         cmd_layout = QVBoxLayout(cmd_group)
         
-        self.cmd_display = QTextEdit()
+        self.cmd_display = QPlainTextEdit()
         self.cmd_display.setReadOnly(True)
         # Use a robust method to find the system's preferred monospace font
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setPointSize(10)
         self.cmd_display.setFont(font)
-        self.cmd_display.setPlaceholderText("Click 'Run Analysis' to start the ESL-PSC process...")
+        # Placeholder text is supported by QPlainTextEdit starting Qt 6.2+
+        if hasattr(self.cmd_display, "setPlaceholderText"):
+            self.cmd_display.setPlaceholderText("Click 'Run Analysis' to start the ESL-PSC process...")
         cmd_layout.addWidget(self.cmd_display)
         container_layout.addWidget(cmd_group)
 
@@ -92,6 +95,8 @@ class RunPage(BaseWizardPage):
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
             self.step_status_label.setText("Ready to run.")
+            # Reset run button text
+            self.run_btn.setText("Run Analysis")
 
             # Enable/disable wizard buttons
             if self.wizard():
@@ -107,7 +112,40 @@ class RunPage(BaseWizardPage):
     
     def run_analysis(self):
         """Run the ESL-PSC analysis."""
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        os.chdir(project_root)
         try:
+            # Ask for confirmation if output will be overwritten
+            output_dir = self.config.output_dir
+            base_name = self.config.output_file_base_name
+            if os.path.isdir(output_dir):
+                # Determine if the current run will overwrite existing files by
+                # checking for *exact* filename matches of the outputs that will
+                # be produced. This is more precise than the previous
+                # startswith-based heuristic.
+                expected_output_filenames = [
+                    f"{base_name}_gene_ranks.csv",
+                    f"{base_name}_species_predictions.csv",
+                ]
+                existing_conflicts = [
+                    fn for fn in expected_output_filenames
+                    if os.path.isfile(os.path.join(output_dir, fn))
+                ]
+                if existing_conflicts:
+                    reply = QMessageBox.warning(
+                        self,
+                        "Overwrite Existing Output?",
+                        (
+                            "Existing outputs with the same basename, "
+                            f"'{base_name}', in the folder '{output_dir}' will "
+                            "be overwritten by the outputs from this run.\n\nContinue?"
+                        ),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+
             args = self.config.get_command_args()
 
             # Update UI for running state
@@ -117,7 +155,7 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(False)
             
             self.cmd_display.clear()
-            self.cmd_display.append(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}\n")
+            self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis...")
 
             # Create and configure worker
@@ -143,15 +181,15 @@ class RunPage(BaseWizardPage):
     
     def append_output(self, text):
         """Append text to the output display."""
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
-        self.cmd_display.insertPlainText(text + "\n")
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
+        # Using append ensures new lines display correctly in rich text mode
+        for line in text.splitlines() or [""]:
+            self.cmd_display.appendPlainText(line)
 
     def append_error(self, text):
         """Append error text to the output display."""
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
-        self.cmd_display.insertHtml(f"<span style='color:red'>{text}</span><br>")
-        self.cmd_display.moveCursor(QTextCursor.MoveOperation.End)
+        for line in text.splitlines() or [""]:
+            # Prepend 'ERROR' tag to make error lines stand out while keeping plain text formatting
+            self.cmd_display.appendPlainText(f"[ERROR] {line}")
     
     def update_overall_progress(self, value):
         """Update the overall progress bar."""
@@ -168,6 +206,7 @@ class RunPage(BaseWizardPage):
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
+        self.run_btn.setText("Run New Analysis")
         self.stop_btn.setEnabled(False)
 
         if self.wizard():

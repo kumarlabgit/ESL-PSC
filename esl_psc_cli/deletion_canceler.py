@@ -5,14 +5,37 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 def parse_species_groups(species_group_file_path):
-    '''open a species groups file and read it and make a list of combos'''
-    with open(species_group_file_path) as species_file:
-        species_group_lines = species_file.readlines()
-    # make a list of lists of species 
-    group_list = [[species.strip() for species in group.split(',')]
-                  for group in species_group_lines] # split species & strip
+    '''
+    Opens and validates a species groups file, then returns a list of all
+    possible species combinations (as tuples).
+    '''
+    try:
+        with open(species_group_file_path) as species_file:
+            species_group_lines = [line.strip() for line in species_file.readlines() if line.strip()]
+    except Exception as e:
+        raise IOError(f"Could not read species groups file '{species_group_file_path}': {e}")
+    
+    if not species_group_lines:
+        raise ValueError(f"Species groups file is empty: {species_group_file_path}")
+
+    if len(species_group_lines) % 2 != 0:
+        raise ValueError(
+            f"Species groups file '{species_group_file_path}' must have an even "
+            f"number of lines for pairwise comparisons. Found {len(species_group_lines)} lines."
+        )
+
+    group_list = []
+    for i, line in enumerate(species_group_lines):
+        species_in_group = [species.strip() for species in line.split(',')]
+        if any(not s for s in species_in_group):
+            raise ValueError(
+                f"Invalid format in species groups file '{species_group_file_path}' on line {i + 1}.\n"
+                f"Found an empty species name (check for extra or trailing commas): '{line}'"
+            )
+        group_list.append(species_in_group)
+
     list_of_species_combos = list(itertools.product(*group_list))
-    print(list_of_species_combos)
+    print(f"Generated {len(list_of_species_combos)} species combinations from file.")
     return list_of_species_combos
 
 def get_deletion_canceler_args(parser):
@@ -96,6 +119,9 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
 
     # loop through all combinations and generate alignment files
     for combo_num, species_to_scan_list in enumerate(list_of_species_combos):
+        # Initialize counters and flags for this specific combo
+        combo_has_at_least_one_valid_gene = False
+        fully_canceled_genes = 0
 
         #create directory for alignments for this combination of species
         if len(list_of_species_combos) > 1: # if only 1 no need for subfolders
@@ -121,9 +147,6 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
         # change to new alignment files directory where new files will be put
         os.chdir(new_alignments_dir)
 
-        # create a count of genes that had to be fully canceled
-        fully_canceled_genes = 0
-
         # loop through files and check for gaps, cancel, and write new files
         file_count = 0
         for file_name in files_list:
@@ -139,10 +162,32 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                 if file_name not in genes_to_cancel_set:
                     continue
             os.chdir(args.alignments_dir) #be in original files directory
-            # parse fasta file and create seq dict
-            record_dict = SeqIO.to_dict(SeqIO.parse(file_name, "fasta"))
-            # get sequence length by taking 1st seq from dictionary values list
-            sequence_length = len(list(record_dict.values())[0])
+            # Validate the FASTA file before processing
+            try:
+                records_for_validation = list(SeqIO.parse(file_name, "fasta"))
+            except Exception as e:
+                # Handle case where file is not valid FASTA
+                print(f"WARNING: Skipping file '{file_name}' because it could not be parsed as FASTA. Error: {e}")
+                continue
+            
+            if not records_for_validation:
+                print(f"WARNING: Skipping empty alignment file: {file_name}")
+                continue
+
+            # Check for consistent sequence lengths, which can cause segfaults in preprocess
+            expected_len = len(records_for_validation[0].seq)
+            for record in records_for_validation[1:]:
+                if len(record.seq) != expected_len:
+                    raise ValueError(
+                        f"Inconsistent sequence length in source alignment file '{file_name}'.\n"
+                        f"  - Sequence '{records_for_validation[0].id}' has length {expected_len}.\n"
+                        f"  - Sequence '{record.id}' has length {len(record.seq)}.\n"
+                        f"All sequences in an alignment must have the same length to proceed."
+                    )
+            
+            # Create the record dictionary and get the validated sequence length
+            record_dict = {rec.id: rec for rec in records_for_validation}
+            sequence_length = expected_len
 
             # check if any of species to scan are missing and add them as gaps
             # or if we want to impute sequences do that too
@@ -238,6 +283,10 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
             # first modify seq_records
             for seq_num, record in enumerate(records):
                 record.seq = Seq(''.join(seq_list[seq_num]))
+            if not combo_has_at_least_one_valid_gene:
+                # A gene is "valid" if it has at least one non-gap character.
+                if any(rec.seq.strip('-') for rec in records):
+                    combo_has_at_least_one_valid_gene = True
             # change to new alignment files directory to write new file
             os.chdir(new_alignments_dir)
             # write new file
@@ -245,7 +294,16 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                 SeqIO.write(records, output_handle, "fasta-2line")
                 # note that ESL preprocess requires 2-line fasta alignment files
 
-    print("number of genes fully canceled: " + str(fully_canceled_genes ))
+        if file_count > 0 and not combo_has_at_least_one_valid_gene:
+            raise ValueError(
+                f"FATAL: For species combo {' '.join(species_to_scan_list)}, all generated "
+                f"alignment files would consist entirely of gaps ('-').\nThis typically happens "
+                f"if species in the combo are missing from most source alignments or if "
+                f"the '--min_pairs' requirement is never met.\nThis would cause a crash in "
+                f"'preprocess'. Please review this species combination."
+            )
+
+        print("number of genes fully canceled: " + str(fully_canceled_genes ))
     return
 
 

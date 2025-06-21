@@ -45,18 +45,18 @@ class ESLWorker(QRunnable):
 
             def write(self, s):
                 if not self.worker.is_running: return 0
-                self._buf += s
+                # Normalize carriage returns that may come from the CLI
+                self._buf += s.replace("\r", "\n")
                 while "\n" in self._buf:
                     line, self._buf = self._buf.split("\n", 1)
-                    line = line.strip()
-                    if not line: continue
-
                     if self.stream_type == 'stdout':
                         # Only parse stdout for progress updates
                         is_progress = self._parse_progress(line)
                         if not is_progress:
+                            # Emit the line even if it's empty to preserve original spacing
                             self.signals.output.emit(line)
-                    else: # stderr
+                    else:  # stderr
+                        # Always forward stderr lines to preserve spacing
                         self.signals.error.emit(line)
                 return len(s)
 
