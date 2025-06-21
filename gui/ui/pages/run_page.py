@@ -1,9 +1,9 @@
 """Run-analysis page of the ESL-PSC wizard (live output & progress)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QThreadPool
+from PyQt6.QtCore import QThreadPool, QUrl
 import os
-from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontDatabase, QDesktopServices
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
@@ -217,6 +217,15 @@ class RunPage(BaseWizardPage):
             self.step_progress_bar.setValue(100)
             self.step_status_label.setText("Analysis completed successfully!")
             self.append_output("\n✅ Analysis completed successfully!")
+            # If SPS plots were generated, open the plot in the default viewer
+            if (
+                getattr(self.config, "make_sps_plot", False)
+                or getattr(self.config, "make_sps_kde_plot", False)
+            ) and not getattr(self.config, "no_pred_output", False):
+                fig_name = f"{self.config.output_file_base_name}_pred_sps_plot.svg"
+                fig_path = os.path.join(self.config.output_dir, fig_name)
+                if os.path.exists(fig_path):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(fig_path))
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_error("\n🛑 Analysis was stopped.")
