@@ -112,6 +112,8 @@ class RunPage(BaseWizardPage):
     
     def run_analysis(self):
         """Run the ESL-PSC analysis."""
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        os.chdir(project_root)
         try:
             # Ask for confirmation if output will be overwritten
             output_dir = self.config.output_dir
