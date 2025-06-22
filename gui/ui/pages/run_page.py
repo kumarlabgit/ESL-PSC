@@ -1,22 +1,24 @@
 """Run-analysis page of the ESL-PSC wizard (live output & progress)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QThreadPool, QUrl, Qt
+from PyQt6.QtCore import QThreadPool, Qt
 import os
-import sys
-import subprocess
-from PyQt6.QtGui import QFontDatabase, QDesktopServices
+from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QDialog, QSizePolicy
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QDialog, QSizePolicy,
+    QTableWidget, QTableWidgetItem
 )
 from PyQt6.QtSvgWidgets import QSvgWidget
+import pandas as pd
 
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 
 class RunPage(BaseWizardPage):
-    _open_svg_dialogs = []  # Keep references so dialogs aren't GC'd
+    _open_svg_dialogs = []   # Keep references so dialogs aren't GC'd
+    _open_gene_dialogs = []  # Likewise for gene-rank dialogs
+    _open_site_dialogs = []  # And selected sites dialogs
     """Page for running the analysis and displaying progress."""
     
     def __init__(self, config):
@@ -79,9 +81,26 @@ class RunPage(BaseWizardPage):
         self.step_progress_bar.setTextVisible(True)
         self.step_progress_bar.setFormat("Current Step: %p%")
         progress_layout.addWidget(self.step_progress_bar)
-        
+
         container_layout.addWidget(progress_group)
-        
+
+        # Result display buttons (hidden until analysis completes)
+        self.results_layout = QHBoxLayout()
+        self.sps_btn = QPushButton("Show SPS Plot")
+        self.sps_btn.hide()
+        self.sps_btn.clicked.connect(self.show_sps_plot)
+        self.gene_btn = QPushButton("Show Top Gene Ranks")
+        self.gene_btn.hide()
+        self.gene_btn.clicked.connect(self.show_gene_ranks)
+        self.sites_btn = QPushButton("Show Selected Sites")
+        self.sites_btn.hide()
+        self.sites_btn.clicked.connect(self.show_selected_sites)
+        self.results_layout.addStretch()
+        self.results_layout.addWidget(self.sps_btn)
+        self.results_layout.addWidget(self.gene_btn)
+        self.results_layout.addWidget(self.sites_btn)
+        container_layout.addLayout(self.results_layout)
+
         # Buttons
         btn_layout = QHBoxLayout()
         self.run_btn = QPushButton("Run Analysis")
@@ -96,6 +115,11 @@ class RunPage(BaseWizardPage):
         
         # Add the scroll area to the page's main layout
         self.layout().addWidget(scroll)
+
+        # Paths to output files (populated after a run completes)
+        self.sps_plot_path = None
+        self.gene_ranks_path = None
+        self.selected_sites_path = None
     
     def on_enter(self):
         """Update the command display when the page is shown."""
@@ -111,10 +135,16 @@ class RunPage(BaseWizardPage):
             if self.wizard():
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(True)
                 self.wizard().button(QWizard.WizardButton.FinishButton).hide()
-            
+
             self.run_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
-            
+            self.sps_btn.hide()
+            self.gene_btn.hide()
+            self.sites_btn.hide()
+            self.sps_plot_path = None
+            self.gene_ranks_path = None
+            self.selected_sites_path = None
+
         except ValueError as e:
             self.cmd_display.setPlainText(f"Error generating command: {str(e)}")
             self.run_btn.setEnabled(False)
@@ -166,6 +196,12 @@ class RunPage(BaseWizardPage):
             self.cmd_display.clear()
             self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis...")
+            self.sps_btn.hide()
+            self.gene_btn.hide()
+            self.sites_btn.hide()
+            self.sps_plot_path = None
+            self.gene_ranks_path = None
+            self.selected_sites_path = None
 
             # Create and configure worker
             self.worker = ESLWorker(args)
@@ -225,6 +261,65 @@ class RunPage(BaseWizardPage):
         # Store reference to prevent garbage collection
         RunPage._open_svg_dialogs.append(dialog)
 
+    def _show_gene_ranks_dialog(self, csv_path):
+        """Display the top gene ranks in a table dialog."""
+        try:
+            df = pd.read_csv(csv_path).head(200)
+        except Exception as e:
+            self.append_error(f"Failed to read gene ranks: {e}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Top Gene Ranks")
+        layout = QVBoxLayout(dialog)
+        table = QTableWidget(len(df.index), len(df.columns))
+        table.setHorizontalHeaderLabels(list(df.columns))
+        for r_idx, (_, row) in enumerate(df.iterrows()):
+            for c_idx, value in enumerate(row):
+                table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        dialog.resize(800, 600)
+        dialog.show()
+        RunPage._open_gene_dialogs.append(dialog)
+
+    def _show_selected_sites_dialog(self, csv_path):
+        """Display selected sites in a table dialog."""
+        try:
+            df = pd.read_csv(csv_path).head(200)
+        except Exception as e:
+            self.append_error(f"Failed to read selected sites: {e}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Selected Sites")
+        layout = QVBoxLayout(dialog)
+        table = QTableWidget(len(df.index), len(df.columns))
+        table.setHorizontalHeaderLabels(list(df.columns))
+        for r_idx, (_, row) in enumerate(df.iterrows()):
+            for c_idx, value in enumerate(row):
+                table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        dialog.resize(800, 600)
+        dialog.show()
+        RunPage._open_site_dialogs.append(dialog)
+
+    def show_sps_plot(self):
+        """Slot to show the SPS plot if available."""
+        if self.sps_plot_path and os.path.exists(self.sps_plot_path):
+            self._show_svg_dialog(self.sps_plot_path)
+
+    def show_gene_ranks(self):
+        """Slot to show the gene ranks table if available."""
+        if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
+            self._show_gene_ranks_dialog(self.gene_ranks_path)
+
+    def show_selected_sites(self):
+        """Slot to show the selected sites table if available."""
+        if self.selected_sites_path and os.path.exists(self.selected_sites_path):
+            self._show_selected_sites_dialog(self.selected_sites_path)
+
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
@@ -239,23 +334,31 @@ class RunPage(BaseWizardPage):
             self.step_progress_bar.setValue(100)
             self.step_status_label.setText("Analysis completed successfully!")
             self.append_output("\n✅ Analysis completed successfully!")
-            # If SPS plots were generated, open the plot in the default viewer
+
+            # Determine output paths and show result buttons
+            base = self.config.output_file_base_name
+            out_dir = self.config.output_dir
+
+            self.sps_plot_path = None
             if (
-                getattr(self.config, "make_sps_plot", False)
-                or getattr(self.config, "make_sps_kde_plot", False)
-            ) and not getattr(self.config, "no_pred_output", False):
-                fig_name = f"{self.config.output_file_base_name}_pred_sps_plot.svg"
-                fig_path = os.path.abspath(os.path.join(self.config.output_dir, fig_name))
-                if os.path.exists(fig_path):
-                    # Prefer an in-app SVG viewer for an integrated experience.
-                    try:
-                        self._show_svg_dialog(fig_path)
-                        self.append_output(f"Displayed SPS plot in-app: {fig_path}")
-                        return  # Already shown, skip external viewer fall-backs
-                    except Exception as e:
-                        self.append_error(f"⚠️  Could not display SVG in-app: {e}")
-                else:
-                    self.append_error(f"⚠️  Expected SPS plot not found at: {fig_path}")
+                (getattr(self.config, "make_sps_plot", False) or getattr(self.config, "make_sps_kde_plot", False))
+                and not getattr(self.config, "no_pred_output", False)
+            ):
+                fig_name = f"{base}_pred_sps_plot.svg"
+                path = os.path.abspath(os.path.join(out_dir, fig_name))
+                if os.path.exists(path):
+                    self.sps_plot_path = path
+                    self.sps_btn.show()
+
+            ranks_path = os.path.abspath(os.path.join(out_dir, f"{base}_gene_ranks.csv"))
+            if os.path.exists(ranks_path):
+                self.gene_ranks_path = ranks_path
+                self.gene_btn.show()
+
+            sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
+            if os.path.exists(sites_path):
+                self.selected_sites_path = sites_path
+                self.sites_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_error("\n🛑 Analysis was stopped.")
