@@ -29,6 +29,9 @@ class ESLWorker(QRunnable):
         self.signals = WorkerSignals()
         self.is_running = False
         self.was_stopped = False # Flag to indicate if stop() was called
+        # Track deletion-canceler progress counts for step progress bar
+        self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
+        self.del_current_combo: int = 0           # number of combos completed so far
     
     @pyqtSlot()
     def run(self):
@@ -75,6 +78,37 @@ class ESLWorker(QRunnable):
                     self.signals.step_status.emit(line.strip().replace("---", "").strip())
                     self.signals.step_progress.emit(0)
                     return True
+
+                # Deletion-canceler overall progress – first record total # combos
+                m_del_total = re.search(r"Generated (\d+) species combinations", line)
+                if m_del_total:
+                    # Save expected total combinations for later progress calc
+                    try:
+                        self.worker.del_total_combos = int(m_del_total.group(1))
+                    except Exception:
+                        self.worker.del_total_combos = None
+                    # Not a direct progress update we want to show in bar yet
+                    return False
+
+                # Deletion-canceler per-combo progress: "Generating alignments for: <species...>"
+                if "Generating alignments for" in line:
+                    # Increment completed combo counter and compute % if total known
+                    if self.worker.del_total_combos:
+                        self.worker.del_current_combo += 1
+                        pct = int(self.worker.del_current_combo / self.worker.del_total_combos * 100)
+                        self.signals.step_progress.emit(pct)
+                    # Update status text regardless
+                    self.signals.step_status.emit(line.strip())
+                    return False
+
+                # ESL preprocess step indicator
+                if "Running ESL preprocess..." in line:
+                    # Reset deletion-canceler counters so they don't affect later steps
+                    self.worker.del_total_combos = None
+                    self.worker.del_current_combo = 0
+                    self.signals.step_status.emit(line.strip())
+                    self.signals.step_progress.emit(0)
+                    return False
 
                 # Step progress: "run 123 of 400"
                 m_step = re.search(r"run (\d+) of (\d+)", line, re.IGNORECASE)
