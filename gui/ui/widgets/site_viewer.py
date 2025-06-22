@@ -10,8 +10,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush, QFont
 from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QSlider, QComboBox, QLabel, QPushButton, QRadioButton,
-    QButtonGroup, QCheckBox, QAbstractItemView, QMessageBox, QMenu
+    QSplitter, QSlider, QComboBox, QLabel, QPushButton,
+    QCheckBox, QAbstractItemView, QMessageBox, QMenu
 )
 
 # point to your shared constants and canvas
@@ -552,8 +552,6 @@ class SiteViewer(QWidget):
         Singletons (non-gap) in Convergent+Control are replaced by '?'.
         Each gap ('-') in Convergent or Control reduces the score by 1.
         """
-        from collections import Counter
-
         conv_indices = [self.species_ids.index(sp) for sp in self.convergent_species if sp in self.species_ids]
         ctrl_indices = [self.species_ids.index(sp) for sp in self.control_species if sp in self.species_ids]
         out_indices  = [self.species_ids.index(sp) for sp in self.outgroup_species if sp in self.species_ids]
@@ -612,7 +610,6 @@ class SiteViewer(QWidget):
                     list(set(clean_ctrl))[0] == list(set(clean_out))[0]
                 ):
                     ctrl_res = clean_ctrl[0]
-                    from collections import Counter
                     conv_counter = Counter(clean_conv)
                     for res, cnt in conv_counter.items():
                         if res != ctrl_res and cnt >= 2:
@@ -628,7 +625,6 @@ class SiteViewer(QWidget):
                     out_res = clean_out[0]
                     # All convergent match out_res
                     if clean_conv and all(r == out_res for r in clean_conv):
-                        from collections import Counter
                         ctrl_counter = Counter(clean_ctrl)
                         for res, cnt in ctrl_counter.items():
                             if res != out_res and cnt >= 2:
@@ -725,7 +721,6 @@ class SiteViewer(QWidget):
             conv_label_row = row_idx
             row_idx += 1 + conv_size
 
-        blank_after_conv = row_idx
         if conv_label_row:
             row_idx += 1
 
@@ -734,7 +729,6 @@ class SiteViewer(QWidget):
             ctrl_label_row = row_idx
             row_idx += 1 + ctrl_size
 
-        blank_after_ctrl = row_idx
         if ctrl_label_row:
             row_idx += 1
 
