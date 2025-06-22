@@ -7,12 +7,13 @@ from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
     QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QDialog, QSizePolicy,
-    QTableWidget, QTableWidgetItem
+    QTableWidget, QTableWidgetItem, QToolButton
 )
 from PyQt6.QtSvgWidgets import QSvgWidget
 import pandas as pd
 
 from gui.core.worker import ESLWorker
+from gui.ui.widgets.protein_map import ProteinMapWidget
 from .base_page import BaseWizardPage
 
 class RunPage(BaseWizardPage):
@@ -59,6 +60,23 @@ class RunPage(BaseWizardPage):
         cmd_layout.addWidget(self.cmd_display)
         container_layout.addWidget(cmd_group)
 
+        # Result display buttons (hidden until analysis completes)
+        self.results_layout = QHBoxLayout()
+        self.sps_btn = QPushButton("Show SPS Plot")
+        self.sps_btn.hide()
+        self.sps_btn.clicked.connect(self.show_sps_plot)
+        self.gene_btn = QPushButton("Show Top Gene Ranks")
+        self.gene_btn.hide()
+        self.gene_btn.clicked.connect(self.show_gene_ranks)
+        self.sites_btn = QPushButton("Show Selected Sites")
+        self.sites_btn.hide()
+        self.sites_btn.clicked.connect(self.show_selected_sites)
+        self.results_layout.addStretch()
+        self.results_layout.addWidget(self.sps_btn)
+        self.results_layout.addWidget(self.gene_btn)
+        self.results_layout.addWidget(self.sites_btn)
+        container_layout.addLayout(self.results_layout)
+
         # Progress Bars GroupBox
         progress_group = QGroupBox("Progress")
         progress_layout = QVBoxLayout(progress_group)
@@ -83,23 +101,6 @@ class RunPage(BaseWizardPage):
         progress_layout.addWidget(self.step_progress_bar)
 
         container_layout.addWidget(progress_group)
-
-        # Result display buttons (hidden until analysis completes)
-        self.results_layout = QHBoxLayout()
-        self.sps_btn = QPushButton("Show SPS Plot")
-        self.sps_btn.hide()
-        self.sps_btn.clicked.connect(self.show_sps_plot)
-        self.gene_btn = QPushButton("Show Top Gene Ranks")
-        self.gene_btn.hide()
-        self.gene_btn.clicked.connect(self.show_gene_ranks)
-        self.sites_btn = QPushButton("Show Selected Sites")
-        self.sites_btn.hide()
-        self.sites_btn.clicked.connect(self.show_selected_sites)
-        self.results_layout.addStretch()
-        self.results_layout.addWidget(self.sps_btn)
-        self.results_layout.addWidget(self.gene_btn)
-        self.results_layout.addWidget(self.sites_btn)
-        container_layout.addLayout(self.results_layout)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -283,24 +284,81 @@ class RunPage(BaseWizardPage):
         dialog.show()
         RunPage._open_gene_dialogs.append(dialog)
 
-    def _show_selected_sites_dialog(self, csv_path):
-        """Display selected sites in a table dialog."""
+    def _get_alignment_length(self, gene_name: str):
+        """Return the length of the alignment for the given gene."""
+        align_dir = getattr(self.config, "alignments_dir", "")
+        path = os.path.join(align_dir, f"{gene_name}.fas")
         try:
-            df = pd.read_csv(csv_path).head(200)
+            with open(path) as handle:
+                for line in handle:
+                    if not line.startswith(">"):
+                        return len(line.strip())
+        except OSError:
+            return None
+        return None
+
+    def _show_selected_sites_dialog(self, csv_path):
+        """Display selected sites grouped by gene with expandable details."""
+        try:
+            df = pd.read_csv(csv_path)
         except Exception as e:
             self.append_error(f"Failed to read selected sites: {e}")
             return
 
+        gene_order = []
+        if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
+            try:
+                ranks_df = pd.read_csv(self.gene_ranks_path)
+                gene_order = list(ranks_df["gene_name"].head(200))
+            except Exception:
+                gene_order = []
+
+        if not gene_order:
+            gene_order = list(dict.fromkeys(df["gene_name"]))[:200]
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Selected Sites")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        scroll.setWidget(container)
+        container_layout = QVBoxLayout(container)
+
+        for gene in gene_order:
+            gene_rows = df[df["gene_name"] == gene]
+            if gene_rows.empty:
+                continue
+            positions = gene_rows["position"].tolist()
+            length = self._get_alignment_length(gene)
+
+            header_widget = QWidget()
+            header_layout = QHBoxLayout(header_widget)
+            toggle = QToolButton()
+            toggle.setArrowType(Qt.RightArrow)
+            toggle.setCheckable(True)
+            header_layout.addWidget(toggle)
+            header_layout.addWidget(QLabel(gene))
+            header_layout.addWidget(ProteinMapWidget(length or 1, positions))
+            header_layout.addStretch()
+            container_layout.addWidget(header_widget)
+
+            table = QTableWidget(len(gene_rows.index), len(gene_rows.columns))
+            table.setHorizontalHeaderLabels(list(gene_rows.columns))
+            for r_idx, (_, row) in enumerate(gene_rows.iterrows()):
+                for c_idx, value in enumerate(row):
+                    table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
+            table.resizeColumnsToContents()
+            table.hide()
+            container_layout.addWidget(table)
+
+            def toggle_rows(checked, btn=toggle, tbl=table):
+                tbl.setVisible(checked)
+                btn.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
+
+            toggle.clicked.connect(toggle_rows)
+
         layout = QVBoxLayout(dialog)
-        table = QTableWidget(len(df.index), len(df.columns))
-        table.setHorizontalHeaderLabels(list(df.columns))
-        for r_idx, (_, row) in enumerate(df.iterrows()):
-            for c_idx, value in enumerate(row):
-                table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
-        table.resizeColumnsToContents()
-        layout.addWidget(table)
+        layout.addWidget(scroll)
         dialog.resize(800, 600)
         dialog.show()
         RunPage._open_site_dialogs.append(dialog)
