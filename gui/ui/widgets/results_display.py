@@ -11,9 +11,75 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtSvgWidgets import QSvgWidget
 
 from gui.ui.widgets.protein_map import ProteinMapWidget
+from gui.ui.widgets.site_viewer import SiteViewer
 
 # Keep references to open dialogs to prevent garbage collection
 _open_dialogs = []
+
+
+def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) -> None:
+    """Open the SiteViewer window for the given gene."""
+    align_dir = getattr(config, "alignments_dir", "")
+    if not align_dir:
+        raise RuntimeError("Alignment directory not specified")
+    align_path = os.path.join(align_dir, f"{gene}.fas")
+    if not os.path.exists(align_path):
+        raise FileNotFoundError(f"Alignment file not found: {align_path}")
+
+    records = []
+    with open(align_path) as handle:
+        sid = None
+        seq_lines = []
+        for line in handle:
+            line = line.strip()
+            if line.startswith(">"):
+                if sid is not None:
+                    records.append((sid, "".join(seq_lines)))
+                sid = line[1:]
+                seq_lines = []
+            else:
+                seq_lines.append(line)
+        if sid is not None:
+            records.append((sid, "".join(seq_lines)))
+
+    # Determine species groups from first response matrix
+    response_dir = config.response_dir
+    if not response_dir:
+        base = os.path.basename(config.species_groups_file).replace(".txt", "")
+        response_dir = os.path.join(config.output_dir, f"{base}_response_matrices")
+    if not os.path.isdir(response_dir):
+        raise FileNotFoundError(f"Response directory not found: {response_dir}")
+    files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
+    if not files:
+        raise FileNotFoundError("No response matrices found")
+    first_matrix = os.path.join(response_dir, files[0])
+
+    conv = []
+    ctrl = []
+    with open(first_matrix) as f:
+        for line in f:
+            sp, val = line.strip().split()[:2]
+            if val == '1':
+                conv.append(sp)
+            else:
+                ctrl.append(sp)
+
+    all_sites_info = None
+    pss_map = {}
+    if sites_path and os.path.exists(sites_path):
+        try:
+            df = pd.read_csv(sites_path)
+            df = df[df["gene_name"] == gene]
+            for _, row in df.iterrows():
+                pos = int(row["position"]) - 1
+                pss_map[pos] = float(row.get("pss", row.get("score", 0)))
+        except Exception:
+            pass
+
+    viewer = SiteViewer(records, conv, ctrl, [], all_sites_info, False, pss_map)
+    viewer.setParent(parent)
+    viewer.show()
+    _open_dialogs.append(viewer)
 
 def _get_alignment_length(gene_name: str, alignments_dir: str):
     """Return the length of the alignment for the given gene."""
@@ -51,10 +117,14 @@ class SpsPlotDialog(QDialog):
 
 class GeneRanksDialog(QDialog):
     """Dialog to display top gene ranks from a pandas DataFrame."""
-    def __init__(self, dataframe, parent=None):
+
+    def __init__(self, dataframe, config, sites_path=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Top Gene Ranks")
         layout = QVBoxLayout(self)
+
+        self.config = config
+        self.sites_path = sites_path
 
         df = dataframe
 
@@ -79,26 +149,37 @@ class GeneRanksDialog(QDialog):
             if col in df.columns:
                 df[col] = df[col].fillna('').apply(lambda x: int(float(x)) if str(x).strip() != '' else '')
 
-        table = QTableWidget(len(df.index), len(df.columns))
-        table.setHorizontalHeaderLabels(list(df.columns))
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table = QTableWidget(len(df.index), len(df.columns))
+        self.table.setHorizontalHeaderLabels(list(df.columns))
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         # Disable sorting so initial display matches CSV order.
-        table.setSortingEnabled(False)
+        self.table.setSortingEnabled(False)
+
+        self.gene_col = list(df.columns).index('Gene') if 'Gene' in df.columns else 0
 
         for r_idx, (_, row) in enumerate(df.iterrows()):
             for c_idx, value in enumerate(row):
                 item = QTableWidgetItem(str(value))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                table.setItem(r_idx, c_idx, item)
+                self.table.setItem(r_idx, c_idx, item)
 
-        table.resizeColumnsToContents()
+        self.table.resizeColumnsToContents()
         # Leave sorting disabled by default; users can manually enable sorting by clicking headers if desired.
-        layout.addWidget(table)
+        layout.addWidget(self.table)
+
+        self.table.cellDoubleClicked.connect(self._open_site_viewer)
         self.resize(900, 600)
 
+    def _open_site_viewer(self, row: int, _column: int) -> None:
+        gene = self.table.item(row, self.gene_col).text()
+        try:
+            _launch_site_viewer(gene, self.config, self.sites_path, parent=self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+
     @staticmethod
-    def show_dialog(csv_path, parent=None):
+    def show_dialog(csv_path, config, sites_path=None, parent=None):
         """Load data, then create, show, and store a reference to the dialog."""
         try:
             # Read file as-is and keep the existing row order (already sorted by the CLI).
@@ -107,7 +188,7 @@ class GeneRanksDialog(QDialog):
             QMessageBox.critical(parent, "Error", f"Failed to read gene ranks file:\n{csv_path}\n\n{e}")
             return
 
-        dialog = GeneRanksDialog(df, parent)
+        dialog = GeneRanksDialog(df, config, sites_path, parent)
         dialog.show()
         _open_dialogs.append(dialog)
 

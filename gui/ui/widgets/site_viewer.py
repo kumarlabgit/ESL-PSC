@@ -5,17 +5,25 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Dict, List
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QBrush, QFont
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QBrush, QFont
+from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QSlider, QComboBox, QCheckBox, QLabel, QPushButton,
     QAbstractItemView, QMessageBox, QMenu
 )
 
 # point to your shared constants and canvas
-from constants import ZAPPO_STATIC_COLORS
-from widgets.histogram_canvas import HistogramCanvas
+from gui.ui.widgets.histogram_canvas import HistogramCanvas
+
+ZAPPO_STATIC_COLORS = {
+    'A': '#CCFF00', 'C': '#FFFF70', 'D': '#FF0000', 'E': '#FF0066',
+    'F': '#00FF66', 'G': '#FF9900', 'H': '#0066FF', 'I': '#66FF00',
+    'K': '#6600FF', 'L': '#33FF00', 'M': '#00FF00', 'N': '#CC00FF',
+    'P': '#FF00FF', 'Q': '#FF00CC', 'R': '#0000FF', 'S': '#FF3300',
+    'T': '#FF6600', 'V': '#99FF00', 'W': '#00CCFF', 'Y': '#00FFCC',
+    '-': '#FFFFFF', '?': '#C8C8C8'
+}
 
 class SiteViewer(QWidget):
     """
@@ -28,8 +36,9 @@ class SiteViewer(QWidget):
         convergent_species: List[str],
         control_species:    List[str],
         outgroup_species:   List[str],
-        all_sites_info:     List[Dict[str, Any]],
+        all_sites_info:     List[Dict[str, Any]] | None = None,
         show_all_by_default: bool = False,
+        pss_scores: Dict[int, float] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -39,6 +48,18 @@ class SiteViewer(QWidget):
         self.convergent_species  = sorted(convergent_species)
         self.control_species     = sorted(control_species)
         self.outgroup_species    = sorted(outgroup_species)
+        self.pss_scores          = pss_scores or {}
+
+        if all_sites_info is None:
+            all_sites_info = [
+                {
+                    'position': i,
+                    'converge_degree': 0,
+                    'is_ccs': False,
+                    'conv_same_as_ctrl': False,
+                }
+                for i in range(len(records[0][1]) if records else 0)
+            ]
         self.all_sites_info      = all_sites_info
 
         self.all_species = sorted([r[0] for r in records])
@@ -46,7 +67,7 @@ class SiteViewer(QWidget):
         self.sequences = [r[1] for r in records]
         self.seq_length = len(self.sequences[0]) if self.sequences else 0
 
-        self.scores = [s['converge_degree'] for s in all_sites_info]
+        self.scores = [s['converge_degree'] for s in self.all_sites_info]
         self.min_score = min(self.scores) if self.scores else 0
         self.max_score = max(self.scores) if self.scores else 0
 
@@ -620,8 +641,9 @@ class SiteViewer(QWidget):
         out_size = len(self.outgroup_species)
 
         row_idx = 0
-        # row0 => "Position", row1 => "Score", row2 => blank
-        row_idx += 3
+        # row0 => "Position", row1 => "Score", optional row2 => "PSS", then blank
+        base_rows = 3 if not self.pss_scores else 4
+        row_idx += base_rows
 
         conv_label_row = None
         if conv_size > 0:
@@ -664,11 +686,15 @@ class SiteViewer(QWidget):
             return i
 
         # row0 => Position
-        self.top_left_table.setItem(0,0, left_item("Position", True))
+        self.top_left_table.setItem(0, 0, left_item("Position", True))
         # row1 => Score
-        self.top_left_table.setItem(1,0, left_item("Convergence Score", True))
-        # row2 => blank
-        self.top_left_table.setItem(2,0, left_item(""))
+        self.top_left_table.setItem(1, 0, left_item("Convergence Score", True))
+        next_row = 2
+        if self.pss_scores:
+            self.top_left_table.setItem(2, 0, left_item("PSS", True))
+            next_row = 3
+        # blank separator
+        self.top_left_table.setItem(next_row, 0, left_item(""))
 
         # conv
         if conv_label_row is not None:
@@ -698,7 +724,7 @@ class SiteViewer(QWidget):
         displayed_cols = len(displayed_sites)
         self.top_right_table.setColumnCount(displayed_cols)
 
-        # row0 => position, row1 => score, row2 => blank
+        # row0 => position, row1 => score, optional PSS row, then blank
         for c, site in enumerate(displayed_sites):
             pos_str = str(site['position']+1)
             pi = QTableWidgetItem(pos_str)
@@ -706,13 +732,17 @@ class SiteViewer(QWidget):
             self.top_right_table.setItem(0,c, pi)
 
             sc_val = site['converge_degree']
-            if site['is_ccs']:
-                sc_str = f"{sc_val}*"
-            else:
-                sc_str = str(sc_val)
+            sc_str = f"{sc_val}*" if site['is_ccs'] else str(sc_val)
             si = QTableWidgetItem(sc_str)
             si.setTextAlignment(Qt.AlignCenter)
-            self.top_right_table.setItem(1,c, si)
+            self.top_right_table.setItem(1, c, si)
+
+            if self.pss_scores:
+                pss_val = self.pss_scores.get(site['position'])
+                pss_str = f"{pss_val:.5f}" if pss_val is not None else ""
+                pi2 = QTableWidgetItem(pss_str)
+                pi2.setTextAlignment(Qt.AlignCenter)
+                self.top_right_table.setItem(2, c, pi2)
 
         # conv
         if conv_label_row is not None:
