@@ -108,7 +108,7 @@ class ESLWizard(QWizard):
             # Keep the (disabled) Next button present on the last page so that the
             # Back button does not shift position when the user navigates there.
             # We will later disable and blank the button, but leaving it in the
-            # layout preserves the spacing that users rely on.
+            # layout preserves the spacing
             self.setOption(QWizard.WizardOption.HaveNextButtonOnLastPage, True)
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
             self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
@@ -203,8 +203,7 @@ class ESLWizard(QWizard):
               f"window_lum={window_lum}  text_lum={text_lum}  border={border_color}")
 
         # Build the stylesheet with a placeholder token then replace it with the
-        # actual border color.  This avoids the heavy brace-escaping needed in
-        # f-strings when embedding large chunks of QSS.
+        # actual border color.  
         css = """
             /* Use the current system palette for backgrounds */
             QWizard            {{ background: palette(window); }}
@@ -284,7 +283,6 @@ class ESLWizard(QWizard):
             # Force a full refresh of the style system
             qApp.style().polish(qApp)
 
-    # --- Automatic palette-change support ----------------------------------
     # --- Automatic palette-change support ----------------------------------
     def _connect_color_scheme_updates(self):
         """

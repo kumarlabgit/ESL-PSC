@@ -8,10 +8,14 @@ import sys
 import os
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
-from gui.ui.main_window import MainWindow
+from gui.core.logging_utils import setup_logging
 
 def main():
+    # Delay GUI import until after logging setup to ensure debug prints are redirected
+    from gui.ui.main_window import MainWindow
     """Main entry point for the ESL-PSC GUI application."""
+    # Initialize application-wide logging and patch print() for GUI modules
+    setup_logging()
     print("Starting ESL-PSC GUI...")
     print(f"Python executable: {sys.executable}")
     print(f"Working directory: {os.getcwd()}")
