@@ -93,6 +93,7 @@ class ESLWizard(QWizard):
         print("ESLWizard: Parent initialized")
         # Width of the Next button used as an invisible placeholder on the last page
         self._next_btn_placeholder_width = None
+        self._back_btn_placeholder_width = None
         
         try:
             # Set window properties first
@@ -101,7 +102,9 @@ class ESLWizard(QWizard):
             self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
             self.setOption(QWizard.WizardOption.HaveHelpButton, False)
             # Hide the Back button completely on the first page for consistency
-            self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
+            # Keep Back button present so we can reserve its space; we'll blank it
+            # on the first page via runtime styling so the footer remains aligned.
+            self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, False)
             # Keep the (disabled) Next button present on the last page so that the
             # Back button does not shift position when the user navigates there.
             # We will later disable and blank the button, but leaving it in the
@@ -228,6 +231,12 @@ class ESLWizard(QWizard):
                 left: 10px;
                 padding: 0 3px 0 3px;
                 color: palette(text);
+            }}
+
+            /* Wizard footer buttons – enforce consistent height/alignment */
+            QWizard > QPushButton {{
+                min-height: 28px;
+                max-height: 28px;  /* Prevent height variation */
             }}
 
             /* General input widgets – give them a visible border */
@@ -357,6 +366,27 @@ class ESLWizard(QWizard):
         current_page = self.currentPage()
         if hasattr(current_page, 'on_enter'):
             current_page.on_enter()
+
+        # Handle Back/Next placeholders to keep footer stable
+        # ------------------------------------------------------------------
+        # Keep Back button invisible on first page while reserving space.
+        back_btn = self.button(QWizard.WizardButton.BackButton)
+        if back_btn is not None:
+            if self._back_btn_placeholder_width is None:
+                self._back_btn_placeholder_width = back_btn.sizeHint().width()
+            if self.currentId() == self.pageIds()[0]:
+                # First page – hide visually but keep width
+                back_btn.setEnabled(False)
+                back_btn.setText("")
+                back_btn.setFixedWidth(self._back_btn_placeholder_width)
+                back_btn.setStyleSheet("border: none; background: transparent;")
+            else:
+                # Other pages – restore normal look
+                back_btn.setEnabled(True)
+                back_btn.setFixedWidth(self._back_btn_placeholder_width)
+                back_btn.setStyleSheet("")
+                if back_btn.text() == "":
+                    back_btn.setText("Back")
 
         # Keep Back button from shifting when on last page.
         next_btn = self.button(QWizard.WizardButton.NextButton)
