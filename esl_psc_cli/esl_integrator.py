@@ -362,7 +362,7 @@ def generate_selected_sites_output(gene_objects_dict, output_dir, output_file_na
     """Generate a CSV file listing each selected site for every gene."""
     print("Generating selected sites output file...")
     sorted_genes = gene_objects_dict.get_sorted_list(multimatrix=multimatrix)
-    column_names = ['gene_name', 'position', 'gss']
+    column_names = ['gene_name', 'position', 'pss']
     output_lines = [','.join(column_names)]
 
     for gene in sorted_genes:
@@ -370,7 +370,8 @@ def generate_selected_sites_output(gene_objects_dict, output_dir, output_file_na
             continue
         for position in sorted(gene.selected_sites.keys()):
             score = gene.selected_sites[position]
-            output_lines.append(f"{gene.name},{position},{score}")
+            # Convert to 1-indexed for human readability
+            output_lines.append(f"{gene.name},{position + 1},{score}")
 
     output_path = os.path.join(output_dir,
                                output_file_name + '_selected_sites.csv')

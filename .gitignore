@@ -20,3 +20,4 @@ demo_gene_ranks.csv
 .gitignore
 .gitignore
 demo_species_predictions.csv
+demo_output/demo_selected_sites.csv

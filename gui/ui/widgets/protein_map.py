@@ -10,7 +10,9 @@ class ProteinMapWidget(QWidget):
         self.length = max(length, 1)
         self.sites = sites
         self.setMinimumHeight(20)
-        self.setMaximumHeight(20)
+        # Ensure the widget is wide enough to be visible when embedded in tables
+        self.setMinimumWidth(500)
+        self.setMaximumHeight(50)
 
     def paintEvent(self, event):
         painter = QPainter(self)

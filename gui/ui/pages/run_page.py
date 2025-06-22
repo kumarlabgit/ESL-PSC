@@ -6,20 +6,16 @@ import os
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QDialog, QSizePolicy,
-    QTableWidget, QTableWidgetItem, QToolButton
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
 )
-from PyQt6.QtSvgWidgets import QSvgWidget
-import pandas as pd
 
 from gui.core.worker import ESLWorker
-from gui.ui.widgets.protein_map import ProteinMapWidget
 from .base_page import BaseWizardPage
+from gui.ui.widgets.results_display import (
+    SpsPlotDialog, GeneRanksDialog, SelectedSitesDialog
+)
 
 class RunPage(BaseWizardPage):
-    _open_svg_dialogs = []   # Keep references so dialogs aren't GC'd
-    _open_gene_dialogs = []  # Likewise for gene-rank dialogs
-    _open_site_dialogs = []  # And selected sites dialogs
     """Page for running the analysis and displaying progress."""
     
     def __init__(self, config):
@@ -139,12 +135,6 @@ class RunPage(BaseWizardPage):
 
             self.run_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
-            self.sps_btn.hide()
-            self.gene_btn.hide()
-            self.sites_btn.hide()
-            self.sps_plot_path = None
-            self.gene_ranks_path = None
-            self.selected_sites_path = None
 
         except ValueError as e:
             self.cmd_display.setPlainText(f"Error generating command: {str(e)}")
@@ -161,8 +151,7 @@ class RunPage(BaseWizardPage):
             if os.path.isdir(output_dir):
                 # Determine if the current run will overwrite existing files by
                 # checking for *exact* filename matches of the outputs that will
-                # be produced. This is more precise than the previous
-                # startswith-based heuristic.
+                # be produced. 
                 expected_output_filenames = [
                     f"{base_name}_gene_ranks.csv",
                     f"{base_name}_species_predictions.csv",
@@ -249,134 +238,32 @@ class RunPage(BaseWizardPage):
         """Update the status label for the current step."""
         self.step_status_label.setText(text)
     
-    def _show_svg_dialog(self, svg_path):
-        """Display the given SVG file in a modal dialog using QSvgWidget."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("SPS Prediction Plot")
-        layout = QVBoxLayout(dialog)
-        svg_widget = QSvgWidget(svg_path)
-        svg_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(svg_widget)
-        dialog.resize(800, 600)
-        dialog.show()
-        # Store reference to prevent garbage collection
-        RunPage._open_svg_dialogs.append(dialog)
-
-    def _show_gene_ranks_dialog(self, csv_path):
-        """Display the top gene ranks in a table dialog."""
-        try:
-            df = pd.read_csv(csv_path).head(200)
-        except Exception as e:
-            self.append_error(f"Failed to read gene ranks: {e}")
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Top Gene Ranks")
-        layout = QVBoxLayout(dialog)
-        table = QTableWidget(len(df.index), len(df.columns))
-        table.setHorizontalHeaderLabels(list(df.columns))
-        for r_idx, (_, row) in enumerate(df.iterrows()):
-            for c_idx, value in enumerate(row):
-                table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
-        table.resizeColumnsToContents()
-        layout.addWidget(table)
-        dialog.resize(800, 600)
-        dialog.show()
-        RunPage._open_gene_dialogs.append(dialog)
-
-    def _get_alignment_length(self, gene_name: str):
-        """Return the length of the alignment for the given gene."""
-        align_dir = getattr(self.config, "alignments_dir", "")
-        path = os.path.join(align_dir, f"{gene_name}.fas")
-        try:
-            with open(path) as handle:
-                for line in handle:
-                    if not line.startswith(">"):
-                        return len(line.strip())
-        except OSError:
-            return None
-        return None
-
-    def _show_selected_sites_dialog(self, csv_path):
-        """Display selected sites grouped by gene with expandable details."""
-        try:
-            df = pd.read_csv(csv_path)
-        except Exception as e:
-            self.append_error(f"Failed to read selected sites: {e}")
-            return
-
-        gene_order = []
-        if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
-            try:
-                ranks_df = pd.read_csv(self.gene_ranks_path)
-                gene_order = list(ranks_df["gene_name"].head(200))
-            except Exception:
-                gene_order = []
-
-        if not gene_order:
-            gene_order = list(dict.fromkeys(df["gene_name"]))[:200]
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Selected Sites")
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        container = QWidget()
-        scroll.setWidget(container)
-        container_layout = QVBoxLayout(container)
-
-        for gene in gene_order:
-            gene_rows = df[df["gene_name"] == gene]
-            if gene_rows.empty:
-                continue
-            positions = gene_rows["position"].tolist()
-            length = self._get_alignment_length(gene)
-
-            header_widget = QWidget()
-            header_layout = QHBoxLayout(header_widget)
-            toggle = QToolButton()
-            toggle.setArrowType(Qt.RightArrow)
-            toggle.setCheckable(True)
-            header_layout.addWidget(toggle)
-            header_layout.addWidget(QLabel(gene))
-            header_layout.addWidget(ProteinMapWidget(length or 1, positions))
-            header_layout.addStretch()
-            container_layout.addWidget(header_widget)
-
-            table = QTableWidget(len(gene_rows.index), len(gene_rows.columns))
-            table.setHorizontalHeaderLabels(list(gene_rows.columns))
-            for r_idx, (_, row) in enumerate(gene_rows.iterrows()):
-                for c_idx, value in enumerate(row):
-                    table.setItem(r_idx, c_idx, QTableWidgetItem(str(value)))
-            table.resizeColumnsToContents()
-            table.hide()
-            container_layout.addWidget(table)
-
-            def toggle_rows(checked, btn=toggle, tbl=table):
-                tbl.setVisible(checked)
-                btn.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
-
-            toggle.clicked.connect(toggle_rows)
-
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(scroll)
-        dialog.resize(800, 600)
-        dialog.show()
-        RunPage._open_site_dialogs.append(dialog)
-
     def show_sps_plot(self):
         """Slot to show the SPS plot if available."""
         if self.sps_plot_path and os.path.exists(self.sps_plot_path):
-            self._show_svg_dialog(self.sps_plot_path)
+            SpsPlotDialog.show_dialog(self.sps_plot_path, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The SPS plot file could not be found.")
 
     def show_gene_ranks(self):
         """Slot to show the gene ranks table if available."""
         if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
-            self._show_gene_ranks_dialog(self.gene_ranks_path)
+            GeneRanksDialog.show_dialog(self.gene_ranks_path, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")
 
     def show_selected_sites(self):
         """Slot to show the selected sites table if available."""
         if self.selected_sites_path and os.path.exists(self.selected_sites_path):
-            self._show_selected_sites_dialog(self.selected_sites_path)
+            alignments_dir = getattr(self.config, "alignments_dir", "")
+            SelectedSitesDialog.show_dialog(
+                self.selected_sites_path,
+                self.gene_ranks_path,
+                alignments_dir,
+                parent=self,
+            )
+        else:
+            QMessageBox.warning(self, "File Not Found", "The selected sites file could not be found.")
 
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
@@ -409,12 +296,14 @@ class RunPage(BaseWizardPage):
                     self.sps_btn.show()
 
             ranks_path = os.path.abspath(os.path.join(out_dir, f"{base}_gene_ranks.csv"))
-            if os.path.exists(ranks_path):
+            # Only show the button if gene output was requested in this run
+            if not getattr(self.config, "no_genes_output", False) and os.path.exists(ranks_path):
                 self.gene_ranks_path = ranks_path
                 self.gene_btn.show()
 
             sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
-            if os.path.exists(sites_path):
+            # Only show the button if selected-sites output was generated for this run
+            if getattr(self.config, "show_selected_sites", False) and os.path.exists(sites_path):
                 self.selected_sites_path = sites_path
                 self.sites_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
