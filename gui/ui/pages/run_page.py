@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
-    SpsPlotDialog, GeneRanksDialog, SelectedSitesDialog
+    SpsPlotDialog, GeneRanksDialog
 )
 
 class RunPage(BaseWizardPage):
@@ -64,13 +64,9 @@ class RunPage(BaseWizardPage):
         self.gene_btn = QPushButton("Show Top Gene Ranks")
         self.gene_btn.hide()
         self.gene_btn.clicked.connect(self.show_gene_ranks)
-        self.sites_btn = QPushButton("Show Selected Sites")
-        self.sites_btn.hide()
-        self.sites_btn.clicked.connect(self.show_selected_sites)
         self.results_layout.addStretch()
         self.results_layout.addWidget(self.sps_btn)
         self.results_layout.addWidget(self.gene_btn)
-        self.results_layout.addWidget(self.sites_btn)
         container_layout.addLayout(self.results_layout)
 
         # Progress Bars GroupBox
@@ -188,7 +184,6 @@ class RunPage(BaseWizardPage):
             self.step_status_label.setText("Starting analysis...")
             self.sps_btn.hide()
             self.gene_btn.hide()
-            self.sites_btn.hide()
             self.sps_plot_path = None
             self.gene_ranks_path = None
             self.selected_sites_path = None
@@ -257,18 +252,6 @@ class RunPage(BaseWizardPage):
         else:
             QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")
 
-    def show_selected_sites(self):
-        """Slot to show the selected sites table if available."""
-        if self.selected_sites_path and os.path.exists(self.selected_sites_path):
-            alignments_dir = getattr(self.config, "alignments_dir", "")
-            SelectedSitesDialog.show_dialog(
-                self.selected_sites_path,
-                self.gene_ranks_path,
-                alignments_dir,
-                parent=self,
-            )
-        else:
-            QMessageBox.warning(self, "File Not Found", "The selected sites file could not be found.")
 
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
@@ -307,10 +290,8 @@ class RunPage(BaseWizardPage):
                 self.gene_btn.show()
 
             sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
-            # Only show the button if selected-sites output was generated for this run
             if getattr(self.config, "show_selected_sites", False) and os.path.exists(sites_path):
                 self.selected_sites_path = sites_path
-                self.sites_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_error("\n🛑 Analysis was stopped.")

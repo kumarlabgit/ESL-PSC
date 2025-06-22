@@ -107,7 +107,7 @@ class SpsPlotDialog(QDialog):
 
 
 class GeneRanksDialog(QDialog):
-    """Dialog to display top gene ranks from a pandas DataFrame."""
+    """Dialog to display top gene ranks and optional selected sites."""
 
     def __init__(self, dataframe, config, sites_path=None, parent=None):
         super().__init__(parent)
@@ -119,7 +119,7 @@ class GeneRanksDialog(QDialog):
 
         df = dataframe
 
-        # Clean and rename columns
+        # Clean and rename columns for readability
         rename_map = {
             'gene_name': 'Gene',
             'highest_gss': 'Highest GSS',
@@ -128,25 +128,47 @@ class GeneRanksDialog(QDialog):
             'best_ever_rank': 'Best Ever Rank',
             'num_selected_sites': 'Number of Selected Sites',
             'num_combos_ranked': 'Number of Combinations Ranked',
-            'num_combos_ranked_top': 'Number Ranked in Top'
+            'num_combos_ranked_top': 'Number Ranked in Top',
         }
         df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-        # Round GSS columns
+        # Round and format columns
         if 'Highest GSS' in df.columns:
             df['Highest GSS'] = df['Highest GSS'].round(5)
-        # Ensure rank columns are ints
         for col in ['Best Rank', 'Best Ever Rank']:
             if col in df.columns:
                 df[col] = df[col].fillna('').apply(lambda x: int(float(x)) if str(x).strip() != '' else '')
 
+        self.has_sites = bool(sites_path and os.path.exists(sites_path))
+
+        if self.has_sites:
+            self._init_tree_view(layout, df)
+        else:
+            self._init_table_view(layout, df)
+
+        self.resize(900, 600)
+
+    def _open_site_viewer(self, row: int, _column: int) -> None:
+        # Only open for top-level rows when using the tree view
+        if self.has_sites:
+            item = self.tree.topLevelItem(row)
+            if item is None:
+                return
+            gene = item.text(0)
+        else:
+            gene = self.table.item(row, self.gene_col).text()
+        try:
+            _launch_site_viewer(gene, self.config, self.sites_path, parent=self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+
+    def _init_table_view(self, layout: QVBoxLayout, df: pd.DataFrame) -> None:
+        """Initialize the simple table view (no selected sites)."""
         self.table = QTableWidget(len(df.index), len(df.columns))
         self.table.setHorizontalHeaderLabels(list(df.columns))
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        # Disable sorting so initial display matches CSV order.
         self.table.setSortingEnabled(False)
-
         self.gene_col = list(df.columns).index('Gene') if 'Gene' in df.columns else 0
 
         for r_idx, (_, row) in enumerate(df.iterrows()):
@@ -156,18 +178,59 @@ class GeneRanksDialog(QDialog):
                 self.table.setItem(r_idx, c_idx, item)
 
         self.table.resizeColumnsToContents()
-        # Leave sorting disabled by default; users can manually enable sorting by clicking headers if desired.
         layout.addWidget(self.table)
-
         self.table.cellDoubleClicked.connect(self._open_site_viewer)
-        self.resize(900, 600)
 
-    def _open_site_viewer(self, row: int, _column: int) -> None:
-        gene = self.table.item(row, self.gene_col).text()
+    def _init_tree_view(self, layout: QVBoxLayout, df: pd.DataFrame) -> None:
+        """Initialize the tree view with selected sites information."""
         try:
-            _launch_site_viewer(gene, self.config, self.sites_path, parent=self)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+            sites_df = pd.read_csv(self.sites_path)
+        except Exception:
+            # Fallback to table view if parsing fails
+            self.has_sites = False
+            self._init_table_view(layout, df)
+            return
+
+        self.tree = QTreeWidget()
+
+        rank_columns = [c for c in df.columns if c != 'Gene']
+        headers = ['Gene', 'Length', 'Map', 'Position', 'Position Sparsity Score'] + rank_columns
+        self.tree.setColumnCount(len(headers))
+        self.tree.setHeaderLabels(headers)
+        self.tree.setUniformRowHeights(True)
+
+        align_dir = getattr(self.config, 'alignments_dir', '')
+
+        for _, row in df.iterrows():
+            gene = row['Gene']
+            gene_sites = sites_df[sites_df['gene_name'] == gene]
+            gene_sites = gene_sites[gene_sites['pss'] != 0] if 'pss' in gene_sites.columns else gene_sites
+            positions = gene_sites['position'].tolist()
+            length = _get_alignment_length(gene, align_dir) or (max(positions) if positions else 1)
+
+            gene_values = [gene, str(length), '', '', ''] + [str(row[col]) for col in rank_columns]
+            parent_item = QTreeWidgetItem(gene_values)
+            self.tree.addTopLevelItem(parent_item)
+            self.tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions))
+            parent_item.setExpanded(False)
+
+            for _, srow in gene_sites.iterrows():
+                pos = str(srow['position'])
+                pss_val = srow['pss'] if 'pss' in srow else srow.get('score', 0)
+                if pss_val == 0:
+                    continue
+                pss = f"{pss_val:.5f}"
+                child_vals = ['', '', '', pos, pss] + ['' for _ in rank_columns]
+                child = QTreeWidgetItem(child_vals)
+                parent_item.addChild(child)
+
+        self.tree.resizeColumnToContents(0)
+        self.tree.resizeColumnToContents(1)
+        self.tree.resizeColumnToContents(3)
+        self.tree.resizeColumnToContents(4)
+
+        layout.addWidget(self.tree)
+        self.tree.itemDoubleClicked.connect(self._open_site_viewer)
 
     @staticmethod
     def show_dialog(csv_path, config, sites_path=None, parent=None):
@@ -185,7 +248,7 @@ class GeneRanksDialog(QDialog):
 
 
 class SelectedSitesDialog(QDialog):
-    """Dialog to display selected sites grouped by gene."""
+    """(Deprecated) Dialog to display selected sites grouped by gene."""
     def __init__(self, dataframe, gene_order, alignments_dir, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Selected Sites")
