@@ -1,4 +1,5 @@
 # widgets/site_viewer.py
+from __future__ import annotations
 
 from __future__ import annotations
 
@@ -15,15 +16,9 @@ from PyQt6.QtWidgets import (
 
 # point to your shared constants and canvas
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
+from gui.constants import ZAPPO_STATIC_COLORS
 
-ZAPPO_STATIC_COLORS = {
-    'A': '#CCFF00', 'C': '#FFFF70', 'D': '#FF0000', 'E': '#FF0066',
-    'F': '#00FF66', 'G': '#FF9900', 'H': '#0066FF', 'I': '#66FF00',
-    'K': '#6600FF', 'L': '#33FF00', 'M': '#00FF00', 'N': '#CC00FF',
-    'P': '#FF00FF', 'Q': '#FF00CC', 'R': '#0000FF', 'S': '#FF3300',
-    'T': '#FF6600', 'V': '#99FF00', 'W': '#00CCFF', 'Y': '#00FFCC',
-    '-': '#FFFFFF', '?': '#C8C8C8'
-}
+
 
 class SiteViewer(QWidget):
     """
@@ -75,7 +70,8 @@ class SiteViewer(QWidget):
         self.current_threshold = self.default_threshold
 
         self.default_sort_mode = "position"
-        self.show_all_species = show_all_by_default
+        # Always show all species; the checkbox will be hidden but kept in the layout
+        self.show_all_species = True
 
         # Additional controls if we have all three groups
         self.only_ccs = False
@@ -88,6 +84,8 @@ class SiteViewer(QWidget):
 
         self.initUI()
         self.rebuildTables()
+        # Adjust vertical splitter sizes based on table content
+        self._adjustVerticalSplitter()
 
     def initUI(self):
         self.setWindowTitle("Convergence Viewer")
@@ -112,10 +110,11 @@ class SiteViewer(QWidget):
         self.top_hbox.addWidget(sort_label)
         self.top_hbox.addWidget(self.sort_combo)
 
-        # "Show All Species" checkbox
+        # "Show All Species" checkbox is kept for layout index calculations but hidden from the UI.
         self.showAllCheck = QCheckBox("Show All Species")
-        self.showAllCheck.setChecked(self.show_all_species)
-        self.showAllCheck.stateChanged.connect(self.onShowAllChanged)
+        self.showAllCheck.setChecked(True)  # always on
+        self.showAllCheck.setVisible(False)  # hide from users
+        # No stateChanged connection so users cannot toggle
         self.top_hbox.addWidget(self.showAllCheck)
 
         # If we start with all three groups, create CCS checkboxes right away
@@ -138,23 +137,23 @@ class SiteViewer(QWidget):
 
         # --- TABLES (TOP SPLITTER) ---
         self.top_left_table = QTableWidget()
-        self.top_left_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.top_left_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.top_left_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.top_left_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.top_left_table.verticalHeader().setVisible(False)
         self.top_left_table.horizontalHeader().setVisible(False)
-        self.top_left_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.top_left_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.top_left_table.customContextMenuRequested.connect(
             lambda pos: self.onSpeciesPaneContextMenu(pos, top=True)
         )
         self.top_left_table.horizontalHeader().setStretchLastSection(True)
-        self.top_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.top_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self.top_right_table = QTableWidget()
-        self.top_right_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.top_right_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.top_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.top_right_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.top_right_table.verticalHeader().setVisible(False)
         self.top_right_table.horizontalHeader().setVisible(False)
-        self.top_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.top_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         # Sync vertical scrolling
         self.top_left_table.verticalScrollBar().valueChanged.connect(
@@ -166,29 +165,29 @@ class SiteViewer(QWidget):
         # no horizontal scroll on the left
         self.top_left_table.horizontalScrollBar().setDisabled(True)
 
-        self.top_splitter = QSplitter(Qt.Horizontal)
+        self.top_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.top_splitter.addWidget(self.top_left_table)
         self.top_splitter.addWidget(self.top_right_table)
 
         # --- TABLES (BOTTOM SPLITTER) ---
         self.bottom_left_table = QTableWidget()
-        self.bottom_left_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.bottom_left_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.bottom_left_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bottom_left_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.bottom_left_table.verticalHeader().setVisible(False)
         self.bottom_left_table.horizontalHeader().setVisible(False)
-        self.bottom_left_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.bottom_left_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.bottom_left_table.customContextMenuRequested.connect(
             lambda pos: self.onSpeciesPaneContextMenu(pos, top=False)
         )
         self.bottom_left_table.horizontalHeader().setStretchLastSection(True)
-        self.bottom_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.bottom_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self.bottom_right_table = QTableWidget()
-        self.bottom_right_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.bottom_right_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.bottom_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bottom_right_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.bottom_right_table.verticalHeader().setVisible(False)
         self.bottom_right_table.horizontalHeader().setVisible(False)
-        self.bottom_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.bottom_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         # Sync vertical scrolling
         self.bottom_left_table.verticalScrollBar().valueChanged.connect(
@@ -205,21 +204,26 @@ class SiteViewer(QWidget):
             self.top_right_table.horizontalScrollBar().setValue
         )
 
-        self.bottom_splitter = QSplitter(Qt.Horizontal)
+        self.bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.bottom_splitter.addWidget(self.bottom_left_table)
         self.bottom_splitter.addWidget(self.bottom_right_table)
 
-        self.vertical_splitter = QSplitter(Qt.Vertical)
+        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        # Let the bottom pane take extra vertical space on resize
+        self.vertical_splitter.setStretchFactor(0, 0)  # top minimal but fixed proportion
+        self.vertical_splitter.setStretchFactor(1, 1)  # bottom grows
         self.vertical_splitter.addWidget(self.top_splitter)
         self.vertical_splitter.addWidget(self.bottom_splitter)
 
         # if user unchecks 'Show All Species', we hide bottom
-        self.bottom_splitter.setVisible(self.show_all_species)
+        self.bottom_splitter.setVisible(True)
 
         self.top_splitter.splitterMoved.connect(self.syncHorizontalSplitter)
         self.bottom_splitter.splitterMoved.connect(self.syncHorizontalSplitter)
 
         self.top_splitter.setSizes([240, 960])
+        # Ensure bottom splitter starts at the same position as the top splitter
+        self.bottom_splitter.setSizes(self.top_splitter.sizes())
         main_layout.addWidget(self.vertical_splitter, stretch=1)
 
         # --- THRESHOLD SLIDER + HISTOGRAM ---
@@ -231,7 +235,7 @@ class SiteViewer(QWidget):
         slider_font.setBold(True)
         slider_label.setFont(slider_font)
 
-        self.threshold_slider = QSlider(Qt.Horizontal)
+        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setMinimum(self.min_score)
         self.threshold_slider.setMaximum(self.max_score)
         self.threshold_slider.setValue(self.default_threshold)
@@ -261,7 +265,8 @@ class SiteViewer(QWidget):
         main_layout.addLayout(bottom_hbox, stretch=0)
 
         self.setLayout(main_layout)
-        self.resize(1200, 800)
+        # Provide a taller default window to better fit all tables
+        self.resize(1200, 1000)
 
         # Default sort -> Position Ascending
         self.sort_combo.blockSignals(True)
@@ -335,18 +340,18 @@ class SiteViewer(QWidget):
         """
         Toggles visibility of the 'other species' bottom splitter.
         """
-        self.show_all_species = (state == Qt.Checked)
+        self.show_all_species = (state == Qt.CheckState.Checked)
         if self.show_all_species:
             self.bottom_splitter.setSizes(self.top_splitter.sizes())
-        self.bottom_splitter.setVisible(self.show_all_species)
+        self.bottom_splitter.setVisible(True)
         self.rebuildTables()
 
     def onOnlyCcsChanged(self, state):
-        self.only_ccs = (state == Qt.Checked)
+        self.only_ccs = (state == Qt.CheckState.Checked)
         self.rebuildTables()
 
     def onHideControlConvChanged(self, state):
-        self.hide_control_convergence = (state == Qt.Checked)
+        self.hide_control_convergence = (state == Qt.CheckState.Checked)
         self.rebuildTables()
 
     def onThresholdChanged(self, val):
@@ -631,6 +636,8 @@ class SiteViewer(QWidget):
         self._buildTopTables(filtered_sites)
         self._buildBottomTables(filtered_sites)
         self._unifyCols()
+        # Re-adjust vertical splitter after tables rebuild
+        self._adjustVerticalSplitter()
 
     def _buildTopTables(self, displayed_sites):
         self.top_left_table.clearContents()
@@ -680,7 +687,7 @@ class SiteViewer(QWidget):
 
         def left_item(txt, b=False):
             i = QTableWidgetItem(txt)
-            i.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            i.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if b:
                 i.setFont(bold_f)
             return i
@@ -728,20 +735,20 @@ class SiteViewer(QWidget):
         for c, site in enumerate(displayed_sites):
             pos_str = str(site['position']+1)
             pi = QTableWidgetItem(pos_str)
-            pi.setTextAlignment(Qt.AlignCenter)
+            pi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.top_right_table.setItem(0,c, pi)
 
             sc_val = site['converge_degree']
             sc_str = f"{sc_val}*" if site['is_ccs'] else str(sc_val)
             si = QTableWidgetItem(sc_str)
-            si.setTextAlignment(Qt.AlignCenter)
+            si.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.top_right_table.setItem(1, c, si)
 
             if self.pss_scores:
                 pss_val = self.pss_scores.get(site['position'])
                 pss_str = f"{pss_val:.5f}" if pss_val is not None else ""
                 pi2 = QTableWidgetItem(pss_str)
-                pi2.setTextAlignment(Qt.AlignCenter)
+                pi2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.top_right_table.setItem(2, c, pi2)
 
         # conv
@@ -807,7 +814,7 @@ class SiteViewer(QWidget):
 
         def left_item(txt, b=False):
             i = QTableWidgetItem(txt)
-            i.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            i.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if b:
                 i.setFont(bold_f)
             return i
@@ -844,6 +851,23 @@ class SiteViewer(QWidget):
         for r in range(total_rows):
             self.bottom_right_table.setRowHeight(r,24)
 
+    def _adjustVerticalSplitter(self):
+        """Set vertical splitter sizes so top pane shows conv+ctrl species without scroll if space allows."""
+        if not self.top_left_table.rowCount():
+            return
+        rows = self.top_left_table.rowCount()
+        row_h = self.top_left_table.rowHeight(0) or 24
+        top_needed = rows * row_h + 40  # padding for headers etc.
+        bottom_min = 80  # small minimum height for other species pane
+        total_height = max(self.vertical_splitter.height(), top_needed + bottom_min)
+        # Ensure top isn't bigger than total - bottom_min
+        top_size = min(top_needed, total_height - bottom_min)
+        bottom_size = total_height - top_size
+        self.vertical_splitter.setSizes([top_size, bottom_size])
+
+
+
+
     def _unifyCols(self):
         self.top_right_table.resizeColumnsToContents()
         tcols = self.top_right_table.columnCount()
@@ -865,7 +889,7 @@ class SiteViewer(QWidget):
 
     def make_aa_item(self, aa):
         it = QTableWidgetItem(aa)
-        it.setTextAlignment(Qt.AlignCenter)
+        it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         color_hex = ZAPPO_STATIC_COLORS.get(aa.upper(), "#C8C8C8")
         color = QColor(color_hex)
         avg_rgb = (color.red()+color.green()+color.blue())/3

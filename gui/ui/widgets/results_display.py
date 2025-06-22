@@ -1,7 +1,11 @@
 """
 Dialogs for displaying ESL-PSC analysis results.
 """
+from __future__ import annotations
 import os
+
+# Use shared FASTA reader
+from gui.core.fasta_io import read_fasta
 import pandas as pd
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -26,21 +30,8 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
     if not os.path.exists(align_path):
         raise FileNotFoundError(f"Alignment file not found: {align_path}")
 
-    records = []
-    with open(align_path) as handle:
-        sid = None
-        seq_lines = []
-        for line in handle:
-            line = line.strip()
-            if line.startswith(">"):
-                if sid is not None:
-                    records.append((sid, "".join(seq_lines)))
-                sid = line[1:]
-                seq_lines = []
-            else:
-                seq_lines.append(line)
-        if sid is not None:
-            records.append((sid, "".join(seq_lines)))
+    # Load alignment records using shared FASTA reader for reliability/consistency
+    records = read_fasta(align_path)
 
     # Determine species groups from first response matrix
     response_dir = config.response_dir
@@ -76,8 +67,8 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
         except Exception:
             pass
 
+    # Launch as independent top-level window (no parent) so it opens separately
     viewer = SiteViewer(records, conv, ctrl, [], all_sites_info, False, pss_map)
-    viewer.setParent(parent)
     viewer.show()
     _open_dialogs.append(viewer)
 
