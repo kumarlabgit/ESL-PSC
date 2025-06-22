@@ -10,8 +10,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush, QFont
 from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QSlider, QComboBox, QCheckBox, QLabel, QPushButton,
-    QAbstractItemView, QMessageBox, QMenu
+    QSplitter, QSlider, QComboBox, QLabel, QPushButton, QRadioButton,
+    QButtonGroup, QCheckBox, QAbstractItemView, QMessageBox, QMenu
 )
 
 # point to your shared constants and canvas
@@ -66,8 +66,11 @@ class SiteViewer(QWidget):
         self.min_score = min(self.scores) if self.scores else 0
         self.max_score = max(self.scores) if self.scores else 0
 
-        self.default_threshold = self.determine_default_threshold()
+        # Use constant default threshold of 2; will be clamped later if needed
+        self.default_threshold = 2
         self.current_threshold = self.default_threshold
+        # Flag to ensure we only auto-align the threshold once
+        self._initial_threshold_aligned = False
 
         self.default_sort_mode = "position"
         # Always show all species; the checkbox will be hidden but kept in the layout
@@ -76,6 +79,9 @@ class SiteViewer(QWidget):
         # Additional controls if we have all three groups
         self.only_ccs = False
         self.hide_control_convergence = False
+        # Filter for ESL-PSC selected sites
+        self.only_selected = False
+        self.has_selected_sites = bool(self.pss_scores)
 
         # Are all 3 groups non-empty?
         self.has_all_three = bool(self.convergent_species) and bool(self.control_species) and bool(self.outgroup_species)
@@ -117,21 +123,52 @@ class SiteViewer(QWidget):
         # No stateChanged connection so users cannot toggle
         self.top_hbox.addWidget(self.showAllCheck)
 
-        # If we start with all three groups, create CCS checkboxes right away
-        if self.has_all_three:
-            self.onlyCcsCheck = QCheckBox("Show Only CCS Sites")
-            self.onlyCcsCheck.stateChanged.connect(self.onOnlyCcsChanged)
-            self.top_hbox.addWidget(self.onlyCcsCheck)
+        # --- Filters dropdown ---
+        filters_label = QLabel("Filters:")
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("No Filter")                    # idx 0
+        self.filter_combo.addItem("Show Only Selected Sites")     # idx 1
+        self.filter_combo.addItem("Show Only CCS Sites")          # idx 2
 
-            self.hideControlConvCheck = QCheckBox("Hide Control Convergence")
-            self.hideControlConvCheck.stateChanged.connect(self.onHideControlConvChanged)
-            self.top_hbox.addWidget(self.hideControlConvCheck)
+        # Disable options based on data availability
+        self.filter_combo.model().item(1).setEnabled(self.has_selected_sites)
+        self.filter_combo.model().item(2).setEnabled(self.has_all_three)
+
+        # Default selection
+        default_index = 1 if self.has_selected_sites else 0
+        self.filter_combo.setCurrentIndex(default_index)
+        # Initialise flags BEFORE connecting signal
+        self.only_selected = (default_index == 1)
+        self.only_ccs      = (default_index == 2)
+
+        self.filter_combo.currentIndexChanged.connect(self.onFilterChanged)
+
+        self.top_hbox.addWidget(filters_label)
+        self.top_hbox.addWidget(self.filter_combo)
+
+        # Placeholders for backward compatibility (old radio buttons removed)
+        self.onlySelectedCheck = None
+        self.onlyCcsCheck = None
+
+        # Hide Control Convergence checkbox (independent)
+        self.hideControlConvCheck = QCheckBox("Hide Control Convergence")
+        self.hideControlConvCheck.stateChanged.connect(self.onHideControlConvChanged)
+        self.top_hbox.addWidget(self.hideControlConvCheck)
+        # Set initial visibility based on current filter
+        self.updateHideControlConvVisibility()
+
+        # Helper to refresh enabled/disabled state based on data availability
+        self.updateFilterComboStates()
 
         # Help button on far right
         self.help_button = QPushButton("Help")
         self.help_button.clicked.connect(self.showHelp)
         self.top_hbox.addStretch(1)
         self.top_hbox.addWidget(self.help_button)
+
+        # ----------------------------------------------------------------------------------
+        # END of UI setup -----------------------------------------------------------------
+        # ----------------------------------------------------------------------------------
 
         main_layout.addLayout(self.top_hbox)
 
@@ -277,30 +314,27 @@ class SiteViewer(QWidget):
 
 
     def showHelp(self):
-        """Restored explanation of how the convergence score is calculated,
-        including new gap penalty and other details.
-        """
+        """Help dialog content for the ESL-PSC Site Viewer."""
         msg = (
-            "<b>Convergence Score Calculation</b><br>"
-            "We examine alignment columns for differences between Convergent vs. Control usage, ignoring singletons. "
-            "Each gap in the Convergent or Control group reduces the final score by 1 (minimum 0). "
-            "Outgroup gaps are ignored for the gap penalty. The sum of absolute differences in amino-acid usage "
-            "gives the raw score, and then we apply the gap penalty.<br><br>"
-            "<b>CCS Sites</b>: If all Control share the same residue as all Outgroup, and at least 2 Convergent share "
-            "a different residue, we mark that site with an asterisk in the score cell. CCS stands for \"Convergence at Conservative Sites\" "
-            "(See: Xu, Shaohua, Ziwen He, Zixiao Guo, Zhang Zhang, Gerald J. Wyckoff, Anthony Greenberg, Chung-I Wu, and Suhua Shi. 2017."
-            "“Genome-Wide Convergence during Evolution of Mangroves from Woody Plants.” Molecular Biology and Evolution 34 (4): 1008–15.)<br><br>"
-            "<b>Other Controls</b>:<br>"
-            "• Sort Sites By: Ascending position (default) or descending Convergence Score.<br>"
-            "• Threshold Slider: Only show sites >= that score.<br>"
-            "• Show All Species: Toggle the lower pane for 'other' species not in Convergent, Control, or Outgroup.<br>"
-            "• Show Only CCS Sites: If all three species groups exist, this hides non-CCS sites.<br>"
-            "• Hide Control Convergence: If all three species groups exist, hides sites where Convergent's dominant residue "
-            "is the same as Control/Outgroup's residue.<br><br>"
-            "• Right-click on the species names to move them between groups. "
-            "When group membership changes, scores are recalculated."
+            "<h3>ESL-PSC Site Viewer Help</h3>"
+            "<b>Purpose</b>: Explore per-site convergence statistics generated by an ESL-PSC run.<br><br>"
+            "<b>Species Categories</b>: Convergent, Control, Outgroup and Other.<br>"
+            "Right-click a species name to move it between Categories. Whenever Categories membership changes, the scores, CCS flags and histogram refresh automatically.<br><br>"
+            "<b>Filters</b>:<br>"
+            "• <i>No Filter</i> – show all sites.<br>"
+            "• <i>Show Only Selected Sites</i> – show sites listed in the PSS (Predicted Selected Sites) file.<br>"
+            "• <i>Show Only CCS Sites</i> – available only when all three focal Categories exist; shows sites meeting the CCS definition below.<br>"
+            "• <i>Hide Control Convergence</i> – visible when all three focal Categories exist; hides sites where the Convergent residue matches the Outgroup residue and ≥2 Control species share a different residue.<br><br>"
+            "<b>Convergence Score</b>: For each alignment column we sum the absolute differences in amino-acid usage between the Convergent and Control groups, then subtract 1 for every gap ('-') in those two groups (minimum 0). Gaps in the Outgroup are ignored for this penalty.<br><br>"
+            "<b>CCS (Convergence at Conservative Sites)</b>: All Control and Outgroup species share residue R and at least two Convergent species share a residue ≠ R. Such sites are flagged with an asterisk. See: Xu et al. 2017, Mol. Biol. Evol., https://doi.org/10.1093/molbev/msw277<br>"
+            "<b>Control-Convergence</b>: All Convergent match Outgroup residue R and at least two Control species share a residue ≠ R. Use the checkbox to hide these sites.<br><br>"
+            "<b>Other Controls & Tips</b>:<br>"
+            "• Sort Sites By – position (ascending) or score (descending).<br>"
+            "• Threshold slider – show only sites with score ≥ chosen threshold (default 2; the red dashed line in the histogram marks the threshold).<br>"
+            "• Show All Species – toggles visibility of the 'Other' species table.<br><br>"
+            "See the ESL-PSC documentation for further details."
         )
-        QMessageBox.information(self, "Help: Convergence Viewer v1.1", msg)
+        QMessageBox.information(self, "Help: ESL-PSC Site Viewer", msg)
 
     def syncHorizontalSplitter(self, pos, index):
         if self._syncing_horizontal_splitters:
@@ -346,13 +380,43 @@ class SiteViewer(QWidget):
         self.bottom_splitter.setVisible(True)
         self.rebuildTables()
 
-    def onOnlyCcsChanged(self, state):
-        self.only_ccs = (state == Qt.CheckState.Checked)
+    def onOnlyCcsChanged(self, checked):
+        """Radio toggled for CCS filter."""
+        self.only_ccs = bool(checked)
+        # ensure mutual exclusivity handled by button group
         self.rebuildTables()
 
     def onHideControlConvChanged(self, state):
         self.hide_control_convergence = (state == Qt.CheckState.Checked)
         self.rebuildTables()
+
+    def onOnlySelectedChanged(self, checked):
+        """Radio toggled for selected sites filter."""
+        self.only_selected = bool(checked)
+        self.rebuildTables()
+
+    # --------------------------- Filter helpers ---------------------------
+    def onFilterChanged(self, idx):
+        """Handle dropdown selection change."""
+        self.only_selected = (idx == 1)
+        self.only_ccs = (idx == 2)
+        self.updateHideControlConvVisibility()
+        self.rebuildTables()
+
+    def updateHideControlConvVisibility(self):
+        # Visible whenever all three species groups are present
+        self.hideControlConvCheck.setVisible(self.has_all_three)
+
+    def updateFilterComboStates(self):
+        # Enable or disable dropdown items based on data availability
+        self.filter_combo.model().item(1).setEnabled(self.has_selected_sites)
+        self.filter_combo.model().item(2).setEnabled(self.has_all_three)
+        # If current selection is disabled, reset to first valid option
+        if not self.filter_combo.model().item(self.filter_combo.currentIndex()).isEnabled():
+            new_idx = 1 if self.has_selected_sites else 0
+            self.filter_combo.setCurrentIndex(new_idx)
+
+    # --------------------------------------------------------------------
 
     def onThresholdChanged(self, val):
         self.current_threshold = val
@@ -396,7 +460,7 @@ class SiteViewer(QWidget):
             toCtrl = menu.addAction("Move to Control")
             toOut = menu.addAction("Move to Outgroup")
             toOther = menu.addAction("Move to Other")
-            chosen = menu.exec_(table.mapToGlobal(pos))
+            chosen = menu.exec(table.mapToGlobal(pos))
             if chosen == toCtrl:
                 self.convergent_species.remove(sp_name)
                 self.control_species.append(sp_name)
@@ -412,7 +476,7 @@ class SiteViewer(QWidget):
             toConv = menu.addAction("Move to Convergent")
             toOut = menu.addAction("Move to Outgroup")
             toOther = menu.addAction("Move to Other")
-            chosen = menu.exec_(table.mapToGlobal(pos))
+            chosen = menu.exec(table.mapToGlobal(pos))
             if chosen == toConv:
                 self.control_species.remove(sp_name)
                 self.convergent_species.append(sp_name)
@@ -428,7 +492,7 @@ class SiteViewer(QWidget):
             toConv = menu.addAction("Move to Convergent")
             toCtrl = menu.addAction("Move to Control")
             toOther = menu.addAction("Move to Other")
-            chosen = menu.exec_(table.mapToGlobal(pos))
+            chosen = menu.exec(table.mapToGlobal(pos))
             if chosen == toConv:
                 self.outgroup_species.remove(sp_name)
                 self.convergent_species.append(sp_name)
@@ -444,7 +508,7 @@ class SiteViewer(QWidget):
             toConv = menu.addAction("Move to Convergent")
             toCtrl = menu.addAction("Move to Control")
             toOut = menu.addAction("Move to Outgroup")
-            chosen = menu.exec_(table.mapToGlobal(pos))
+            chosen = menu.exec(table.mapToGlobal(pos))
             if chosen == toConv:
                 self.convergent_species.append(sp_name)
                 self.convergent_species.sort()
@@ -465,43 +529,18 @@ class SiteViewer(QWidget):
         self.has_all_three = new_has_all_three
 
         if new_has_all_three and not old_has_all_three:
-            # Calculate the index of the "Show All Species" checkbox.
-            # We want to insert new checkboxes right after this widget.
-            show_all_index = self.top_hbox.indexOf(self.showAllCheck)
-            insert_index = show_all_index + 1  # position immediately after "Show All Species"
-
-            # Add "Show Only CCS Sites" checkbox if not already present
-            if self.onlyCcsCheck is None:
-                self.onlyCcsCheck = QCheckBox("Show Only CCS Sites")
-                self.onlyCcsCheck.stateChanged.connect(self.onOnlyCcsChanged)
-                # Insert the checkbox at our calculated position
-                self.top_hbox.insertWidget(insert_index, self.onlyCcsCheck)
-                insert_index += 1  # Increment index for next insertion
-
-            # Add "Hide Control Convergence" checkbox if not already present
-            if self.hideControlConvCheck is None:
-                self.hideControlConvCheck = QCheckBox("Hide Control Convergence")
-                self.hideControlConvCheck.stateChanged.connect(self.onHideControlConvChanged)
-                # Insert next to the previous widget (still right after Show All Species)
-                self.top_hbox.insertWidget(insert_index, self.hideControlConvCheck)
+            # CCS filter becomes available
+            self.updateFilterComboStates()
+            self.updateHideControlConvVisibility()
+            # All UI widgets already exist; just update dropdown states
 
         elif not new_has_all_three and old_has_all_three:
-            # We lost a group => remove checkboxes if they exist
-            if self.onlyCcsCheck is not None:
-                # Reset the internal 'only_ccs' state to False
-                self.only_ccs = False
-
-                self.top_hbox.removeWidget(self.onlyCcsCheck)
-                self.onlyCcsCheck.deleteLater()
-                self.onlyCcsCheck = None
-
-            if self.hideControlConvCheck is not None:
-                # Reset the internal 'hide_control_convergence' state to False
-                self.hide_control_convergence = False
-
-                self.top_hbox.removeWidget(self.hideControlConvCheck)
-                self.hideControlConvCheck.deleteLater()
-                self.hideControlConvCheck = None
+            # Lost a group; CCS filter no longer available
+            self.updateFilterComboStates()
+            self.updateHideControlConvVisibility()
+            # No need to remove any widgets; just reset states as needed
+            self.only_ccs = False
+            self.hide_control_convergence = False
 
         # now recalc scores + rebuild
         self.recalc_scores()
@@ -553,33 +592,48 @@ class SiteViewer(QWidget):
             if final_score < 0:
                 final_score = 0
 
-            # CCS detection if we have all 3 groups
+            # CCS / Control-Convergence detection if we have all 3 groups
             is_ccs = False
             conv_same_as_ctrl = False
             if self.has_all_three:
+                # Cleaned residue lists (exclude gaps and '?')
+                clean_conv = [x for x in conv_aa if x not in ('?', '-')]
                 clean_ctrl = [x for x in ctrl_aa if x not in ('?', '-')]
-                clean_out  = [x for x in out_aa if x not in ('?', '-')]
+                clean_out  = [x for x in out_aa  if x not in ('?', '-')]
 
-                if len(clean_ctrl) == len(ctrl_aa) and len(clean_out) == len(out_aa):
-                    if len(set(clean_ctrl)) == 1 and len(set(clean_out)) == 1:
-                        if list(set(clean_ctrl))[0] == list(set(clean_out))[0]:
-                            clean_conv = [x for x in conv_aa if x not in ('?', '-')]
-                            ctrl_res = clean_ctrl[0]
-                            from collections import Counter
-                            conv_counter = Counter(clean_conv)
-                            for rrr, ccount in conv_counter.items():
-                                if rrr != ctrl_res and ccount >= 2:
-                                    is_ccs = True
-                                    break
+                # --------------------------------------------------
+                # CCS site (original definition):
+                #   Control & Outgroup share residue R
+                #   ≥2 Convergent share residue != R
+                # --------------------------------------------------
+                if (
+                    clean_ctrl and clean_out and
+                    len(set(clean_ctrl)) == 1 and len(set(clean_out)) == 1 and
+                    list(set(clean_ctrl))[0] == list(set(clean_out))[0]
+                ):
+                    ctrl_res = clean_ctrl[0]
+                    from collections import Counter
+                    conv_counter = Counter(clean_conv)
+                    for res, cnt in conv_counter.items():
+                        if res != ctrl_res and cnt >= 2:
+                            is_ccs = True
+                            break
 
-                # Hide-control-convergence detection:
-                # Hide if all non-gap Convergent species match the shared Control/Outgroup residue and no singletons.
-                if len(set(clean_ctrl)) == 1 and len(set(clean_out)) == 1:
-                    shared_res = list(set(clean_ctrl))[0]
-                    if shared_res == list(set(clean_out))[0]:
-                        # Check that all non-gap species in Convergent match shared_res and there are no '?'
-                        if all((x == shared_res or x == '-') for x in conv_aa) and '?' not in conv_aa:
-                            conv_same_as_ctrl = True
+                # --------------------------------------------------
+                # Control-convergence (inverse of CCS):
+                #   Convergent group matches Outgroup residue R
+                #   ≥2 Control species share residue ≠ R
+                # --------------------------------------------------
+                if clean_out and len(set(clean_out)) == 1:
+                    out_res = clean_out[0]
+                    # All convergent match out_res
+                    if clean_conv and all(r == out_res for r in clean_conv):
+                        from collections import Counter
+                        ctrl_counter = Counter(clean_ctrl)
+                        for res, cnt in ctrl_counter.items():
+                            if res != out_res and cnt >= 2:
+                                conv_same_as_ctrl = True
+                                break
 
 
             new_info = {
@@ -592,21 +646,33 @@ class SiteViewer(QWidget):
 
         self.all_sites_info = updated_sites
         self.scores = [s['converge_degree'] for s in updated_sites]
-        self.hist_canvas.plot_scores(self.scores, self.current_threshold)
 
-        # Update slider range based on new scores
+        # Update slider bounds to reflect new score range
         self.min_score = min(self.scores) if self.scores else 0
         self.max_score = max(self.scores) if self.scores else 0
         self.threshold_slider.setMinimum(self.min_score)
         self.threshold_slider.setMaximum(self.max_score)
 
-        # Ensure current threshold is within new bounds
-        if self.current_threshold < self.min_score:
-            self.current_threshold = self.min_score
+        # Auto-align threshold once at start
+        if not self._initial_threshold_aligned:
+            if not (self.min_score <= self.current_threshold <= self.max_score):
+                self.current_threshold = max(self.min_score, min(self.max_score, self.default_threshold))
+            self.threshold_slider.blockSignals(True)
             self.threshold_slider.setValue(self.current_threshold)
-        elif self.current_threshold > self.max_score:
-            self.current_threshold = self.max_score
-            self.threshold_slider.setValue(self.current_threshold)
+            self.threshold_slider.blockSignals(False)
+            self.current_threshold_label.setText(str(self.current_threshold))
+            self._initial_threshold_aligned = True
+        else:
+            # Keep threshold within bounds if scores changed drastically
+            if self.current_threshold < self.min_score:
+                self.current_threshold = self.min_score
+                self.threshold_slider.setValue(self.current_threshold)
+            elif self.current_threshold > self.max_score:
+                self.current_threshold = self.max_score
+                self.threshold_slider.setValue(self.current_threshold)
+
+        # Redraw histogram using the (possibly updated) threshold
+        self.hist_canvas.plot_scores(self.scores, self.current_threshold)
         
 
     def rebuildTables(self):
@@ -621,6 +687,8 @@ class SiteViewer(QWidget):
             if self.has_all_three and self.only_ccs and not s['is_ccs']:
                 continue
             if self.has_all_three and self.hide_control_convergence and s['conv_same_as_ctrl']:
+                continue
+            if self.only_selected and s['position'] not in self.pss_scores:
                 continue
             filtered_sites.append(s)
 
@@ -746,7 +814,7 @@ class SiteViewer(QWidget):
 
             if self.pss_scores:
                 pss_val = self.pss_scores.get(site['position'])
-                pss_str = f"{pss_val:.5f}" if pss_val is not None else ""
+                pss_str = f"{pss_val:.3f}" if pss_val is not None else ""
                 pi2 = QTableWidgetItem(pss_str)
                 pi2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.top_right_table.setItem(2, c, pi2)
@@ -864,8 +932,6 @@ class SiteViewer(QWidget):
         top_size = min(top_needed, total_height - bottom_min)
         bottom_size = total_height - top_size
         self.vertical_splitter.setSizes([top_size, bottom_size])
-
-
 
 
     def _unifyCols(self):
