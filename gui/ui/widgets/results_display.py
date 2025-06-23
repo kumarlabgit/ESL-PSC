@@ -154,7 +154,14 @@ class GeneRanksDialog(QDialog):
         else:
             self._init_table_view(layout, df)
 
-        self.resize(900, 600)
+        # Set a wider initial size to better accommodate the content
+        self.resize(1200, 800)
+        
+        # Ensure the window is scrollable if content is too wide
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Set a minimum size to prevent the window from being too small
+        self.setMinimumSize(1000, 600)
 
     def _open_site_viewer(self, row_or_item, _column: int) -> None:
         """Launch :class:`SiteViewer` for the selected gene."""
