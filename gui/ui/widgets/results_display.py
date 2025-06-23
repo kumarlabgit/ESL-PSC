@@ -10,7 +10,8 @@ import pandas as pd
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
-    QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox
+    QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
+    QLabel, QHeaderView
 )
 from PyQt6.QtSvgWidgets import QSvgWidget
 
@@ -141,6 +142,13 @@ class GeneRanksDialog(QDialog):
 
         self.has_sites = bool(sites_path and os.path.exists(sites_path))
 
+        msg = "Double-click a row to open the Site Viewer."
+        if self.has_sites:
+            msg += " Use the expand/collapse arrows to reveal selected sites for each gene."
+        help_label = QLabel(msg)
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
         if self.has_sites:
             self._init_tree_view(layout, df)
         else:
@@ -198,6 +206,8 @@ class GeneRanksDialog(QDialog):
         self.tree.setColumnCount(len(headers))
         self.tree.setHeaderLabels(headers)
         self.tree.setUniformRowHeights(True)
+        self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.tree.setColumnWidth(2, 520)
 
         align_dir = getattr(self.config, 'alignments_dir', '')
 
