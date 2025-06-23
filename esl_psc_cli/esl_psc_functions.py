@@ -670,8 +670,21 @@ class ESLRun():
                             '-r', preprocessed_dir_name + '/response_' +
                             preprocessed_dir_name + '.txt',
                             '-w', output_name + '_out_feature_weights']
-        # run esl
-        subprocess.run(' '.join(esl_command_list), shell=True, check=True)
+        # run esl and silence noisy output from the underlying binary.  We still
+        # capture stdout/stderr so that errors can be surfaced if the command
+        # fails, but we do not display the informational messages printed by the
+        # SLEP implementation during normal operation.
+        proc = subprocess.run(
+            ' '.join(esl_command_list),
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            # If the lasso run failed, show captured output for debugging.
+            print(proc.stdout)
+            print(proc.stderr, file=sys.stderr)
+            proc.check_returncode()
         
         # Extract feature weights directly from the generated XML.  The
         # original implementation relied on external ``grep``/``sed``
