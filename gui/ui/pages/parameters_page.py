@@ -5,6 +5,7 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWizard
+from gui.ui.widgets.file_selectors import FileSelector
 from dataclasses import fields
 from gui.core.config import ESLConfig
 from PyQt6.QtWidgets import (
@@ -367,9 +368,29 @@ class ParametersPage(BaseWizardPage):
         # Set initial config values
         self.config.cancel_only_partner = True
         self.config.min_pairs = 2
+        self.config.use_existing_alignments = False
+        self.config.canceled_alignments_dir = ""
         min_pairs_layout.addWidget(self.min_pairs)
         min_pairs_layout.addStretch()
         del_cancel_layout.addLayout(min_pairs_layout)
+
+
+        # Use existing deletion-canceled alignments
+        self.use_existing_alignments = QCheckBox("Use existing deletion-canceled alignments")
+        self.use_existing_alignments.setToolTip(
+            "Skip deletion canceling and use a folder of pre-canceled alignments instead."
+        )
+        self.use_existing_alignments.stateChanged.connect(self._update_use_existing_alignments_state)
+        del_cancel_layout.addWidget(self.use_existing_alignments)
+
+        self.canceled_alignments_selector = FileSelector(
+            "Canceled Alignments Directory:", 'directory', default_path=os.getcwd()
+        )
+        self.canceled_alignments_selector.path_changed.connect(
+            lambda p: setattr(self.config, 'canceled_alignments_dir', p)
+        )
+        self.canceled_alignments_selector.setVisible(False)
+        del_cancel_layout.addWidget(self.canceled_alignments_selector)
 
         # --- Use existing preprocess option
         self.use_existing_preprocess = QCheckBox("Use existing preprocess")
@@ -805,6 +826,9 @@ class ParametersPage(BaseWizardPage):
         self.nix_full_deletions.setChecked(self.config.nix_full_deletions)
         self.cancel_only_partner.setChecked(self.config.cancel_only_partner)
         self.min_pairs.setValue(self.config.min_pairs)
+        self.use_existing_alignments.setChecked(self.config.use_existing_alignments)
+        self.canceled_alignments_selector.set_path(self.config.canceled_alignments_dir)
+        self.canceled_alignments_selector.setVisible(self.config.use_existing_alignments)
 
         # Null models
         self.no_null_btn.setChecked(True)
@@ -867,6 +891,9 @@ class ParametersPage(BaseWizardPage):
         self.nix_full_deletions.setChecked(cfg.nix_full_deletions)
         self.cancel_only_partner.setChecked(cfg.cancel_only_partner)
         self.min_pairs.setValue(cfg.min_pairs)
+        self.use_existing_alignments.setChecked(getattr(cfg, 'use_existing_alignments', False))
+        self.canceled_alignments_selector.set_path(getattr(cfg, 'canceled_alignments_dir', ''))
+        self.canceled_alignments_selector.setVisible(getattr(cfg, 'use_existing_alignments', False))
         # Update Output Files radios from config (block signals so we don’t write back immediately)
         for btn in (self.genes_only_btn, self.preds_only_btn, self.both_outputs_btn):
             btn.blockSignals(True)
@@ -1051,6 +1078,17 @@ class ParametersPage(BaseWizardPage):
         if not is_checked:
             # Set a default value that will be ignored by the CLI
             self.config.min_pairs = 0
+
+    def _update_use_existing_alignments_state(self, state):
+        """Show or hide the canceled alignments selector when the checkbox changes."""
+        is_checked = state == 2
+        self.config.use_existing_alignments = is_checked
+        if hasattr(self, 'canceled_alignments_selector'):
+            self.canceled_alignments_selector.setVisible(is_checked)
+        if not is_checked:
+            if hasattr(self, 'canceled_alignments_selector'):
+                self.canceled_alignments_selector.clear()
+            self.config.canceled_alignments_dir = ""
     
     def _update_penalty_type(self, penalty_type):
         """

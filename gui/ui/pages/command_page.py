@@ -303,6 +303,8 @@ class CommandPage(BaseWizardPage):
             deletion_text += "; Use existing preprocess"
 
         self.add_summary_item(layout, "Deletion Handling:", deletion_text)
+        if getattr(self.config, 'use_existing_alignments', False) and getattr(self.config, 'canceled_alignments_dir', ''):
+            self.add_summary_item(layout, "Existing Canceled Alignments:", self.config.canceled_alignments_dir)
             
         # Null model options
         null_opts = []
