@@ -198,6 +198,12 @@ class ESLWizard(QWizard):
         is_dark_mode = window_lum < text_lum          # darker background → dark theme
         border_color = "rgba(255, 255, 255, 180)" if is_dark_mode else "rgba(0, 0, 0, 80)"
 
+        # User prefers the default Qt look – disable the custom stylesheet entirely
+        qApp = QApplication.instance()
+        if qApp:
+            qApp.setStyleSheet("")  # clear any previously-set stylesheet
+        return  # Skip the custom stylesheet construction below
+
         # DEBUG: print once every time the stylesheet is (re)applied
         print(f"[apply_stylesheet] dark_mode={is_dark_mode}  "
               f"window_lum={window_lum}  text_lum={text_lum}  border={border_color}")
@@ -273,6 +279,8 @@ class ESLWizard(QWizard):
         """
         # Substitute the placeholder token with the real colour
         css = css.replace("__BORDER__", border_color)
+        # Convert doubled braces used for string-format escaping to single braces
+        css = css.replace("{{", "{").replace("}}", "}")
 
         # Apply to the entire application so every widget—present and future—
         # inherits the same QSS, and dark-mode borders cannot be overridden
