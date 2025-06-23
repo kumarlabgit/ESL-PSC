@@ -422,8 +422,8 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
 def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                           min_genes = 0, plot_type = 'violin'):
     '''calls sps_density.create_sps_plot for each of a series of RMSE ranks.
-    pheno_names is a tuple with the +1 pheno name first and the -1 pheno 2nd,
-    or if it isn't given the defaults will be used.  plot type can be 'kde' or
+    pheno_names is a tuple with the +1 phenotype name first and the -1 phenotype second.
+    If not provided, the defaults "Positive" and "Negative" will be used. Plot type can be 'kde' or
     violin (violin will assign anything > 1 or < -1 to 1 and -1 respectively
     by default to make it easier to see the region of overlap.
     '''
@@ -457,7 +457,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     fig_path = os.path.join(os.path.split(pred_csv_path)[0],
                             title + '_pred_sps_plot.svg')
     if not pheno_names: # set phenotype names
-        pheno_names = (1, -1)
+        pheno_names = ("Positive", "Negative")
     pos_pheno_name = pheno_names[0]
     neg_pheno_name = pheno_names[1]
         
