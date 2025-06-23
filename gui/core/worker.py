@@ -36,6 +36,15 @@ class ESLWorker(QRunnable):
         # Track current combo index for prettier status messages
         self.current_combo: int | None = None
         self.total_combos: int | None = None
+        # Keep the alignments directory for preprocessing progress fallback
+        self.alignments_dir: str | None = None
+        if '--alignments_dir' in self.command_args:
+            try:
+                idx = self.command_args.index('--alignments_dir') + 1
+                if idx < len(self.command_args):
+                    self.alignments_dir = self.command_args[idx]
+            except Exception:
+                self.alignments_dir = None
     
     @pyqtSlot()
     def run(self):
@@ -124,6 +133,14 @@ class ESLWorker(QRunnable):
                     # Reset counters for per-file progress
                     self.pre_total_files: int | None = None
                     self.pre_current_file: int = 0
+                    if self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                        try:
+                            self.pre_total_files = len([
+                                f for f in os.listdir(self.worker.alignments_dir)
+                                if f.endswith('.fas')
+                            ])
+                        except Exception:
+                            self.pre_total_files = None
                     self.signals.step_status.emit(friendly)
                     self.signals.output.emit(friendly)
                     self.signals.step_progress.emit(0)
@@ -154,12 +171,25 @@ class ESLWorker(QRunnable):
                         if paths_file and os.path.isfile(paths_file):
                             with open(paths_file, "r", encoding="utf-8", errors="ignore") as pf:
                                 self.pre_total_files = sum(1 for _ in pf)
+                        elif self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                            self.pre_total_files = len([
+                                f for f in os.listdir(self.worker.alignments_dir)
+                                if f.endswith('.fas')
+                            ])
                     except Exception:
                         self.pre_total_files = None
                     return True  # suppress command line output
 
                 # Preprocess per-file progress
                 if line.startswith("Processing FASTA file"):
+                    if self.pre_total_files is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                        try:
+                            self.pre_total_files = len([
+                                f for f in os.listdir(self.worker.alignments_dir)
+                                if f.endswith('.fas')
+                            ])
+                        except Exception:
+                            self.pre_total_files = None
                     if getattr(self, "pre_total_files", None):
                         self.pre_current_file += 1
                         pct = int(self.pre_current_file / self.pre_total_files * 100)
