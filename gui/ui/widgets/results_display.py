@@ -97,7 +97,7 @@ class SpsPlotDialog(QDialog):
         svg_widget = QSvgWidget(svg_path)
         svg_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(svg_widget)
-        self.resize(800, 600)
+        self.resize(680, 600)  
 
     @staticmethod
     def show_dialog(svg_path, parent=None):

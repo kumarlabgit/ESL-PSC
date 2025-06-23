@@ -686,10 +686,7 @@ class ESLRun():
             print(proc.stderr, file=sys.stderr)
             proc.check_returncode()
         
-        # Extract feature weights directly from the generated XML.  The
-        # original implementation relied on external ``grep``/``sed``
-        # commands which are not available on Windows.  Using regular
-        # expressions keeps the parsing fast and portable.
+        # Extract feature weights directly from the generated XML. 
         xml_path = (
             f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
         )
@@ -734,6 +731,9 @@ class ESLRun():
         self.species_scores = defaultdict(lambda: 0.0)
 
         ###### tally all selected sites ######
+        # Helper dict to accumulate absolute weights per site for *this* run
+        # Key: gene object, Value: dict(position -> abs-weight-sum)
+        run_site_sums = defaultdict(lambda: defaultdict(float))
         # get lines of esl model feature weights from the lasso output txt file
         weights_file = open(self.output,'r') # model weights for sites
         for position_line in weights_file:
@@ -755,10 +755,9 @@ class ESLRun():
             else: # normally this.  only_pos_gss is False by default
                 included_gene_weights[current_gene_obj] += abs(weight)
 
-            ### add site to gene's sites ###
-            if (current_gene_obj.selected_sites[position] < weight
-                and weight> 0 and sites):
-                current_gene_obj.selected_sites[position] = weight
+            # Accumulate absolute weight for PSS (sum within this run)
+            if sites:
+                run_site_sums[current_gene_obj][position] += abs(weight)
             
             ### Predictions  ###
             # adjust species scores tally by checking sequences
@@ -789,9 +788,17 @@ class ESLRun():
                         if line[position] == aa_to_check_for: # 0-indexed
                             self.species_scores[species] += weight #add the site
                 input_alignment_file.close()
+        # After processing all weights, update per-gene selected_sites dict
+        if sites:
+            for gene_obj, pos_map in run_site_sums.items():
+                for pos, pss_sum in pos_map.items():
+                    # Keep the maximum PSS seen across all runs
+                    if pss_sum > gene_obj.selected_sites[pos]:
+                        gene_obj.selected_sites[pos] = pss_sum
+
         weights_file.close()
         for sp in self.species_scores:
-            self.species_scores[sp] += self.y_intercept #add intercept to all scores
+            self.species_scores[sp] += self.y_intercept  # add intercept to all scores
         
         ###### calculate input species RMSE (MFS) ######
         if not skip_pred:

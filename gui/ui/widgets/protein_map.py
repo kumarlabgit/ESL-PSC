@@ -12,7 +12,7 @@ class ProteinMapWidget(QWidget):
         self.setMinimumHeight(30)  # Increased minimum height for better visibility
         # Ensure the widget is wide enough to be visible when embedded in tables
         self.setMinimumWidth(500)
-        self.setMaximumHeight(60)  # Increased maximum height to accommodate extended lines
+        self.setMaximumHeight(50)  # Increased maximum height to accommodate extended lines
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -32,7 +32,7 @@ class ProteinMapWidget(QWidget):
         painter.setPen(pen)
         
         # Draw site lines extending above and below the protein bar
-        extension = 5  # Pixels to extend lines above and below
+        extension = 3  # Pixels to extend lines above and below
         for site in self.sites:
             x = int(site / self.length * self.width())
             # Draw line from top extension to bottom extension through the bar
