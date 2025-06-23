@@ -294,7 +294,7 @@ def main(raw_args=None):
                     type = str)
     group.add_argument('--top_rank_frac',
                         help = 'Fraction of genes to count as "top genes"',
-                        type = float, default = .01)
+                        type = float, default = 0.01)
     
     # Options 
     group.add_argument('--response_dir',

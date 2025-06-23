@@ -188,7 +188,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--limited_genes_list`: Use only genes in this list. One file per line.
 
 ##### Multimatrix-specific Optional Arguments:
-* `--top_rank_frac`: Fraction of genes to count as "top genes."  The default is .01 (1%)
+* `--top_rank_frac`: Fraction of genes to count as "top genes" for the purpose of rankings across multiple species combinations. A setting of 0 will result in counting the single highest ranked gene as a top gene. The default is 0.01 (1%).
 * `--response_dir`: Folder with response matrices. Any txt file in this folder is assumed to be a response matrix file.
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
@@ -200,8 +200,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)) 
+1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
+2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
 
 A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
 

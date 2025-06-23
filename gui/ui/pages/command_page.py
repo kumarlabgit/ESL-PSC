@@ -298,6 +298,10 @@ class CommandPage(BaseWizardPage):
         if nix_full_del:
             deletion_text += "; Exclude full deletions"
 
+        # Use existing preprocess annotation
+        if getattr(self.config, 'use_existing_preprocess', False):
+            deletion_text += "; Use existing preprocess"
+
         self.add_summary_item(layout, "Deletion Handling:", deletion_text)
             
         # Null model options

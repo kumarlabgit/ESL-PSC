@@ -104,7 +104,24 @@ def _patch_print(app_logger: logging.Logger) -> None:
         caller_frame = frame.f_back
         module_name = caller_frame.f_globals.get("__name__", "") if caller_frame else ""
 
-        if module_name.startswith("gui"):
+        is_gui_module = module_name.startswith("gui")
+        # Special-case when the entry point is executed as "-m gui.main" where
+        # the module name becomes "__main__". We look at the caller's file path
+        # to decide if it lives inside our `gui` package so that those prints
+        # are still considered GUI debug messages (and therefore can be hidden
+        # in production).
+        if not is_gui_module and module_name == "__main__":
+            caller_file = caller_frame.f_globals.get("__file__", "")
+            try:
+                # Normalise path for robust substring check
+                import os as _os
+                caller_file_norm = _os.path.abspath(caller_file)
+                is_gui_module = _os.sep + "gui" + _os.sep in caller_file_norm
+            except Exception:
+                # If any error occurs during path inspection, fall back to False
+                is_gui_module = False
+
+        if is_gui_module:
             # Build message similarly to the builtin print (respect sep/end)
             sep: str = kwargs.get("sep", " ")
             end: str = kwargs.get("end", "\n")
