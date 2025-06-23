@@ -16,15 +16,15 @@ def create_sps_plot(csv_file_path=None,
                     bw_method = 0.07,
                     fig_path = 'plot.png',
                     title = 'Model Predictions',
-                    neg_pheno_name = -1,
-                    pos_pheno_name = 1,
+                    neg_pheno_name = "Negative",
+                    pos_pheno_name = "Positive",
                     neg_pheno_color = '#F55E54',
                     pos_pheno_color = '#2fc8cc',
                     percent_accuracy = True,
                     axes = None,
                     min_genes = 0):
     '''creates density plot of sequence prediction score for each species in each ESL run 
-    plot has two lines: 1 corresponds to negative phenotype (-1), 1 to positive phenotype (1)
+    plot has two lines: one for the negative phenotype and one for the positive phenotype
     can either pass csv file or dataframe but not both
     required columns in data: SPS values, true phenotype, input RMSE
     
@@ -95,8 +95,8 @@ def create_sps_plot_violin(csv_file_path=None,
                     bw_method = 0.2,
                     fig_path = 'plot.png',
                     title = 'Model Predictions',
-                    neg_pheno_name = -1,
-                    pos_pheno_name = 1,
+                    neg_pheno_name = "Negative",
+                    pos_pheno_name = "Positive",
                     neg_pheno_color = '#F55E54',
                     pos_pheno_color = '#2fc8cc',
                     percent_accuracy = True,
