@@ -40,8 +40,14 @@ class ESLConfig:
     nix_full_deletions: bool = False
     cancel_only_partner: bool = True
     min_pairs: int = 1
+
     use_existing_alignments: bool = False
     canceled_alignments_dir: str = ""
+
+    
+    # Use existing preprocess directories instead of re-processing alignments
+    use_existing_preprocess: bool = False
+
 
     # ─── Output options ─────────────────────────────────────────────────────────
     output_dir: str = os.path.join(os.getcwd(), "esl_psc_output")
@@ -116,10 +122,13 @@ class ESLConfig:
         # Toggles
         a += self._flag(self.cancel_only_partner, "--cancel_only_partner")
         a += self._flag(self.nix_full_deletions, "--nix_full_deletions")
+
         a += self._flag(getattr(self, 'use_existing_alignments', False),
                         "--use_existing_alignments")
         if getattr(self, 'canceled_alignments_dir', ''):
             a += ["--canceled_alignments_dir", self.canceled_alignments_dir]
+
+        a += self._flag(getattr(self, 'use_existing_preprocess', False), "--use_existing_preprocess")
         
         # Output configuration (continued)
         a += ["--output_dir", self.output_dir]

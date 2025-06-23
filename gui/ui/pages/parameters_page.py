@@ -374,6 +374,7 @@ class ParametersPage(BaseWizardPage):
         min_pairs_layout.addStretch()
         del_cancel_layout.addLayout(min_pairs_layout)
 
+
         # Use existing deletion-canceled alignments
         self.use_existing_alignments = QCheckBox("Use existing deletion-canceled alignments")
         self.use_existing_alignments.setToolTip(
@@ -390,6 +391,18 @@ class ParametersPage(BaseWizardPage):
         )
         self.canceled_alignments_selector.setVisible(False)
         del_cancel_layout.addWidget(self.canceled_alignments_selector)
+
+        # --- Use existing preprocess option
+        self.use_existing_preprocess = QCheckBox("Use existing preprocess")
+        self.use_existing_preprocess.setToolTip(
+            "Use existing preprocess folder(s) with same output basename from a previous run) and skip running the preprocess step."
+        )
+        self.use_existing_preprocess.stateChanged.connect(
+            lambda s: setattr(self.config, 'use_existing_preprocess', s == 2)
+        )
+        del_cancel_layout.addWidget(self.use_existing_preprocess)
+        # initial config value
+        self.config.use_existing_preprocess = False
         
         del_cancel_group.setLayout(del_cancel_layout)
         self.container_layout.addWidget(del_cancel_group)
@@ -631,12 +644,12 @@ class ParametersPage(BaseWizardPage):
         
         # Add Top rank fraction to Hyperparameters section
         self.top_rank_frac = QDoubleSpinBox()
-        self.top_rank_frac.setRange(0.0001, 1.0)
-        self.top_rank_frac.setSingleStep(0.01)
+        self.top_rank_frac.setRange(0.0, 1.0)  # Allow 0 as minimum value
+        self.top_rank_frac.setSingleStep(0.0001)  # More precise stepping for small values
         # Ensure the widget doesn't expand excessively on some platforms (e.g., Linux)
         self.top_rank_frac.setDecimals(4)
         self.top_rank_frac.setMaximumWidth(120)
-        self.top_rank_frac.setValue(0.01)
+        self.top_rank_frac.setValue(0.01)  # Set default to 0.01
         self.top_rank_frac.setToolTip(
             "Fraction of genes to consider top-ranked for the purpose of ranking genes in multimatrix runs. "
         )
@@ -804,6 +817,7 @@ class ParametersPage(BaseWizardPage):
 
         self.keep_raw_output_chk.setChecked(self.config.keep_raw_output)
         self.show_selected_sites.setChecked(self.config.show_selected_sites)
+        self.use_existing_preprocess.setChecked(self.config.use_existing_preprocess)
 
         # SPS plot radios
         self.no_sps_plot.setChecked(True)
@@ -865,6 +879,7 @@ class ParametersPage(BaseWizardPage):
         # Toggles
         self.keep_raw_output_chk.setChecked(cfg.keep_raw_output)
         self.show_selected_sites.setChecked(cfg.show_selected_sites)
+        self.use_existing_preprocess.setChecked(cfg.use_existing_preprocess)
         # Plot radios if exist
         if hasattr(self, 'no_sps_plot'):
             self.no_sps_plot.setChecked(cfg.no_sps_plot)

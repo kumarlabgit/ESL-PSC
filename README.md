@@ -30,7 +30,7 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
   1. Input selection – Select files and directories for each required and optional input.
   2. Analysis parameters – adjust settings within allowed ranges using controls with helpful tooltips
   3. Command preview – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
-  4. Run – Esecute the analysis and view the terminal output within the GUI. In a future update, we plan to embed analysis results visualisations directly in the GUI.
+  4. Run – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, the resulting SVG automatically opens in your default viewer.
 * Save/Load buttons to store configuration JSON files and re-load them later.
 * Contextual validation so you cannot progress until required fields are populated.
 * Restore defaults button to reset all parameters to their default values.
@@ -54,7 +54,7 @@ Now compatible with Windows, Mac, and Linux.
 The GUI requires **PyQt6** on top of the CLI requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
-* **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app.
+* **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app. For now, SPS plots open automatically after a run.
 * **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows users can run ESL-PSC without installing Python dependencies.
 
 Feedback on the beta is welcome!
@@ -175,7 +175,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
 * `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
 * `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the preprocessed_data_and_outputs directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in .txt will be cleared from this directory before each ESL-PSC run.
-* `--show_selected_sites`: Print a dictionary of all selected sites with their highest model score for every gene in the gene_ranks output file.
+* `--show_selected_sites`: Output the top-scoring sites for each gene. When enabled, the gene ranks file gains a `num_selected_sites` column and a separate `<output_name>_selected_sites.csv` file lists each site with its PSS (Position Sparsity Score). **Positions in this file are 1-indexed for readability**, whereas positions in the raw model output remain 0-indexed.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
@@ -188,7 +188,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--limited_genes_list`: Use only genes in this list. One file per line.
 
 ##### Multimatrix-specific Optional Arguments:
-* `--top_rank_frac`: Fraction of genes to count as "top genes."  The default is .01 (1%)
+* `--top_rank_frac`: Fraction of genes to count as "top genes" for the purpose of rankings across multiple species combinations. A setting of 0 will result in counting the single highest ranked gene as a top gene. The default is 0.01 (1%).
 * `--response_dir`: Folder with response matrices. Any txt file in this folder is assumed to be a response matrix file.
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
 * `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
@@ -200,8 +200,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)) 
+1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
+2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
 
 A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
 
