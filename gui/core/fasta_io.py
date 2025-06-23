@@ -2,6 +2,8 @@
 Minimal FASTA reader used by the GUI.
 """
 
+from __future__ import annotations
+
 from typing import List, Tuple
 
 def read_fasta(file_path: str) -> List[Tuple[str, str]]:
