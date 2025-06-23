@@ -148,15 +148,29 @@ class GeneRanksDialog(QDialog):
 
         self.resize(900, 600)
 
-    def _open_site_viewer(self, row: int, _column: int) -> None:
-        # Only open for top-level rows when using the tree view
+    def _open_site_viewer(self, row_or_item, _column: int) -> None:
+        """Launch :class:`SiteViewer` for the selected gene."""
+        # When using the tree view the signal provides a ``QTreeWidgetItem``
+        # whereas the table view provides the row index.  Handle both cases.
         if self.has_sites:
-            item = self.tree.topLevelItem(row)
-            if item is None:
+            # If called from ``QTreeWidget.itemDoubleClicked`` we are passed the
+            # item directly.  The older implementation expected a row index,
+            # which caused a crash because ``topLevelItem`` requires an int.  To
+            # remain backwards compatible we accept either form.
+            if isinstance(row_or_item, QTreeWidgetItem):
+                item = row_or_item
+            else:
+                item = self.tree.topLevelItem(int(row_or_item)) if row_or_item is not None else None
+            # Only act on top-level gene rows, not the child site rows.
+            if item is None or item.parent() is not None:
                 return
             gene = item.text(0)
         else:
-            gene = self.table.item(row, self.gene_col).text()
+            row = int(row_or_item)
+            gene_item = self.table.item(row, self.gene_col)
+            if gene_item is None:
+                return
+            gene = gene_item.text()
         try:
             _launch_site_viewer(gene, self.config, self.sites_path, parent=self)
         except Exception as e:
