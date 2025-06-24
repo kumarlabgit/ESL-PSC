@@ -485,8 +485,8 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     fig.tight_layout(pad=2.0, w_pad=0.5)
     plt.savefig(fig_path)
 
-    # close or show depending on thread
-    if threading.current_thread().name == "MainThread":
+    # Automatically display the plot when running in an interactive CLI
+    if sys.stdout.isatty():
         plt.show()
     else:
         plt.close(fig)
