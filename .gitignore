@@ -5,6 +5,7 @@ orthomam_echo_species_alignments/
 orthomam_echo_species_groups_gap-canceled_alignments/
 orthomam_echo_species_groups_response_matrices/
 orthomam_echo_species_groups_for_deletion_canceler_response_matrices/
+esl_psc_output/
 echo_ouput/
 fullcode.txt
 demo_output/

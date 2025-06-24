@@ -216,7 +216,7 @@ def count_var_sites(records):
     count of the number of variable sites in the alignment using the
     is_variable_site function above
     '''
-    zipped_seqs = zip(*records) # this zips together the sequences
+    zipped_seqs = zip(*(str(rec.seq) for rec in records))
     num_var_sites = 0
     for residues_at_site in zipped_seqs: # check positions
         num_var_sites += is_variable_site(residues_at_site)

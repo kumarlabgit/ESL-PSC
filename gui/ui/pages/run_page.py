@@ -27,6 +27,7 @@ class RunPage(BaseWizardPage):
         # Thread pool for running the worker
         self.thread_pool = QThreadPool()
         self.worker = None
+        self.analysis_completed = False  # Track if analysis has been completed
         
         # Create scroll area and main container
         scroll = QScrollArea()
@@ -121,8 +122,8 @@ class RunPage(BaseWizardPage):
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
             self.step_status_label.setText("Ready to run.")
-            # Reset run button text
-            self.run_btn.setText("Run Analysis")
+            # Set run button text based on whether analysis was completed
+            self.run_btn.setText("Run New Analysis" if self.analysis_completed else "Run Analysis")
 
             # Enable/disable wizard buttons
             if self.wizard():
@@ -257,6 +258,7 @@ class RunPage(BaseWizardPage):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
         self.run_btn.setText("Run New Analysis")
+        self.analysis_completed = True  # Mark analysis as completed
         self.stop_btn.setEnabled(False)
 
         if self.wizard():
