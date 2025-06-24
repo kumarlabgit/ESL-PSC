@@ -395,7 +395,9 @@ class SiteViewer(QWidget):
         """
         Toggles visibility of the 'other species' bottom splitter.
         """
-        self.show_all_species = (state == Qt.CheckState.Checked)
+        # ``state`` arrives as an ``int`` while ``Qt.CheckState.Checked`` is an
+        # enum in PyQt6.  Cast explicitly so the comparison works on PyQt5/6.
+        self.show_all_species = (Qt.CheckState(state) == Qt.CheckState.Checked)
         if self.show_all_species:
             self.bottom_splitter.setSizes(self.top_splitter.sizes())
         self.bottom_splitter.setVisible(True)
@@ -408,7 +410,10 @@ class SiteViewer(QWidget):
         self.rebuildTables()
 
     def onHideControlConvChanged(self, state):
-        self.hide_control_convergence = (state == Qt.CheckState.Checked)
+        # ``state`` is an ``int``; use explicit enum conversion for PyQt6
+        self.hide_control_convergence = (
+            Qt.CheckState(state) == Qt.CheckState.Checked
+        )
         self.rebuildTables()
 
     def onOnlySelectedChanged(self, checked):
