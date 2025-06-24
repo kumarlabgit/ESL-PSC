@@ -262,6 +262,9 @@ class SiteViewer(QWidget):
         self.top_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.top_splitter.addWidget(self.top_left_table)
         self.top_splitter.addWidget(self.top_right_table)
+        # Keep the species pane width constant when resizing
+        self.top_splitter.setStretchFactor(0, 0)
+        self.top_splitter.setStretchFactor(1, 1)
 
         # --- TABLES (BOTTOM SPLITTER) ---
         self.bottom_left_table = QTableWidget()
@@ -301,6 +304,9 @@ class SiteViewer(QWidget):
         self.bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.bottom_splitter.addWidget(self.bottom_left_table)
         self.bottom_splitter.addWidget(self.bottom_right_table)
+        # Same behavior for the bottom splitter
+        self.bottom_splitter.setStretchFactor(0, 0)
+        self.bottom_splitter.setStretchFactor(1, 1)
 
         self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         # Let the bottom pane take extra vertical space on resize
@@ -846,7 +852,7 @@ class SiteViewer(QWidget):
         self.top_left_table.setItem(1, 0, left_item("Convergence Score", True))
         next_row = 2
         if self.pss_scores:
-            self.top_left_table.setItem(2, 0, left_item("PSS", True))
+            self.top_left_table.setItem(2, 0, left_item("Max PSS", True))
             next_row = 3
         # blank separator
         self.top_left_table.setItem(next_row, 0, left_item(""))

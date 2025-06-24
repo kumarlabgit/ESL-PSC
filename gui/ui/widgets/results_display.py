@@ -264,7 +264,7 @@ class GeneRanksDialog(QDialog):
         self.tree = QTreeWidget()
 
         rank_columns = [c for c in df.columns if c != 'Gene']
-        headers = ['Gene', 'Length', 'Map', 'Position', 'Position Sparsity Score'] + rank_columns
+        headers = ['Gene', 'Length', 'Map', 'Position', 'Max Position Sparsity Score'] + rank_columns
         self.tree.setColumnCount(len(headers))
         self.tree.setHeaderLabels(headers)
         self.tree.setUniformRowHeights(True)
