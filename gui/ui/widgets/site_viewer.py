@@ -21,6 +21,16 @@ from gui.constants import ZAPPO_STATIC_COLORS
 
 
 class SiteViewer(QWidget):
+    """Main alignment-inspection widget with persistent outgroup memory between
+    SiteViewer windows within the same GUI session."""
+
+    # ------------------------------------------------------------------
+    # Class-level cache to remember the last outgroup species list chosen by
+    # the user. This is shared across *all* SiteViewer instances created in the
+    # current Python process.
+    # ------------------------------------------------------------------
+    REMEMBERED_OUTGROUP: List[str] = []
+
     """
     Main alignment-inspection widget.
     """
@@ -42,6 +52,35 @@ class SiteViewer(QWidget):
     ) -> None:
         super().__init__(parent)
 
+        # ------------------------------------------------------------------
+        # If caller did not supply an outgroup list, attempt to re-apply the
+        # remembered species from a previous SiteViewer window (if any).
+        # ------------------------------------------------------------------
+        if SiteViewer.REMEMBERED_OUTGROUP:
+            # Move any remembered species found in convergent/control into the
+            # outgroup list for this new viewer.
+            # Try to add each remembered species to the outgroup if it exists in this
+            # alignment and is not already there.
+            all_species_this_alignment = [r[0] for r in records]
+            for sp in SiteViewer.REMEMBERED_OUTGROUP:
+                if sp not in all_species_this_alignment:
+                    continue  # Species absent from this alignment
+
+                # Remove it from any other explicit group lists first
+                if sp in convergent_species:
+                    convergent_species.remove(sp)
+                    outgroup_species.append(sp)
+                elif sp in control_species:
+                    control_species.remove(sp)
+                    outgroup_species.append(sp)
+                else:
+                    # Species was not explicitly assigned to any group yet
+                    if sp not in outgroup_species:
+                        outgroup_species.append(sp)
+            # Ensure deterministic ordering
+            outgroup_species.sort()
+
+        # ------------------------------------------------------------------
         # store the minimal bits up front
         self.records              = records
         self.convergent_species  = sorted(convergent_species)
@@ -432,6 +471,10 @@ class SiteViewer(QWidget):
     def updateHideControlConvVisibility(self):
         # Visible whenever all three species groups are present
         self.hideControlConvCheck.setVisible(self.has_all_three)
+        # Set checked by default when visible
+        if self.has_all_three:
+            self.hideControlConvCheck.setChecked(True)
+            self.hide_control_convergence = True
 
     def updateFilterComboStates(self):
         # Enable or disable dropdown items based on data availability
@@ -570,9 +613,19 @@ class SiteViewer(QWidget):
             self.only_ccs = False
             self.hide_control_convergence = False
 
+        # Update remembered outgroup list after any change
+        SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+
         # now recalc scores + rebuild
         self.recalc_scores()
         self.rebuildTables()
+
+    # ------------------------------------------------------------------
+    # Ensure the remembered outgroup list is persisted when the window closes
+    # ------------------------------------------------------------------
+    def closeEvent(self, event):  # noqa: N802 (Qt override)
+        SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+        super().closeEvent(event)
 
     def recalc_scores(self):
         """
@@ -580,6 +633,10 @@ class SiteViewer(QWidget):
         Singletons (non-gap) in Convergent+Control are replaced by '?'.
         Each gap ('-') in Convergent or Control reduces the score by 1.
         """
+        # Initialize threshold_slider if it doesn't exist yet
+        if not hasattr(self, 'threshold_slider'):
+            return  # UI not fully initialized yet
+
         conv_indices = [self.species_ids.index(sp) for sp in self.convergent_species if sp in self.species_ids]
         ctrl_indices = [self.species_ids.index(sp) for sp in self.control_species if sp in self.species_ids]
         out_indices  = [self.species_ids.index(sp) for sp in self.outgroup_species if sp in self.species_ids]
@@ -700,6 +757,10 @@ class SiteViewer(QWidget):
         
 
     def rebuildTables(self):
+        # Skip if UI isn't fully initialized yet
+        if not hasattr(self, 'threshold_slider'):
+            return
+            
         # recalc with updated gap penalty and ccs logic
         self.recalc_scores()
 
