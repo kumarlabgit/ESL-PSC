@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
         try:
             # Set window properties
             self.setWindowTitle("ESL-PSC Wizard")
-            self.setMinimumSize(800, 900)  # Narrower and taller window
+            self.setMinimumSize(800, 900)  # Slightly taller window
             print("MainWindow: Window properties set")
             
             # Create a central widget
@@ -118,7 +118,9 @@ class ESLWizard(QWizard):
 
             # Create custom Save/Load buttons before setting cancel button text
             save_btn = QPushButton("Save Config")
+            save_btn.setToolTip("Save the current configuration to a JSON file for later use")
             load_btn = QPushButton("Load Config")
+            load_btn.setToolTip("Load a previously saved configuration from a JSON file")
             save_btn.clicked.connect(self.save_config)
             load_btn.clicked.connect(self.load_config)
             # Assign to custom button slots and define layout (left-aligned)
