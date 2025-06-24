@@ -98,6 +98,7 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
         conv,
         ctrl,
         [],  # outgroup species (not derived here)
+        gene,
         all_sites_info,
         False,
         pss_map,

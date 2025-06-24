@@ -31,6 +31,7 @@ class SiteViewer(QWidget):
         convergent_species: List[str],
         control_species:    List[str],
         outgroup_species:   List[str],
+        gene_name: str | None = None,
         all_sites_info:     List[Dict[str, Any]] | None = None,
         show_all_by_default: bool = False,
         pss_scores: Dict[int, float] | None = None,
@@ -47,6 +48,7 @@ class SiteViewer(QWidget):
         self.control_species     = sorted(control_species)
         self.outgroup_species    = sorted(outgroup_species)
         self.pss_scores          = pss_scores or {}
+        self.gene_name           = gene_name or ""
 
         # ─── Phenotype maps ───────────────────────────────────────────────
         # Mapping of species → phenotype value (1/-1)
@@ -110,7 +112,10 @@ class SiteViewer(QWidget):
         self._adjustVerticalSplitter()
 
     def initUI(self):
-        self.setWindowTitle("Convergence Viewer")
+        title = "Convergence Viewer"
+        if self.gene_name:
+            title += f": {self.gene_name}"
+        self.setWindowTitle(title)
         main_layout = QVBoxLayout(self)
 
         # Keep references to these checkboxes as None until needed
