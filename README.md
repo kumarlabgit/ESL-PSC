@@ -24,21 +24,20 @@ The tools presented in this repository allow one to analyse signatures of molecu
 
 June 2025:
 
-We have introduced an experimental GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
+### We have introduced an experimental GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
 
-Step-by-step workflow guiding you through:
-  1. Input selection – Select files and directories for each required and optional input 
-  2. Analysis parameters – adjust settings within allowed ranges using controls with helpful tooltips
-  3. Command preview – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
-  4. Run – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
-  5. View results – View gene rankings and examine convergent sites in an interactive alignment viewer.
+#### Step-by-step workflow guiding you through:
+  1. **Input selection** – Select files and directories for each required and optional input 
+  2. **Analysis parameters** – adjust settings within allowed ranges using controls with helpful tooltips
+  3. **Command preview** – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
+  4. **Run** – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
+  5. **View results** – View gene rankings and examine convergent sites in an interactive alignment viewer.
 
-Save your configuration in a file and re-load it later. You can load the included `demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
+##### Save your configuration in a file and re-load it later. You can load the included `demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
+
+##### Now compatible with Windows, Mac, and Linux.
 
 ![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
-
-
-Now compatible with Windows, Mac, and Linux.
 
 ### Running the GUI
 1. Ensure the GUI dependencies are installed:
