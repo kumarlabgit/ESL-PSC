@@ -76,6 +76,42 @@ def check_species_in_alignments(list_of_species_combos, alignments_dir):
             f"{', '.join(sorted(missing_species))} Double check the spelling"
         )
 
+def check_species_in_existing_alignments(list_of_species_combos, canceled_alignments_dir):
+    '''
+    When using --use_existing_alignments, make sure that every species in the
+    species groups file is present in the provided gap-canceled alignments
+    directory. The search is recursive to handle the standard subfolder
+    structure (e.g. combo_*-alignments).
+    '''
+    all_species = set()
+    for combo in list_of_species_combos:
+        all_species.update(combo)
+
+    found_species = set()
+    if not os.path.isdir(canceled_alignments_dir):
+        raise ValueError(
+            f"Canceled alignment directory '{canceled_alignments_dir}' does not "
+            "exist or is not a directory."
+        )
+
+    for root, _, files in os.walk(canceled_alignments_dir):
+        for file_name in files:
+            if ecf.is_fasta(file_name):
+                file_path = os.path.join(root, file_name)
+                try:
+                    for record in SeqIO.parse(file_path, 'fasta'):
+                        found_species.add(record.id)
+                except Exception:
+                    continue
+
+    missing_species = all_species - found_species
+    if missing_species:
+        raise ValueError(
+            "The following species from the species groups file were not "
+            f"found in any alignment in '{canceled_alignments_dir}':\n"
+            f"{', '.join(sorted(missing_species))}"
+        )
+
 def randomize_alignments(original_alignments_directory, species_list):
     '''generates randomly pair-flipped alignments from deletion-canceled
     input alignment files
@@ -414,6 +450,9 @@ def main(raw_args=None):
             args.species_groups_file)
         # check that species names are all in alignments (correct spellings)
         check_species_in_alignments(list_of_species_combos, args.alignments_dir)
+        if args.use_existing_alignments and args.canceled_alignments_dir:
+            check_species_in_existing_alignments(
+                list_of_species_combos, args.canceled_alignments_dir)
         # now make a directory of response files under dir with group file in it
 #        group_file_parent_dir = os.path.split(args.species_groups_file)[0]
         response_dir = os.path.join(args.output_dir,
