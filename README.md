@@ -24,7 +24,7 @@ The tools presented in this repository allow one to analyse signatures of molecu
 
 June 2025:
 
-We have introduced an experimental GUI that wraps all of the CLI functionality in an easy-to-use wizard-style app:
+We have introduced an experimental GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
 
 * Step-by-step workflow guiding you through:
   1. Input selection – Select files and directories for each required and optional input.
@@ -35,6 +35,11 @@ We have introduced an experimental GUI that wraps all of the CLI functionality i
 * Contextual validation so you cannot progress until required fields are populated.
 * Restore defaults button to reset all parameters to their default values.
 * You can load the included `demo_config_for_gui.json` to run the C4/C3 demo.
+* View gene rankings in a sortable table
+* Examine convergent sites in an interactive alignment viewer. 
+
+![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
+
 
 Now compatible with Windows, Mac, and Linux.
 
@@ -51,16 +56,17 @@ Now compatible with Windows, Mac, and Linux.
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
 
 ### Additional dependencies
-The GUI requires **PyQt6** on top of the CLI requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+The GUI requires **PyQt6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
-* **Output visualisation** – upcoming versions will embed plots and tables directly in the GUI so you can inspect gene rankings and species predictions without leaving the app. For now, SPS plots open automatically when using the CLI and are saved for manual viewing with the **Show SPS Plot** button in the GUI.
 * **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows users can run ESL-PSC without installing Python dependencies.
+* **Continuous Numerical Phenotypes** – In the near future we will enable support for continuous numerical  response values so you can test phenotypes that are not binary (e.g. gene expression levels, etc.).
+  
 
 Feedback on the beta is welcome!
 
-## CLI Usage ##
-To use the ESL-PSC command line interface, you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+## Command Line Usage ##
+To use the ESL-PSC command line interface (CLI), you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
