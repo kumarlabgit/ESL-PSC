@@ -1,8 +1,6 @@
 # widgets/site_viewer.py
 from __future__ import annotations
 
-from __future__ import annotations
-
 from collections import Counter
 from typing import Any, Dict, List
 
@@ -14,7 +12,6 @@ from PyQt6.QtWidgets import (
     QCheckBox, QAbstractItemView, QMessageBox, QMenu
 )
 
-# point to your shared constants and canvas
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
 from gui.constants import ZAPPO_STATIC_COLORS
 
