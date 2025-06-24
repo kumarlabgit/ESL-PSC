@@ -1,7 +1,14 @@
 photo_single_LC_matrix_species_groups_gap-canceled_alignments/
 photo_single_LC_matrix_species_groups_response_matrices/
 preprocessed_data_and_outputs/
+orthomam_echo_species_alignments/
+orthomam_echo_species_groups_gap-canceled_alignments/
+orthomam_echo_species_groups_response_matrices/
+orthomam_echo_species_groups_for_deletion_canceler_response_matrices/
+esl_psc_output/
+echo_ouput/
 fullcode.txt
+demo_output/
 demo_output_gene_ranks.csv
 demo_output_pred_sps_plot.svg
 demo_output_species_predictions.csv
@@ -20,3 +27,8 @@ demo_gene_ranks.csv
 .gitignore
 .gitignore
 demo_species_predictions.csv
+demo_output/demo_selected_sites.csv
+echo_config.json
+echo_output/echo_gene_ranks.csv
+echo_output/echo_selected_sites.csv
+

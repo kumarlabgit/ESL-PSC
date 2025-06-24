@@ -41,6 +41,11 @@ class CommandPage(BaseWizardPage):
         # Command display with larger, resizable monospace font
         self.cmd_display = QTextEdit()
         self.cmd_display.setReadOnly(True)
+        # Allow selection & copying on macOS and other platforms
+        self.cmd_display.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.cmd_display.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         font = QFont("Courier New")
         font.setPointSize(11)  # Increased font size
         self.cmd_display.setFont(font)
@@ -293,7 +298,13 @@ class CommandPage(BaseWizardPage):
         if nix_full_del:
             deletion_text += "; Exclude full deletions"
 
+        # Use existing preprocess annotation
+        if getattr(self.config, 'use_existing_preprocess', False):
+            deletion_text += "; Use existing preprocess"
+
         self.add_summary_item(layout, "Deletion Handling:", deletion_text)
+        if getattr(self.config, 'use_existing_alignments', False) and getattr(self.config, 'canceled_alignments_dir', ''):
+            self.add_summary_item(layout, "Existing Canceled Alignments:", self.config.canceled_alignments_dir)
             
         # Null model options
         null_opts = []

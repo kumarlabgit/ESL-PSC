@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
         try:
             # Set window properties
             self.setWindowTitle("ESL-PSC Wizard")
-            self.setMinimumSize(800, 900)  # Narrower and taller window
+            self.setMinimumSize(800, 900)  # Slightly taller window
             print("MainWindow: Window properties set")
             
             # Create a central widget
@@ -93,6 +93,7 @@ class ESLWizard(QWizard):
         print("ESLWizard: Parent initialized")
         # Width of the Next button used as an invisible placeholder on the last page
         self._next_btn_placeholder_width = None
+        self._back_btn_placeholder_width = None
         
         try:
             # Set window properties first
@@ -101,11 +102,13 @@ class ESLWizard(QWizard):
             self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
             self.setOption(QWizard.WizardOption.HaveHelpButton, False)
             # Hide the Back button completely on the first page for consistency
-            self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
+            # Keep Back button present so we can reserve its space; we'll blank it
+            # on the first page via runtime styling so the footer remains aligned.
+            self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, False)
             # Keep the (disabled) Next button present on the last page so that the
             # Back button does not shift position when the user navigates there.
             # We will later disable and blank the button, but leaving it in the
-            # layout preserves the spacing that users rely on.
+            # layout preserves the spacing
             self.setOption(QWizard.WizardOption.HaveNextButtonOnLastPage, True)
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
             self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
@@ -115,7 +118,9 @@ class ESLWizard(QWizard):
 
             # Create custom Save/Load buttons before setting cancel button text
             save_btn = QPushButton("Save Config")
+            save_btn.setToolTip("Save the current configuration to a JSON file for later use")
             load_btn = QPushButton("Load Config")
+            load_btn.setToolTip("Load a previously saved configuration from a JSON file")
             save_btn.clicked.connect(self.save_config)
             load_btn.clicked.connect(self.load_config)
             # Assign to custom button slots and define layout (left-aligned)
@@ -195,13 +200,18 @@ class ESLWizard(QWizard):
         is_dark_mode = window_lum < text_lum          # darker background → dark theme
         border_color = "rgba(255, 255, 255, 180)" if is_dark_mode else "rgba(0, 0, 0, 80)"
 
+        # User prefers the default Qt look – disable the custom stylesheet entirely
+        qApp = QApplication.instance()
+        if qApp:
+            qApp.setStyleSheet("")  # clear any previously-set stylesheet
+        return  # Skip the custom stylesheet construction below
+
         # DEBUG: print once every time the stylesheet is (re)applied
         print(f"[apply_stylesheet] dark_mode={is_dark_mode}  "
               f"window_lum={window_lum}  text_lum={text_lum}  border={border_color}")
 
         # Build the stylesheet with a placeholder token then replace it with the
-        # actual border color.  This avoids the heavy brace-escaping needed in
-        # f-strings when embedding large chunks of QSS.
+        # actual border color.  
         css = """
             /* Use the current system palette for backgrounds */
             QWizard            {{ background: palette(window); }}
@@ -228,6 +238,12 @@ class ESLWizard(QWizard):
                 left: 10px;
                 padding: 0 3px 0 3px;
                 color: palette(text);
+            }}
+
+            /* Wizard footer buttons – enforce consistent height/alignment */
+            QWizard > QPushButton {{
+                min-height: 28px;
+                max-height: 28px;  /* Prevent height variation */
             }}
 
             /* General input widgets – give them a visible border */
@@ -265,6 +281,8 @@ class ESLWizard(QWizard):
         """
         # Substitute the placeholder token with the real colour
         css = css.replace("__BORDER__", border_color)
+        # Convert doubled braces used for string-format escaping to single braces
+        css = css.replace("{{", "{").replace("}}", "}")
 
         # Apply to the entire application so every widget—present and future—
         # inherits the same QSS, and dark-mode borders cannot be overridden
@@ -275,7 +293,6 @@ class ESLWizard(QWizard):
             # Force a full refresh of the style system
             qApp.style().polish(qApp)
 
-    # --- Automatic palette-change support ----------------------------------
     # --- Automatic palette-change support ----------------------------------
     def _connect_color_scheme_updates(self):
         """
@@ -357,6 +374,27 @@ class ESLWizard(QWizard):
         current_page = self.currentPage()
         if hasattr(current_page, 'on_enter'):
             current_page.on_enter()
+
+        # Handle Back/Next placeholders to keep footer stable
+        # ------------------------------------------------------------------
+        # Keep Back button invisible on first page while reserving space.
+        back_btn = self.button(QWizard.WizardButton.BackButton)
+        if back_btn is not None:
+            if self._back_btn_placeholder_width is None:
+                self._back_btn_placeholder_width = back_btn.sizeHint().width()
+            if self.currentId() == self.pageIds()[0]:
+                # First page – hide visually but keep width
+                back_btn.setEnabled(False)
+                back_btn.setText("")
+                back_btn.setFixedWidth(self._back_btn_placeholder_width)
+                back_btn.setStyleSheet("border: none; background: transparent;")
+            else:
+                # Other pages – restore normal look
+                back_btn.setEnabled(True)
+                back_btn.setFixedWidth(self._back_btn_placeholder_width)
+                back_btn.setStyleSheet("")
+                if back_btn.text() == "":
+                    back_btn.setText("Back")
 
         # Keep Back button from shifting when on last page.
         next_btn = self.button(QWizard.WizardButton.NextButton)

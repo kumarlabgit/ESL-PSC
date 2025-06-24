@@ -216,7 +216,7 @@ def count_var_sites(records):
     count of the number of variable sites in the alignment using the
     is_variable_site function above
     '''
-    zipped_seqs = zip(*records) # this zips together the sequences
+    zipped_seqs = zip(*(str(rec.seq) for rec in records))
     num_var_sites = 0
     for residues_at_site in zipped_seqs: # check positions
         num_var_sites += is_variable_site(residues_at_site)
@@ -422,8 +422,8 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
 def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                           min_genes = 0, plot_type = 'violin'):
     '''calls sps_density.create_sps_plot for each of a series of RMSE ranks.
-    pheno_names is a tuple with the +1 pheno name first and the -1 pheno 2nd,
-    or if it isn't given the defaults will be used.  plot type can be 'kde' or
+    pheno_names is a tuple with the +1 phenotype name first and the -1 phenotype second.
+    If not provided, the defaults "Positive" and "Negative" will be used. Plot type can be 'kde' or
     violin (violin will assign anything > 1 or < -1 to 1 and -1 respectively
     by default to make it easier to see the region of overlap.
     '''
@@ -438,11 +438,15 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         matplotlib.use("Agg", force=True)
 
     if plot_type == 'violin':
-        fig, axes = plt.subplots(ncols = len(rmse_cutoffs), figsize=(8, 7),
-                             constrained_layout=True)
+        # Create side-by-side subplots and widen the figure slightly so axis
+        # labels don’t collide. We’ll manually add horizontal spacing.
+        fig, axes = plt.subplots(
+            ncols=len(rmse_cutoffs), figsize=(8, 7)
+        )
     elif plot_type == 'kde':
-        fig, axes = plt.subplots(ncols = 1, nrows = len(rmse_cutoffs),
-                                 figsize=(8, 7))
+        fig, axes = plt.subplots(nrows=len(rmse_cutoffs), ncols=1, figsize=(8, 7))
+    # Add extra horizontal padding between subplots to avoid label overlap
+    fig.subplots_adjust(wspace=0.35)
     
     df = pd.read_csv(pred_csv_path, dtype = {'species':str,
                                              'SPS':float,
@@ -453,7 +457,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     fig_path = os.path.join(os.path.split(pred_csv_path)[0],
                             title + '_pred_sps_plot.svg')
     if not pheno_names: # set phenotype names
-        pheno_names = (1, -1)
+        pheno_names = ("Positive", "Negative")
     pos_pheno_name = pheno_names[0]
     neg_pheno_name = pheno_names[1]
         
@@ -478,11 +482,11 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     min_genes = min_genes)
             axes[index].set_ylim([-1.1, 1.1])
             axes[index].axhline(y=0, linestyle='--', color='lightgray')
-    fig.set_tight_layout(True)
+    fig.tight_layout(pad=2.0, w_pad=0.5)
     plt.savefig(fig_path)
 
-    # close or show depending on thread
-    if threading.current_thread().name == "MainThread":
+    # Automatically display the plot when running in an interactive CLI
+    if sys.stdout.isatty():
         plt.show()
     else:
         plt.close(fig)
@@ -666,13 +670,23 @@ class ESLRun():
                             '-r', preprocessed_dir_name + '/response_' +
                             preprocessed_dir_name + '.txt',
                             '-w', output_name + '_out_feature_weights']
-        # run esl
-        subprocess.run(' '.join(esl_command_list), shell=True, check=True)
+        # run esl and silence noisy output from the underlying binary.  We still
+        # capture stdout/stderr so that errors can be surfaced if the command
+        # fails, but we do not display the informational messages printed by the
+        # SLEP implementation during normal operation.
+        proc = subprocess.run(
+            ' '.join(esl_command_list),
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            # If the lasso run failed, show captured output for debugging.
+            print(proc.stdout)
+            print(proc.stderr, file=sys.stderr)
+            proc.check_returncode()
         
-        # Extract feature weights directly from the generated XML.  The
-        # original implementation relied on external ``grep``/``sed``
-        # commands which are not available on Windows.  Using regular
-        # expressions keeps the parsing fast and portable.
+        # Extract feature weights directly from the generated XML. 
         xml_path = (
             f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
         )
@@ -717,6 +731,9 @@ class ESLRun():
         self.species_scores = defaultdict(lambda: 0.0)
 
         ###### tally all selected sites ######
+        # Helper dict to accumulate absolute weights per site for *this* run
+        # Key: gene object, Value: dict(position -> abs-weight-sum)
+        run_site_sums = defaultdict(lambda: defaultdict(float))
         # get lines of esl model feature weights from the lasso output txt file
         weights_file = open(self.output,'r') # model weights for sites
         for position_line in weights_file:
@@ -738,10 +755,9 @@ class ESLRun():
             else: # normally this.  only_pos_gss is False by default
                 included_gene_weights[current_gene_obj] += abs(weight)
 
-            ### add site to gene's sites ###
-            if (current_gene_obj.selected_sites[position] < weight
-                and weight> 0 and sites):
-                current_gene_obj.selected_sites[position] = weight
+            # Accumulate absolute weight for PSS (sum within this run)
+            if sites:
+                run_site_sums[current_gene_obj][position] += abs(weight)
             
             ### Predictions  ###
             # adjust species scores tally by checking sequences
@@ -772,9 +788,17 @@ class ESLRun():
                         if line[position] == aa_to_check_for: # 0-indexed
                             self.species_scores[species] += weight #add the site
                 input_alignment_file.close()
+        # After processing all weights, update per-gene selected_sites dict
+        if sites:
+            for gene_obj, pos_map in run_site_sums.items():
+                for pos, pss_sum in pos_map.items():
+                    # Keep the maximum PSS seen across all runs
+                    if pss_sum > gene_obj.selected_sites[pos]:
+                        gene_obj.selected_sites[pos] = pss_sum
+
         weights_file.close()
         for sp in self.species_scores:
-            self.species_scores[sp] += self.y_intercept #add intercept to all scores
+            self.species_scores[sp] += self.y_intercept  # add intercept to all scores
         
         ###### calculate input species RMSE (MFS) ######
         if not skip_pred:

@@ -94,13 +94,17 @@ class InputPage(BaseWizardPage):
             "Species Groups File:", 'file',
             default_path=os.getcwd(),
             description=(
-                "Text file with species groups, one per line. "
-                "The first line contains species with the convergent trait (assigned value 1). "
-                "The second line contains control species (assigned value -1). "
-                "Each line should be a comma-separated list of species. Example:\n\n"
-                "species1,species2,species3\n"
-                "control1,control2,control3\n\n"
-                "You can also have one species per group, and you will get a single combination run."
+                "Text file that specifies contrast pairs of species to use in the analysis. "
+                "Each pair goes on a pair of lines, with the first line containing a species with the convergent trait "
+                "and optionally one or more close siblings with the trait. The second line contains one or more control species "
+                "that do not have the trait but are close relatives of the species in the first line. "
+                "Subsequent lines follow the same pattern." 
+                "Example:\n\n"
+                "convergent_species1a, convergent_species1b\n"
+                "control_species1a, control_species1b\n"
+                "convergent_species2a, convergent_species2b\n"
+                "control_species2\n"
+                "..."
             )
         )
         self.species_groups.path_changed.connect(
