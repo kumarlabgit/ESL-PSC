@@ -1,12 +1,12 @@
 """
 Worker thread for running ESL-PSC commands.
 """
-import contextlib
 import os
 import io
 import re
 import threading
-from esl_psc_cli import esl_multimatrix
+import subprocess
+import sys
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 class WorkerSignals(QObject):
@@ -30,6 +30,7 @@ class ESLWorker(QRunnable):
         self.signals = WorkerSignals()
         self.is_running = False
         self.was_stopped = False # Flag to indicate if stop() was called
+        self.process = None
         # Track deletion-canceler progress counts for step progress bar
         self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
         self.del_current_combo: int = 0           # number of combos completed so far
@@ -48,7 +49,7 @@ class ESLWorker(QRunnable):
     
     @pyqtSlot()
     def run(self):
-        """Execute esl_multimatrix in-process and stream its output."""
+        """Execute esl_multimatrix in a subprocess and stream its output."""
         self.is_running = True
         original_cwd = os.getcwd()  # Preserve GUI's working directory
         exit_code = 0
@@ -212,77 +213,50 @@ class ESLWorker(QRunnable):
                 return False # Not a progress line
 
         try:
-            # Create two separate StreamEmitters (Python-level redirection)
             out_stream = StreamEmitter(self, stream_type='stdout')
             err_stream = StreamEmitter(self, stream_type='stderr')
 
-            # ------------------------------------------------------------------
-            # Low-level (C / subprocess) redirection: duplicate fd 1 & 2 to pipes
-            # ------------------------------------------------------------------
-            orig_stdout_fd = os.dup(1)
-            orig_stderr_fd = os.dup(2)
+            command = [sys.executable, '-u', '-m', 'esl_psc_cli.esl_multimatrix', *self.command_args]
+            self.process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
 
-            out_r, out_w = os.pipe()
-            err_r, err_w = os.pipe()
+            def _reader(pipe, emitter: StreamEmitter):
+                for line in iter(pipe.readline, ''):
+                    if not self.is_running:
+                        break
+                    emitter.write(line)
+                pipe.close()
 
-            # Point process-wide stdout/stderr to the write ends of our pipes
-            os.dup2(out_w, 1)
-            os.dup2(err_w, 2)
-
-            # Close duplicate write ends – the fds 1/2 now refer to them
-            os.close(out_w)
-            os.close(err_w)
-
-            def _pipe_reader(fd: int, emitter: StreamEmitter):
-                with os.fdopen(fd, "r", buffering=1, errors="replace") as f:
-                    for line in f:
-                        emitter.write(line)
-
-            # Background threads to read from the pipes
-            t_out = threading.Thread(target=_pipe_reader, args=(out_r, out_stream), daemon=True)
-            t_err = threading.Thread(target=_pipe_reader, args=(err_r, err_stream), daemon=True)
+            t_out = threading.Thread(target=_reader, args=(self.process.stdout, out_stream), daemon=True)
+            t_err = threading.Thread(target=_reader, args=(self.process.stderr, err_stream), daemon=True)
             t_out.start()
             t_err.start()
 
-            # Redirect *Python-level* stdout/stderr and run the CLI
-            with contextlib.redirect_stdout(out_stream), contextlib.redirect_stderr(err_stream):
-                if self.is_running:
-                    esl_multimatrix.main(self.command_args)
+            self.process.wait()
+            t_out.join()
+            t_err.join()
+            exit_code = self.process.returncode
 
-            # Ensure readers flush remaining data
-            t_out.join(timeout=0.1)
-            t_err.join(timeout=0.1)
-
-        except SystemExit as se:
-            exit_code = se.code if isinstance(se.code, int) else 1
         except Exception as e:
             import traceback
-            self.signals.error.emit(f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}")
+            self.signals.error.emit(
+                f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+            )
             exit_code = 1
         finally:
-            # Restore original file descriptors so that future output is not captured
-            try:
-                if 'orig_stdout_fd' in locals():
-                    os.dup2(orig_stdout_fd, 1)
-                if 'orig_stderr_fd' in locals():
-                    os.dup2(orig_stderr_fd, 2)
-            except Exception:
-                pass
-            for _fd_name in ('orig_stdout_fd', 'orig_stderr_fd'):
-                try:
-                    if _fd_name in locals():
-                        os.close(locals()[_fd_name])
-                except Exception:
-                    pass
-
             self.is_running = False
-            # Restore the GUI's original working directory in case esl_multimatrix changed it
+            if self.process and self.process.poll() is None:
+                self.process.kill()
+            self.process = None
             try:
                 os.chdir(original_cwd)
             except Exception:
-                # Silently ignore – worst case, the old path no longer exists
                 pass
-            # Only emit finished signal if it wasn't stopped by the user
             if not self.was_stopped:
                 self.signals.finished.emit(exit_code)
     
@@ -291,4 +265,9 @@ class ESLWorker(QRunnable):
         if self.is_running:
             self.is_running = False
             self.was_stopped = True
+            if self.process and self.process.poll() is None:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
             self.signals.finished.emit(-1) # Emit a special code for user stop
