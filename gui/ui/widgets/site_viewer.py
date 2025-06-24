@@ -35,6 +35,9 @@ class SiteViewer(QWidget):
         show_all_by_default: bool = False,
         pss_scores: Dict[int, float] | None = None,
         parent=None,
+        # Optional phenotype information
+        species_pheno_map: Dict[str, int] | None = None,
+        pheno_name_map: Dict[int, str] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -44,6 +47,19 @@ class SiteViewer(QWidget):
         self.control_species     = sorted(control_species)
         self.outgroup_species    = sorted(outgroup_species)
         self.pss_scores          = pss_scores or {}
+
+        # ─── Phenotype maps ───────────────────────────────────────────────
+        # Mapping of species → phenotype value (1/-1)
+        self.species_pheno_map: Dict[str, int] = species_pheno_map or {}
+        # Mapping of phenotype value (1/-1) → display name (e.g. "C4", "C3")
+        default_pheno_map = {1: "1", -1: "-1"}
+        # Build phenotype display names mapping avoiding Python 3.9+ dict union
+        self.pheno_name_map: Dict[int, str] = default_pheno_map.copy()
+        if pheno_name_map:
+            self.pheno_name_map.update(pheno_name_map)
+
+        # Cache the phenotype value considered "convergent" (defaults to +1)
+        self.convergent_pheno_value: int = 1
 
         if all_sites_info is None:
             all_sites_info = [
@@ -440,7 +456,9 @@ class SiteViewer(QWidget):
         if not item:
             return
 
-        sp_name = item.text().strip()
+        display_txt = item.text().strip()
+        # Remove phenotype annotation such as ' (C4)' if present
+        sp_name = display_txt.split(" (")[0].strip()
         # skip if label or blank
         if sp_name in ["Convergent Species", "Control Species", "Outgroup Species", ""]:
             return
@@ -770,21 +788,21 @@ class SiteViewer(QWidget):
             self.top_left_table.setItem(conv_label_row, 0, left_item("Convergent Species", True))
             for i, sp in enumerate(self.convergent_species):
                 rr = conv_label_row + 1 + i
-                self.top_left_table.setItem(rr,0, left_item(sp))
+                self.top_left_table.setItem(rr,0, self._create_species_item(sp))
 
         # ctrl
         if ctrl_label_row is not None:
             self.top_left_table.setItem(ctrl_label_row, 0, left_item("Control Species", True))
             for i, sp in enumerate(self.control_species):
                 rr = ctrl_label_row + 1 + i
-                self.top_left_table.setItem(rr,0, left_item(sp))
+                self.top_left_table.setItem(rr,0, self._create_species_item(sp))
 
         # outgroup
         if out_label_row is not None:
             self.top_left_table.setItem(out_label_row, 0, left_item("Outgroup Species", True))
             for i, sp in enumerate(self.outgroup_species):
                 rr = out_label_row + 1 + i
-                self.top_left_table.setItem(rr,0, left_item(sp))
+                self.top_left_table.setItem(rr,0, self._create_species_item(sp))
 
         for r in range(total_rows):
             self.top_left_table.setRowHeight(r, 24)
@@ -881,11 +899,22 @@ class SiteViewer(QWidget):
                 i.setFont(bold_f)
             return i
 
-        self.bottom_left_table.setItem(row0_label,0, left_item("Other Species", True))
+        def species_label_helper(sp):
+            disp_txt = sp
+            if sp in self.species_pheno_map:
+                p_val = self.species_pheno_map[sp]
+                p_name = self.pheno_name_map.get(p_val, str(p_val))
+                disp_txt += f" ({p_name})"
+            item = left_item(disp_txt)
+            if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
+                item.setForeground(QBrush(QColor("blue")))
+            return item
+
+        self.bottom_left_table.setItem(row0_label, 0, left_item("Other Species", True))
 
         for i, sp in enumerate(other_species):
             rr = row_sp_start + i
-            self.bottom_left_table.setItem(rr,0, left_item(sp))
+            self.bottom_left_table.setItem(rr, 0, self._create_species_item(sp))
 
         for r in range(total_rows):
             self.bottom_left_table.setRowHeight(r, 24)
@@ -912,6 +941,19 @@ class SiteViewer(QWidget):
 
         for r in range(total_rows):
             self.bottom_right_table.setRowHeight(r,24)
+
+    def _create_species_item(self, sp: str) -> QTableWidgetItem:
+        """Return a table item for a species with phenotype annotation and coloring."""
+        disp_txt = sp
+        if sp in self.species_pheno_map:
+            p_val = self.species_pheno_map[sp]
+            p_name = self.pheno_name_map.get(p_val, str(p_val))
+            disp_txt += f" ({p_name})"
+        item = QTableWidgetItem(disp_txt)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
+            item.setForeground(QBrush(QColor("blue")))
+        return item
 
     def _adjustVerticalSplitter(self):
         """Set vertical splitter sizes so top pane shows conv+ctrl species without scroll if space allows."""

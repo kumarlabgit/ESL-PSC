@@ -56,6 +56,30 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
             else:
                 ctrl.append(sp)
 
+    # ─── Phenotype data ───────────────────────────────────────────────
+    species_pheno_map: dict[str, int] | None = None
+    pheno_name_map: dict[int, str] | None = None
+    pheno_path = getattr(config, "species_phenotypes_file", "")
+    if pheno_path and os.path.exists(pheno_path):
+        try:
+            species_pheno_map = {}
+            with open(pheno_path) as fp:
+                for line in fp:
+                    parts = [p.strip() for p in line.strip().split(',') if p.strip()]
+                    if len(parts) >= 2:
+                        sp, val = parts[0], parts[1]
+                        try:
+                            species_pheno_map[sp] = int(val)
+                        except ValueError:
+                            # Skip malformed phenotype value
+                            continue
+        except Exception:
+            species_pheno_map = None
+
+    # Phenotype display names from config
+    if hasattr(config, "pheno_name1") and hasattr(config, "pheno_name2"):
+        pheno_name_map = {1: str(config.pheno_name1), -1: str(config.pheno_name2)}
+
     all_sites_info = None
     pss_map = {}
     if sites_path and os.path.exists(sites_path):
@@ -69,7 +93,18 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
             pass
 
     # Launch as independent top-level window (no parent) so it opens separately
-    viewer = SiteViewer(records, conv, ctrl, [], all_sites_info, False, pss_map)
+    viewer = SiteViewer(
+        records,
+        conv,
+        ctrl,
+        [],  # outgroup species (not derived here)
+        all_sites_info,
+        False,
+        pss_map,
+        parent=None,
+        species_pheno_map=species_pheno_map,
+        pheno_name_map=pheno_name_map,
+    )
     viewer.show()
     _open_dialogs.append(viewer)
 

@@ -72,6 +72,9 @@ def setup_logging(debug: bool | None = None, *, app_name: str = "ESL-PSC GUI") -
         # Even if handlers exist, still honour the requested level
         logging.getLogger().setLevel(level)
 
+    # Silence extremely verbose third-party modules when debugging
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.INFO)
+
     app_logger = logging.getLogger(app_name)
 
     _patch_print(app_logger)
