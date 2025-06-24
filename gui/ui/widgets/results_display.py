@@ -8,6 +8,7 @@ import os
 from gui.core.fasta_io import read_fasta
 import pandas as pd
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QBrush
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
@@ -282,6 +283,11 @@ class GeneRanksDialog(QDialog):
                 if 'pss' in gene_sites.columns and not gene_sites['pss'].isnull().all()
                 else gene_sites['score'].tolist() if 'score' in gene_sites.columns else []
             )
+            # Pre-compute score range for consistent coloring
+            min_score = min(scores) if scores else None
+            max_score = max(scores) if scores else None
+            if min_score is not None and max_score == min_score:
+                max_score += 1e-9
             length = _get_alignment_length(gene, align_dir) or (max(positions) if positions else 1)
 
             gene_values = [gene, str(length), '', '', ''] + [str(row[col]) for col in rank_columns]
@@ -298,6 +304,18 @@ class GeneRanksDialog(QDialog):
                 pss = f"{pss_val:.5f}"
                 child_vals = ['', '', '', pos, pss] + ['' for _ in rank_columns]
                 child = QTreeWidgetItem(child_vals)
+                # Apply the same color scaling used by ProteinMapWidget
+                if min_score is not None and max_score is not None:
+                    rel = (pss_val - min_score) / (max_score - min_score)
+                    brightness = 0.2 + 0.8 * rel
+                else:
+                    brightness = 1.0
+                base_color = QColor("#4CAF50")
+                r = int(base_color.red() * brightness)
+                g = int(base_color.green() * brightness)
+                b = int(base_color.blue() * brightness)
+                brush = QBrush(QColor(r, g, b))
+                child.setForeground(4, brush)
                 parent_item.addChild(child)
 
         self.tree.resizeColumnToContents(0)
