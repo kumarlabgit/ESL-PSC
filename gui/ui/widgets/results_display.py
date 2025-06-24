@@ -136,9 +136,13 @@ class GeneRanksDialog(QDialog):
         # Round and format columns
         if 'Highest GSS' in df.columns:
             df['Highest GSS'] = df['Highest GSS'].round(5)
+        # Ensure rank columns are numeric while safely handling placeholders like 'None'
         for col in ['Best Rank', 'Best Ever Rank']:
             if col in df.columns:
-                df[col] = df[col].fillna('').apply(lambda x: int(float(x)) if str(x).strip() != '' else '')
+                # Convert values to numeric, setting invalid parsing (e.g. 'None', '') to NaN
+                numeric_vals = pd.to_numeric(df[col], errors='coerce')
+                # Replace NaN with empty string to keep the table display tidy
+                df[col] = numeric_vals.apply(lambda x: '' if pd.isna(x) else int(x))
 
         self.has_sites = bool(sites_path and os.path.exists(sites_path))
 
@@ -237,12 +241,17 @@ class GeneRanksDialog(QDialog):
             gene_sites = sites_df[sites_df['gene_name'] == gene]
             gene_sites = gene_sites[gene_sites['pss'] != 0] if 'pss' in gene_sites.columns else gene_sites
             positions = gene_sites['position'].tolist()
+            scores = (
+                gene_sites['pss'].tolist()
+                if 'pss' in gene_sites.columns and not gene_sites['pss'].isnull().all()
+                else gene_sites['score'].tolist() if 'score' in gene_sites.columns else []
+            )
             length = _get_alignment_length(gene, align_dir) or (max(positions) if positions else 1)
 
             gene_values = [gene, str(length), '', '', ''] + [str(row[col]) for col in rank_columns]
             parent_item = QTreeWidgetItem(gene_values)
             self.tree.addTopLevelItem(parent_item)
-            self.tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions))
+            self.tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores))
             parent_item.setExpanded(False)
 
             for _, srow in gene_sites.iterrows():
@@ -300,11 +309,16 @@ class SelectedSitesDialog(QDialog):
                 continue
 
             positions = gene_data["position"].tolist()
+            scores = (
+                gene_data["pss"].tolist()
+                if "pss" in gene_data.columns and not gene_data["pss"].isnull().all()
+                else gene_data["score"].tolist() if "score" in gene_data.columns else []
+            )
             length = _get_alignment_length(gene, alignments_dir) or (max(positions) if positions else 1)
 
             parent_item = QTreeWidgetItem([gene, str(length), "", "", ""])
             tree.addTopLevelItem(parent_item)
-            tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions))
+            tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores))
             parent_item.setExpanded(False)
 
             for _, row in gene_data.iterrows():
