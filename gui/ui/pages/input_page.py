@@ -248,8 +248,16 @@ class InputPage(BaseWizardPage):
                     f"Failed to parse phenotypes file:\n{exc}",
                 )
 
-        self._tree_window = TreeViewer(tree, phenotypes=phenos)
+        self._tree_window = TreeViewer(
+            tree,
+            phenotypes=phenos,
+            on_pheno_changed=self._update_phenotype_file,
+        )
         self._tree_window.show()
+
+    def _update_phenotype_file(self, path: str) -> None:
+        """Update the phenotype file selector and config."""
+        self.species_phenotypes.set_path(path)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard

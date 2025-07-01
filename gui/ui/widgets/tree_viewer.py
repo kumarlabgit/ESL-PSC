@@ -2,10 +2,18 @@ from __future__ import annotations
 
 """A simple QGraphicsView-based viewer for phylogenetic trees."""
 
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
+import os
 from PyQt6.QtWidgets import (
-    QWidget, QGraphicsView, QGraphicsScene, QVBoxLayout,
-    QGraphicsTextItem, QLabel
+    QWidget,
+    QGraphicsView,
+    QGraphicsScene,
+    QVBoxLayout,
+    QGraphicsTextItem,
+    QLabel,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
 )
 from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtCore import Qt
@@ -23,7 +31,14 @@ class _ZoomableGraphicsView(QGraphicsView):
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
 
-    def __init__(self, tree: Tree, phenotypes: Optional[Dict[str, int]] = None, parent=None):
+    def __init__(
+        self,
+        tree: Tree,
+        phenotypes: Optional[Dict[str, int]] = None,
+        *,
+        on_pheno_changed: Optional[Callable[[str], None]] = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Phylogenetic Tree")
         layout = QVBoxLayout(self)
@@ -36,6 +51,12 @@ class TreeViewer(QWidget):
             layout.addWidget(legend)
 
         self._phenotypes = phenotypes or {}
+        self._tree = tree
+        self._on_pheno_changed = on_pheno_changed
+
+        pheno_btn = QPushButton("Load Phenotype File")
+        pheno_btn.clicked.connect(self._select_phenotypes)
+        layout.addWidget(pheno_btn)
 
         self.view = _ZoomableGraphicsView()
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -51,7 +72,45 @@ class TreeViewer(QWidget):
         self._draw_tree(tree)
 
         # Initial window size
-        self.resize(1000, 1000)
+        self.resize(1200, 1200)
+        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    # ------------------------------------------------------------------
+    def _select_phenotypes(self) -> None:
+        """Prompt the user for a phenotype file and redraw the tree."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Phenotype File",
+            os.getcwd(),
+            "CSV Files (*.csv *.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        phenos: Dict[str, int] = {}
+        try:
+            import csv
+
+            with open(path, newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) >= 2:
+                        try:
+                            phenos[row[0].strip()] = int(row[1])
+                        except ValueError:
+                            continue
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Phenotypes Error",
+                f"Failed to parse phenotypes file:\n{exc}",
+            )
+            return
+
+        self._phenotypes = phenos
+        self.scene.clear()
+        self._draw_tree(self._tree)
+        if self._on_pheno_changed:
+            self._on_pheno_changed(path)
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
@@ -78,7 +137,7 @@ class TreeViewer(QWidget):
         y_pos = self._y_positions(tree)
 
         # scale so the tree fills the window horizontally
-        page_width = 1000
+        page_width = 1200
         label_margin = 150
         px_per_unit = (page_width - label_margin) / max_x if max_x else 1
 
@@ -114,4 +173,5 @@ class TreeViewer(QWidget):
         # Set scene rect based on all items so panning works when zoomed
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
