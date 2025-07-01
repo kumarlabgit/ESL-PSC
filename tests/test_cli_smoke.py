@@ -10,7 +10,7 @@ def test_demo_run_smoke(tmp_path):
     project_root = Path(__file__).parent.parent
     alignments_dir = project_root / "photosynthesis_alignments"
     species_groups_file = project_root / "photo_single_LC_matrix_species_groups.txt"
-    species_pheno_file = project_root / "photo_species_phenotypes_full.txt"
+    species_pheno_file = project_root / "photo_species_phenotypes.txt"
 
     assert alignments_dir.exists(), "Demo alignments directory not found!"
     assert species_groups_file.exists(), "Demo species groups file not found!"
