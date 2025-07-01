@@ -1,11 +1,13 @@
 """Input-selection page of the ESL-PSC wizard."""
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
-    QLabel, QButtonGroup, QFormLayout
+    QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox
 )
 import os
 
 from gui.ui.widgets.file_selectors import FileSelector
+from gui.ui.widgets.tree_viewer import TreeViewer
+from Bio import Phylo
 from .base_page import BaseWizardPage
 
 class InputPage(BaseWizardPage):
@@ -111,6 +113,11 @@ class InputPage(BaseWizardPage):
             lambda p: setattr(self.config, 'species_groups_file', p)
         )
         self.input_files_layout.addWidget(self.species_groups)
+
+        # Button to open a Newick tree viewer
+        self.tree_btn = QPushButton("Help me pick species from a Newick tree")
+        self.tree_btn.clicked.connect(self.open_newick_tree)
+        self.input_files_layout.addWidget(self.tree_btn)
         
         # Response directory selector (initially hidden)
         self.response_dir = FileSelector(
@@ -199,6 +206,29 @@ class InputPage(BaseWizardPage):
         
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    def open_newick_tree(self):
+        """Open a Newick file and display it in a tree viewer."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Newick File",
+            os.getcwd(),
+            "Newick Files (*.nwk *.newick *.tree *.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            tree = Phylo.read(path, "newick")
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to parse Newick file:\n{exc}",
+            )
+            return
+
+        self._tree_window = TreeViewer(tree)
+        self._tree_window.show()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard
