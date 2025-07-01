@@ -40,6 +40,9 @@ class TreeViewer(QWidget):
 
         self._draw_tree(tree)
 
+        # Initial window size
+        self.resize(1000, 1000)
+
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
         """Assign y positions to all nodes based on tip order."""
@@ -60,25 +63,43 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _draw_tree(self, tree: Tree) -> None:
         """Render the tree to the graphics scene."""
-        depths = tree.depths(unit_branch_lengths=True)
+        depths = tree.depths()  # parse branch lengths
         max_x = max(depths.values()) if depths else 0
         y_pos = self._y_positions(tree)
 
+        # scale so the tree fills the window horizontally
+        page_width = 1000
+        label_margin = 150
+        px_per_unit = (page_width - label_margin) / max_x if max_x else 1
+
+        def scaled_x(clade: Clade) -> float:
+            return depths.get(clade, 0) * px_per_unit
+
         pen = QPen(Qt.GlobalColor.black)
         for clade in tree.find_clades(order="preorder"):
-            x1, y1 = depths.get(clade, 0), y_pos.get(clade, 0)
+            x_parent, y_parent = scaled_x(clade), y_pos.get(clade, 0)
             for child in clade.clades:
-                x2, y2 = depths.get(child, 0), y_pos.get(child, 0)
-                self.scene.addLine(x1, y1, x2, y2, pen)
+                x_child, y_child = scaled_x(child), y_pos.get(child, 0)
+                # horizontal segment from parent x to child x at child's y
+                self.scene.addLine(x_parent, y_child, x_child, y_child, pen)
+                # vertical segment from parent y to child y at parent x
+                self.scene.addLine(x_parent, y_parent, x_parent, y_child, pen)
 
-        # horizontal lines to a common x
+        x_max_scaled = max_x * px_per_unit
+
+        # horizontal lines to a common x for tips
         for leaf in tree.get_terminals():
-            x_leaf = depths.get(leaf, 0)
+            x_leaf = scaled_x(leaf)
             y_leaf = y_pos.get(leaf, 0)
-            self.scene.addLine(x_leaf, y_leaf, max_x, y_leaf, pen)
+            self.scene.addLine(x_leaf, y_leaf, x_max_scaled, y_leaf, pen)
             label = QGraphicsTextItem(leaf.name or "")
             self.scene.addItem(label)
-            label.setPos(max_x + 10, y_leaf - label.boundingRect().height() / 2)
+            label.setPos(x_max_scaled + 10, y_leaf - label.boundingRect().height() / 2)
 
-        self.scene.setSceneRect(0, -10, max_x + 150, len(tree.get_terminals()) * 30 + 20)
+        self.scene.setSceneRect(
+            0,
+            -10,
+            x_max_scaled + label_margin,
+            len(tree.get_terminals()) * 30 + 20,
+        )
 
