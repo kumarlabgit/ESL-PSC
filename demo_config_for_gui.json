@@ -1,7 +1,7 @@
 {
   "alignments_dir": "photosynthesis_alignments",
   "species_groups_file": "photo_single_LC_matrix_species_groups.txt",
-  "species_phenotypes_file": "photo_species_phenotypes.txt",
+  "species_phenotypes_file": "photo_species_phenotypes_full.txt",
   "prediction_alignments_dir": "",
   "limited_genes_file": "",
   "response_dir": "",
