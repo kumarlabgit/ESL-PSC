@@ -252,12 +252,17 @@ class InputPage(BaseWizardPage):
             tree,
             phenotypes=phenos,
             on_pheno_changed=self._update_phenotype_file,
+            on_groups_saved=self._update_groups_file,
         )
         self._tree_window.show()
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""
         self.species_phenotypes.set_path(path)
+
+    def _update_groups_file(self, path: str) -> None:
+        self.species_groups.set_path(path)
+        setattr(self.config, 'species_groups_file', path)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard
