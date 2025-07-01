@@ -227,7 +227,28 @@ class InputPage(BaseWizardPage):
             )
             return
 
-        self._tree_window = TreeViewer(tree)
+        phenos = {}
+        pheno_path = getattr(self.config, "species_phenotypes_file", "")
+        if pheno_path and os.path.exists(pheno_path):
+            try:
+                import csv
+
+                with open(pheno_path, newline="") as f:
+                    reader = csv.reader(f)
+                    for row in reader:
+                        if len(row) >= 2:
+                            try:
+                                phenos[row[0].strip()] = int(row[1])
+                            except ValueError:
+                                continue
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Phenotypes Error",
+                    f"Failed to parse phenotypes file:\n{exc}",
+                )
+
+        self._tree_window = TreeViewer(tree, phenotypes=phenos)
         self._tree_window.show()
 
     # ──────────────────────────────────────────────────────────────────────────

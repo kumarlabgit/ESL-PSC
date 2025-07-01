@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """A simple QGraphicsView-based viewer for phylogenetic trees."""
 
-from typing import Dict
+from typing import Dict, Optional
 from PyQt6.QtWidgets import (
-    QWidget, QGraphicsView, QGraphicsScene, QVBoxLayout, QGraphicsTextItem
+    QWidget, QGraphicsView, QGraphicsScene, QVBoxLayout,
+    QGraphicsTextItem, QLabel
 )
-from PyQt6.QtGui import QPainter, QPen
+from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtCore import Qt
 from Bio.Phylo.Newick import Tree, Clade
 
@@ -22,10 +23,19 @@ class _ZoomableGraphicsView(QGraphicsView):
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
 
-    def __init__(self, tree: Tree, parent=None):
+    def __init__(self, tree: Tree, phenotypes: Optional[Dict[str, int]] = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Phylogenetic Tree")
         layout = QVBoxLayout(self)
+
+        if phenotypes:
+            legend = QLabel(
+                "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
+                "<span style='color: red'>Control</span>"
+            )
+            layout.addWidget(legend)
+
+        self._phenotypes = phenotypes or {}
 
         self.view = _ZoomableGraphicsView()
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -93,13 +103,15 @@ class TreeViewer(QWidget):
             y_leaf = y_pos.get(leaf, 0)
             self.scene.addLine(x_leaf, y_leaf, x_max_scaled, y_leaf, pen)
             label = QGraphicsTextItem(leaf.name or "")
+            pheno = self._phenotypes.get(leaf.name)
+            if pheno == 1:
+                label.setDefaultTextColor(QColor("blue"))
+            elif pheno == -1:
+                label.setDefaultTextColor(QColor("red"))
             self.scene.addItem(label)
             label.setPos(x_max_scaled + 10, y_leaf - label.boundingRect().height() / 2)
 
-        self.scene.setSceneRect(
-            0,
-            -10,
-            x_max_scaled + label_margin,
-            len(tree.get_terminals()) * 30 + 20,
-        )
+        # Set scene rect based on all items so panning works when zoomed
+        bounds = self.scene.itemsBoundingRect()
+        self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
 
