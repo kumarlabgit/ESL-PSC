@@ -39,16 +39,18 @@ Now compatible with Windows, Mac, and Linux.
 
 ![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
 
-### July 2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
+#### July  2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
 
 The GUI now features an **interactive phylogenetic tree viewer** that lets you:
 
-* Load a Newick tree and visually explore branch relationships.
+* Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
 * Assign convergent vs. non-convergent phenotypes by right-clicking species names.
+* Assign species to contrast pairs which are then marked on the tree view.
 * Automatically generate sensible convergent/control contrast pairs with a single click.
-* Save / load phenotype assignments and contrast‐pair groups.
+* Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
+* Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
 
-Simply press **“Open Newick File”** on the first page, then use the toolbar at the top of the viewer.
+Simply press **“Create a Species Groups File Using a Newick Tree”** on the first page, then use the toolbar at the top of the viewer.
 
 ![Tree Viewer](./images/tree_viewer.png)
 
