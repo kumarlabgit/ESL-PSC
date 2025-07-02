@@ -123,11 +123,21 @@ class TreeViewer(QWidget):
         self.setWindowTitle("Contrast Pair Selection")
         layout = QVBoxLayout(self)
 
+        # Create a horizontal layout for the top row
+        top_row = QHBoxLayout()
+        
+        # Add the legend aligned to the left
         legend = QLabel(
             "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
             "<span style='color: red'>Control</span>"
         )
-        layout.addWidget(legend, alignment=Qt.AlignmentFlag.AlignRight)
+        top_row.addWidget(legend)
+        
+        # Add stretch to push buttons to the right
+        top_row.addStretch()
+        
+        # Add the top row to the main layout
+        layout.addLayout(top_row)
 
         self._phenotypes = phenotypes or {}
         self._tree = tree
@@ -142,6 +152,7 @@ class TreeViewer(QWidget):
         )
         self._line_pen = QPen(self._line_color)
 
+        # Create phenotype buttons
         pheno_btn = QPushButton("Load Phenotype File")
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         pheno_btn.clicked.connect(self._select_phenotypes)
@@ -153,6 +164,11 @@ class TreeViewer(QWidget):
         invert_pheno_btn = QPushButton("Invert Phenotype")
         invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         invert_pheno_btn.clicked.connect(self._invert_phenotypes)
+        
+        # Add phenotype buttons to the top row
+        top_row.addWidget(pheno_btn)
+        top_row.addWidget(save_pheno_btn)
+        top_row.addWidget(invert_pheno_btn)
 
         export_btn = QPushButton("Export Tree Image")
         export_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
