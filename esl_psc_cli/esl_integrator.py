@@ -439,6 +439,12 @@ if __name__ == '__main__':
 
     args = ecf.parse_args_with_config(parser)
 
+    # Validate that alignments used for input/predictions are 2-line FASTA
+    ecf.validate_alignment_dir_two_line(args.input_alignments_dir)
+    if (args.prediction_alignments_dir
+            and args.prediction_alignments_dir != args.input_alignments_dir):
+        ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+
     # set output_dir
     if not args.output_dir:
         args.output_dir = args.esl_main_dir
