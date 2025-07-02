@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 from PyQt6.QtGui import QPainter, QPen, QColor, QPalette
+from PyQt6.QtSvg import QSvgGenerator
 from PyQt6.QtCore import Qt
 from Bio.Phylo.Newick import Tree, Clade
 
@@ -153,6 +154,10 @@ class TreeViewer(QWidget):
         invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         invert_pheno_btn.clicked.connect(self._invert_phenotypes)
 
+        export_btn = QPushButton("Export Tree Image")
+        export_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        export_btn.clicked.connect(self._export_svg)
+
         groups_btn = QPushButton("Load Species Groups")
         groups_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         groups_btn.clicked.connect(self._load_groups)
@@ -169,6 +174,8 @@ class TreeViewer(QWidget):
         btn_layout.addWidget(pheno_btn)
         btn_layout.addWidget(save_pheno_btn)
         btn_layout.addWidget(invert_pheno_btn)
+        btn_layout.addSpacing(15)
+        btn_layout.addWidget(export_btn)
         btn_layout.addSpacing(15)
         btn_layout.addWidget(groups_btn)
         btn_layout.addWidget(self.save_btn)
@@ -698,6 +705,34 @@ class TreeViewer(QWidget):
             return
         if hasattr(self, "_on_groups_saved") and self._on_groups_saved:
             self._on_groups_saved(path)
+
+
+    # ------------------------------------------------------------------
+    def _export_svg(self) -> None:
+        """Export the current tree view to an SVG file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Tree Image",
+            os.getcwd(),
+            "SVG Files (*.svg);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            bounds = self.scene.itemsBoundingRect()
+            generator = QSvgGenerator()
+            generator.setFileName(path)
+            generator.setSize(bounds.size().toSize())
+            generator.setViewBox(bounds)
+            painter = QPainter(generator)
+            self.scene.render(painter)
+            painter.end()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to export SVG:\n{exc}",
+            )
 
 
     # ------------------------------------------------------------------
