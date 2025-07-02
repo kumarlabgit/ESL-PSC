@@ -26,11 +26,29 @@ from Bio.Phylo.Newick import Tree, Clade
 
 
 class _ZoomableGraphicsView(QGraphicsView):
-    """Graphics view that supports wheel-based zooming."""
+    """Graphics view that supports wheel-based zooming with limits."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._zoom_level = 0
+        self._min_zoom = -5
+        self._max_zoom = 10
+
+    # ------------------------------------------------------------------
     def wheelEvent(self, event):
-        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
-        self.scale(factor, factor)
+        if event.angleDelta().y() > 0 and self._zoom_level < self._max_zoom:
+            factor = 1.25
+            self._zoom_level += 1
+            self.scale(factor, factor)
+        elif event.angleDelta().y() < 0 and self._zoom_level > self._min_zoom:
+            factor = 0.8
+            self._zoom_level -= 1
+            self.scale(factor, factor)
+
+    # ------------------------------------------------------------------
+    def resetTransform(self):
+        super().resetTransform()
+        self._zoom_level = 0
 
     # ------------------------------------------------------------------
     def contextMenuEvent(self, event):
@@ -190,7 +208,10 @@ class TreeViewer(QWidget):
             scale = view_width / bounds.width()
             self.view.resetTransform()
             self.view.scale(scale, scale)
-            self.view.centerOn(bounds.center())
+        self.view.centerOn(bounds.center())
+        self.view.verticalScrollBar().setValue(
+            self.view.verticalScrollBar().minimum()
+        )
 
     # ------------------------------------------------------------------
     def _show_label_menu(self, item: QGraphicsTextItem, pos) -> None:
@@ -207,10 +228,13 @@ class TreeViewer(QWidget):
         if pair_idx is not None:
             pair = self._pairs[pair_idx - 1]
             make_conv = make_ctrl = remove_alt = None
-            if name in pair.conv_alts or name in pair.ctrl_alts:
+            if name in pair.conv_alts:
                 make_conv = menu.addAction("Make main convergent")
+                remove_alt = menu.addAction("Remove from alternates")
+            elif name in pair.ctrl_alts:
                 make_ctrl = menu.addAction("Make main control")
                 remove_alt = menu.addAction("Remove from alternates")
+            if remove_alt is not None:
                 menu.addSeparator()
             remove_pair = menu.addAction("Remove Pair")
             action = menu.exec(pos)
@@ -292,7 +316,7 @@ class TreeViewer(QWidget):
                 conv_act = menu.addAction(f"Add as convergent for Pair {idx}")
             if name == self._current_first:
                 cancel_act = menu.addAction("Cancel Selection")
-        if conv_act is None and ctrl_act is None:
+        if conv_act is None and ctrl_act is None and cancel_act is None:
             act = menu.addAction("Not a valid option")
             act.setEnabled(False)
         action = menu.exec(pos)
@@ -770,5 +794,8 @@ class TreeViewer(QWidget):
         # Set scene rect based on all items so panning works when zoomed
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
-        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.view.resetTransform()
+        self.view.fitInView(
+            self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio
+        )
 
