@@ -161,14 +161,21 @@ class TreeViewer(QWidget):
         # Create phenotype buttons
         pheno_btn = QPushButton("Load Phenotype File")
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        pheno_btn.setToolTip(
+            "Load a CSV file that maps species names to convergent/control values"
+        )
         pheno_btn.clicked.connect(self._select_phenotypes)
 
         save_pheno_btn = QPushButton("Save Phenotype File")
         save_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        save_pheno_btn.setToolTip("Write the current phenotype assignments to disk")
         save_pheno_btn.clicked.connect(self._save_phenotypes)
 
         invert_pheno_btn = QPushButton("Invert Phenotype")
         invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        invert_pheno_btn.setToolTip(
+            "Swap convergent and control phenotypes for all species"
+        )
         invert_pheno_btn.clicked.connect(self._invert_phenotypes)
         
         # Add phenotype buttons to the top row
@@ -184,22 +191,28 @@ class TreeViewer(QWidget):
 
         export_btn = QPushButton("Export Tree Image")
         export_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        export_btn.setToolTip("Save the current tree view as an SVG graphic")
         export_btn.clicked.connect(self._export_svg)
 
         self.auto_btn = QPushButton("Auto Select Contrast Pairs")
         self.auto_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.auto_btn.clicked.connect(self._auto_select_pairs)
         self.auto_btn.setEnabled(False)
-        self.auto_btn.setToolTip("Add more phenotypes")
+        self.auto_btn.setToolTip(
+            "Automatically choose contrast pairs based on phenotype changes"
+        )
 
         groups_btn = QPushButton("Load Species Groups")
         groups_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        groups_btn.setToolTip("Load a saved set of contrast pairs from disk")
         groups_btn.clicked.connect(self._load_groups)
 
         self.save_btn = QPushButton("Save Species Groups")
         self.save_btn.setEnabled(False)
-        self.save_btn.setToolTip("Must have at least two pairs")
         self.save_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.save_btn.setToolTip(
+            "Save the currently defined convergent/control pairs to a text file"
+        )
         self.save_btn.clicked.connect(self._save_groups)
 
         # ---------------------------
@@ -462,7 +475,9 @@ class TreeViewer(QWidget):
     def _update_save_btn(self) -> None:
         if len(self._pairs) >= 2 and self._current_role is None:
             self.save_btn.setEnabled(True)
-            self.save_btn.setToolTip("")
+            self.save_btn.setToolTip(
+                "Save the currently defined convergent/control pairs to a text file"
+            )
         else:
             self.save_btn.setEnabled(False)
             if len(self._pairs) < 2:
@@ -475,7 +490,9 @@ class TreeViewer(QWidget):
         count = sum(1 for v in self._phenotypes.values() if v in (1, -1))
         if count >= 4:
             self.auto_btn.setEnabled(True)
-            self.auto_btn.setToolTip("")
+            self.auto_btn.setToolTip(
+                "Automatically choose contrast pairs based on phenotype changes"
+            )
         else:
             self.auto_btn.setEnabled(False)
             self.auto_btn.setToolTip("Add more phenotypes")
