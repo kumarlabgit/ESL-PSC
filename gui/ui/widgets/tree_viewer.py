@@ -67,13 +67,13 @@ class _ZoomableGraphicsView(QGraphicsView):
             if isinstance(it, QGraphicsTextItem) and hasattr(it, "pair_index"):
                 pair_item = it
         if label_item is not None:
-            parent._show_label_menu(label_item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             label_item.setCursor(Qt.CursorShape.OpenHandCursor)
+            parent._show_label_menu(label_item, self.mapToGlobal(event.pos()))
         elif pair_item is not None:
-            parent._show_pair_menu(pair_item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             pair_item.setCursor(Qt.CursorShape.OpenHandCursor)
+            parent._show_pair_menu(pair_item, self.mapToGlobal(event.pos()))
         else:
             super().contextMenuEvent(event)
 
