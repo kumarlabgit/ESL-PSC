@@ -93,6 +93,56 @@ def file_lines_to_list(file_path):
     line_list = [line.strip() for line in lines]
     return line_list
 
+def assert_two_line_fasta(fasta_path):
+    """Raise ValueError if *fasta_path* is not in 2-line FASTA format."""
+    header = None
+    seen_seq = False
+    with open(fasta_path, 'r') as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.rstrip('\n')
+            if line.startswith('>'):
+                if header is not None and not seen_seq:
+                    raise ValueError(
+                        f"Header '{header}' has no sequence line before line {lineno}"
+                    )
+                header = line[1:].strip() or f"line {lineno}"
+                seen_seq = False
+            else:
+                if header is None:
+                    raise ValueError(
+                        f"Sequence data found before first header at line {lineno}"
+                    )
+                if seen_seq:
+                    raise ValueError(
+                        f"Sequence for '{header}' spans multiple lines (starting at line {lineno})"
+                    )
+                seen_seq = True
+        if header is None:
+            raise ValueError("File contains no FASTA records")
+        if not seen_seq:
+            raise ValueError(f"Header '{header}' has no sequence line at end of file")
+
+
+def validate_alignment_dir_two_line(directory, recursive=False):
+    """Ensure all FASTA files in *directory* are 2-line format."""
+    if not directory or not os.path.isdir(directory):
+        return
+
+    walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
+    for root, _dirs, files in walker:
+        for fname in files:
+            if is_fasta(fname):
+                fpath = os.path.join(root, fname)
+                try:
+                    assert_two_line_fasta(fpath)
+                except ValueError as e:
+                    msg = (
+                        f"Alignment file '{fpath}' is not in 2-line FASTA format: {e}.\n"
+                        "Each sequence must appear on a single line. "
+                        "You can reformat the file with a tool like 'seqtk seq -l0'."
+                    )
+                    raise ValueError(msg) from None
+
 def get_species_to_check(response_matrix_path, check_order = False):
     '''takes a full path to a response matrix and returns a list of species
     in which the even (0-based) indices should be +1 and odds -1.

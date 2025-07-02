@@ -82,6 +82,10 @@ def main():
                     help="RMSE percentile rank cutoff for selecting models in SPS plot")
     args = pa.parse_args()
 
+    # Ensure prediction alignments are 2-line FASTA files
+    from esl_psc_cli.esl_psc_functions import validate_alignment_dir_two_line
+    validate_alignment_dir_two_line(args.prediction_alignments_dir)
+
     # --------- helper for per-model input-species list -----------------------
     def load_input_species(combo_tag: str):
         """
