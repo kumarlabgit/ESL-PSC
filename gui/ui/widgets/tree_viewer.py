@@ -119,7 +119,7 @@ class TreeViewer(QWidget):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Phylogenetic Tree")
+        self.setWindowTitle("Contrast Pair Selection")
         layout = QVBoxLayout(self)
 
         legend = QLabel(
@@ -145,6 +145,14 @@ class TreeViewer(QWidget):
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         pheno_btn.clicked.connect(self._select_phenotypes)
 
+        save_pheno_btn = QPushButton("Save Phenotype File")
+        save_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        save_pheno_btn.clicked.connect(self._save_phenotypes)
+
+        invert_pheno_btn = QPushButton("Invert Phenotype")
+        invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        invert_pheno_btn.clicked.connect(self._invert_phenotypes)
+
         groups_btn = QPushButton("Load Species Groups")
         groups_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         groups_btn.clicked.connect(self._load_groups)
@@ -159,6 +167,8 @@ class TreeViewer(QWidget):
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setSpacing(5)
         btn_layout.addWidget(pheno_btn)
+        btn_layout.addWidget(save_pheno_btn)
+        btn_layout.addWidget(invert_pheno_btn)
         btn_layout.addSpacing(15)
         btn_layout.addWidget(groups_btn)
         btn_layout.addWidget(self.save_btn)
@@ -238,6 +248,8 @@ class TreeViewer(QWidget):
                 menu.addSeparator()
             remove_pair = menu.addAction("Remove Pair")
             action = menu.exec(pos)
+            if action is None:
+                return
             if action == remove_pair:
                 self._remove_pair(pair_idx)
             elif action == remove_alt:
@@ -262,8 +274,6 @@ class TreeViewer(QWidget):
                     pair.ctrl_alts.append(pair.control)
                 pair.control = name
                 self._apply_pairs()
-            elif action is None:
-                return
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
@@ -286,12 +296,12 @@ class TreeViewer(QWidget):
                 menu.exec(pos)
             else:
                 action = menu.exec(pos)
+                if action is None:
+                    return
                 if action == conv_act:
                     self._add_alternate(name, tgt_idx, "convergent")
                 elif action == ctrl_act:
                     self._add_alternate(name, tgt_idx, "control")
-                elif action is None:
-                    return
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
@@ -501,6 +511,10 @@ class TreeViewer(QWidget):
             for parent, child in ctrl_path:
                 for l in self._branch_lines.get((parent, child), []):
                     l.setPen(QPen(QColor("red"), 2))
+            for l in self._branch_lines.get((conv_leaf, None), []):
+                l.setPen(QPen(QColor("blue"), 2))
+            for l in self._branch_lines.get((ctrl_leaf, None), []):
+                l.setPen(QPen(QColor("red"), 2))
 
             for name, color in [
                 (conv_name, QColor("blue")),
@@ -722,6 +736,56 @@ class TreeViewer(QWidget):
         self._draw_tree(self._tree)
         if self._on_pheno_changed:
             self._on_pheno_changed(path)
+
+    # ------------------------------------------------------------------
+    def _save_phenotypes(self) -> None:
+        """Save current phenotypes to a CSV file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Phenotype File",
+            os.getcwd(),
+            "CSV Files (*.csv *.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            import csv
+
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                for name, val in self._phenotypes.items():
+                    writer.writerow([name, val])
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to save phenotype file:\n{exc}",
+            )
+            return
+        if self._on_pheno_changed:
+            self._on_pheno_changed(path)
+
+    # ------------------------------------------------------------------
+    def _invert_phenotypes(self) -> None:
+        """Invert phenotype assignments and swap pair roles."""
+        for name, val in list(self._phenotypes.items()):
+            if val == 1:
+                self._phenotypes[name] = -1
+            elif val == -1:
+                self._phenotypes[name] = 1
+        for pair in self._pairs:
+            pair.convergent, pair.control = pair.control, pair.convergent
+            pair.conv_alts, pair.ctrl_alts = pair.ctrl_alts, pair.conv_alts
+        if self._current_role == "convergent":
+            self._current_role = "control"
+        elif self._current_role == "control":
+            self._current_role = "convergent"
+        if self._selection_rect is not None and self._current_first is not None:
+            color = QColor("blue") if self._current_role == "convergent" else QColor("red")
+            self._selection_rect.setPen(QPen(color, 2))
+        self.scene.clear()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
