@@ -107,6 +107,16 @@ class PairInfo:
     ctrl_alts: List[str] = field(default_factory=list)
 
 
+@dataclass
+class CandidatePair:
+    """Helper structure for auto-selected pairs."""
+
+    convergent: str
+    control: str
+    distance: float
+    descendants: set[str] = field(default_factory=set)
+
+
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
 
@@ -177,6 +187,12 @@ class TreeViewer(QWidget):
         export_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         export_btn.clicked.connect(self._export_svg)
 
+        self.auto_btn = QPushButton("Auto Select Contrast Pairs")
+        self.auto_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.auto_btn.clicked.connect(self._auto_select_pairs)
+        self.auto_btn.setEnabled(False)
+        self.auto_btn.setToolTip("Add more phenotypes")
+
         groups_btn = QPushButton("Load Species Groups")
         groups_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         groups_btn.clicked.connect(self._load_groups)
@@ -196,6 +212,7 @@ class TreeViewer(QWidget):
         instruct = QLabel("Right click species names to add them to the analysis")
         bottom_row.addWidget(instruct)
         bottom_row.addStretch()
+        bottom_row.addWidget(self.auto_btn)
         bottom_row.addWidget(export_btn)
         bottom_row.addWidget(groups_btn)
         bottom_row.addWidget(self.save_btn)
@@ -231,6 +248,7 @@ class TreeViewer(QWidget):
         # Initial window size
         self.resize(1200, 1200)
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def showEvent(self, event):
@@ -425,6 +443,16 @@ class TreeViewer(QWidget):
                 self.save_btn.setToolTip("Must have at least two pairs")
             else:
                 self.save_btn.setToolTip("There is an unselected pair")
+
+    # ------------------------------------------------------------------
+    def _update_auto_btn(self) -> None:
+        count = sum(1 for v in self._phenotypes.values() if v in (1, -1))
+        if count >= 4:
+            self.auto_btn.setEnabled(True)
+            self.auto_btn.setToolTip("")
+        else:
+            self.auto_btn.setEnabled(False)
+            self.auto_btn.setToolTip("Add more phenotypes")
 
     # ------------------------------------------------------------------
     def _add_species(self, name: str, role: str) -> None:
@@ -671,6 +699,7 @@ class TreeViewer(QWidget):
             self._pair_labels.append(label)
 
         self._update_save_btn()
+        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def _remove_pair(self, idx: int) -> None:
@@ -905,6 +934,68 @@ class TreeViewer(QWidget):
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
+
+    # ------------------------------------------------------------------
+    def _auto_select_pairs(self) -> None:
+        """Automatically choose contrast pairs based on phenotype transitions."""
+        existing_desc: set[str] = set()
+        for pair in self._pairs:
+            conv_leaf = next(self._tree.find_clades(name=pair.convergent))
+            ctrl_leaf = next(self._tree.find_clades(name=pair.control))
+            anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+            for leaf in anc.get_terminals():
+                existing_desc.add(leaf.name or "")
+
+        candidates: List[CandidatePair] = []
+        prev_name = None
+        prev_pheno = None
+        for leaf in self._tree.get_terminals():
+            name = leaf.name or ""
+            if name in existing_desc:
+                continue
+            ph = self._phenotypes.get(name)
+            if ph not in (1, -1):
+                continue
+            if prev_name is not None and ph != prev_pheno:
+                if prev_pheno == 1:
+                    conv, ctrl = prev_name, name
+                else:
+                    conv, ctrl = name, prev_name
+                conv_leaf = next(self._tree.find_clades(name=conv))
+                ctrl_leaf = next(self._tree.find_clades(name=ctrl))
+                anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                dist = self._tree.distance(conv_leaf, ctrl_leaf)
+                desc = {l.name or "" for l in anc.get_terminals()}
+                candidates.append(CandidatePair(conv, ctrl, dist, desc))
+            prev_name = name
+            prev_pheno = ph
+
+        candidates.sort(key=lambda c: c.distance)
+
+        added: List[PairInfo] = []
+        invalid: set[str] = set(existing_desc)
+        while candidates:
+            cand = candidates.pop(0)
+            if cand.descendants & invalid:
+                continue
+            added.append(PairInfo(cand.convergent, cand.control))
+            invalid.update(cand.descendants)
+            candidates = [c for c in candidates if not (c.descendants & invalid)]
+
+        if len(self._pairs) + len(added) < 2:
+            QMessageBox.warning(
+                self,
+                "Auto Select Error",
+                "ESL-PSC requires at least 2 valid contrast pairs and if not all of the species are labeled they may need to label more.",
+            )
+            return
+
+        if added:
+            self._pairs.extend(added)
+            self._prune_nested_pairs()
+            self._current_role = None
+            self._current_first = None
+            self._apply_pairs()
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
