@@ -157,12 +157,10 @@ class TreeViewer(QWidget):
         
         # "Set" label and phenotype toggle buttons shown on the right
         set_lbl = QLabel("<b>Set:</b>")
-        self.conv_mode_btn = QPushButton(
-            "<span style='color: blue'>Convergent</span>"
-        )
-        self.ctrl_mode_btn = QPushButton(
-            "<span style='color: red'>Non-convergent</span>"
-        )
+        self.conv_mode_btn = QPushButton("Convergent")
+        self.conv_mode_btn.setStyleSheet("color: blue;")
+        self.ctrl_mode_btn = QPushButton("Non-convergent")
+        self.ctrl_mode_btn.setStyleSheet("color: red;")
         for btn in (self.conv_mode_btn, self.ctrl_mode_btn):
             btn.setCheckable(True)
             btn.setSizePolicy(
