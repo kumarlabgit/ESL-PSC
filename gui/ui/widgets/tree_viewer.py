@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSizePolicy,
 )
-from PyQt6.QtGui import QPainter, QPen, QColor, QPalette
+from PyQt6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
 from PyQt6.QtSvg import QSvgGenerator
 from PyQt6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
@@ -97,6 +97,24 @@ class _HoverLabelItem(QGraphicsTextItem):
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         super().hoverLeaveEvent(event)
 
+    # ------------------------------------------------------------------
+    def mousePressEvent(self, event):
+        parent = None
+        views = self.scene().views() if self.scene() else []
+        if views:
+            parent = views[0].parentWidget()
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and isinstance(parent, TreeViewer)
+            and hasattr(self, "species_name")
+        ):
+            mode = parent._assign_mode
+            if mode in (1, -1):
+                parent._assign_pheno(self.species_name, mode)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
 
 @dataclass
 class PairInfo:
@@ -137,13 +155,27 @@ class TreeViewer(QWidget):
         # Create a horizontal layout for the top row
         top_row = QHBoxLayout()
         
-        # Legend label (will be aligned to the right)
-        legend = QLabel(
-            "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
+        # "Set" label and phenotype toggle buttons shown on the right
+        set_lbl = QLabel("<b>Set:</b>")
+        self.conv_mode_btn = QPushButton(
+            "<span style='color: blue'>Convergent</span>"
+        )
+        self.ctrl_mode_btn = QPushButton(
             "<span style='color: red'>Non-convergent</span>"
         )
+        for btn in (self.conv_mode_btn, self.ctrl_mode_btn):
+            btn.setCheckable(True)
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
+        self.conv_mode_btn.clicked.connect(
+            lambda: self._toggle_assign_mode(1)
+        )
+        self.ctrl_mode_btn.clicked.connect(
+            lambda: self._toggle_assign_mode(-1)
+        )
 
-        # We will add phenotype buttons first, then a stretch, then the legend (so legend stays on the far right)
+        # We will add phenotype buttons first, then a stretch, then the set controls so they stay on the far right
         # Add the top row to the main layout at the end of the setup below (after buttons).
         self._top_row = top_row  # save if needed elsewhere
 
@@ -154,6 +186,13 @@ class TreeViewer(QWidget):
 
         # Branch lines storage must be defined before we compute pen
         self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
+
+        # Phenotype assignment mode tracking and cursors
+        self._assign_mode: int | None = None
+        self._assign_cursors = {
+            1: self._make_color_cursor(QColor("blue")),
+            -1: self._make_color_cursor(QColor("red")),
+        }
 
 
         # Create phenotype buttons
@@ -196,9 +235,11 @@ class TreeViewer(QWidget):
         top_row.addWidget(invert_pheno_btn)
         top_row.addWidget(set_nonconv_btn)
         top_row.addWidget(clear_pheno_btn)
-        # Stretch so the legend stays at far right
+        # Stretch so the set buttons stay at far right
         top_row.addStretch()
-        top_row.addWidget(legend)
+        top_row.addWidget(set_lbl)
+        top_row.addWidget(self.conv_mode_btn)
+        top_row.addWidget(self.ctrl_mode_btn)
 
         # Finally, add this top row to the main layout
         layout.addLayout(top_row)
@@ -311,6 +352,34 @@ class TreeViewer(QWidget):
             lbl.setDefaultTextColor(default_color)
 
     # ------------------------------------------------------------------
+    def _make_color_cursor(self, color: QColor) -> QCursor:
+        """Create a small colored-dot cursor for assignment mode."""
+        pix = QPixmap(16, 16)
+        pix.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(color)
+        painter.setBrush(color)
+        painter.drawEllipse(6, 6, 4, 4)
+        painter.end()
+        return QCursor(pix, 7, 7)
+
+    # ------------------------------------------------------------------
+    def _update_assign_cursor(self) -> None:
+        """Apply the current assignment cursor to the view and labels."""
+        if self._assign_mode is None:
+            self.view.viewport().unsetCursor()
+            for lbl in self._label_items.values():
+                lbl.setCursor(Qt.CursorShape.OpenHandCursor)
+            return
+        cur = self._assign_cursors.get(self._assign_mode)
+        if cur is None:
+            return
+        self.view.viewport().setCursor(cur)
+        for lbl in self._label_items.values():
+            lbl.setCursor(cur)
+
+    # ------------------------------------------------------------------
     def showEvent(self, event):
         super().showEvent(event)
         bounds = self.scene.itemsBoundingRect()
@@ -323,6 +392,7 @@ class TreeViewer(QWidget):
         self.view.verticalScrollBar().setValue(
             self.view.verticalScrollBar().minimum()
         )
+        self._update_assign_cursor()
 
     # ------------------------------------------------------------------
     def _show_label_menu(self, item: QGraphicsTextItem, pos) -> None:
@@ -377,6 +447,7 @@ class TreeViewer(QWidget):
                 self._apply_pairs()
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
+            self._update_assign_cursor()
             return
         if name in self._disabled_species:
             tgt_idx = self._species_pair_map.get(name)
@@ -405,6 +476,7 @@ class TreeViewer(QWidget):
                     self._add_alternate(name, tgt_idx, "control")
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
+            self._update_assign_cursor()
             return
 
         idx = len(self._pairs) + 1
@@ -447,6 +519,7 @@ class TreeViewer(QWidget):
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
         if action is None:
+            self._update_assign_cursor()
             return
         if action == conv_act:
             self._add_species(name, "convergent")
@@ -474,6 +547,7 @@ class TreeViewer(QWidget):
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
+        self._update_assign_cursor()
 
     # ------------------------------------------------------------------
     def _show_pair_menu(self, item: QGraphicsTextItem, pos) -> None:
@@ -488,9 +562,11 @@ class TreeViewer(QWidget):
         if action == remove:
             self._remove_pair(idx)
         elif action is None:
+            self._update_assign_cursor()
             return
         else:
             self._apply_pairs()
+        self._update_assign_cursor()
 
     # ------------------------------------------------------------------
     def _update_save_btn(self) -> None:
@@ -517,6 +593,34 @@ class TreeViewer(QWidget):
         else:
             self.auto_btn.setEnabled(False)
             self.auto_btn.setToolTip("Add more phenotypes")
+
+    # ------------------------------------------------------------------
+    def _toggle_assign_mode(self, mode: int) -> None:
+        """Toggle phenotype assignment mode using the colored buttons."""
+        if self._assign_mode == mode:
+            self._assign_mode = None
+            self.conv_mode_btn.setChecked(False)
+            self.ctrl_mode_btn.setChecked(False)
+        else:
+            self._assign_mode = mode
+            if mode == 1:
+                self.conv_mode_btn.setChecked(True)
+                self.ctrl_mode_btn.setChecked(False)
+            else:
+                self.conv_mode_btn.setChecked(False)
+                self.ctrl_mode_btn.setChecked(True)
+        self._update_assign_cursor()
+
+    # ------------------------------------------------------------------
+    def _assign_pheno(self, name: str, val: int) -> None:
+        """Set phenotype for a species and redraw."""
+        if val not in (1, -1):
+            return
+        self._phenotypes[name] = val
+        self._reset_scene()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
+        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def _add_species(self, name: str, role: str) -> None:
@@ -768,6 +872,7 @@ class TreeViewer(QWidget):
 
         self._update_save_btn()
         self._update_auto_btn()
+        self._update_assign_cursor()
 
     # ------------------------------------------------------------------
     def _remove_pair(self, idx: int) -> None:
@@ -1209,4 +1314,5 @@ class TreeViewer(QWidget):
 
         # Ensure label colors reflect the current palette
         self._update_line_pen()
+        self._update_assign_cursor()
 
