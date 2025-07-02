@@ -89,7 +89,18 @@ class _HoverLabelItem(QGraphicsTextItem):
 
     # ------------------------------------------------------------------
     def hoverEnterEvent(self, event):
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        parent = None
+        views = self.scene().views() if self.scene() else []
+        if views:
+            parent = views[0].parentWidget()
+        if isinstance(parent, TreeViewer) and parent._assign_mode in (1, -1):
+            cur = parent._assign_cursors.get(parent._assign_mode)
+            if cur is not None:
+                self.setCursor(cur)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
         super().hoverEnterEvent(event)
 
     # ------------------------------------------------------------------
@@ -364,18 +375,13 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _update_assign_cursor(self) -> None:
-        """Apply the current assignment cursor to the view and labels."""
-        if self._assign_mode is None:
-            self.view.viewport().unsetCursor()
-            for lbl in self._label_items.values():
-                lbl.setCursor(Qt.CursorShape.OpenHandCursor)
-            return
-        cur = self._assign_cursors.get(self._assign_mode)
-        if cur is None:
-            return
-        self.view.viewport().setCursor(cur)
+        """Apply base cursor styles when (de)activating assignment mode."""
+        # We keep the view's cursor default (for panning) and reset all label
+        # cursors to the open hand.  The colored dot cursor will be shown only
+        # when hovering over a label via :class:`_HoverLabelItem`.
+        self.view.viewport().unsetCursor()
         for lbl in self._label_items.values():
-            lbl.setCursor(cur)
+            lbl.setCursor(Qt.CursorShape.OpenHandCursor)
 
     # ------------------------------------------------------------------
     def showEvent(self, event):
@@ -611,10 +617,13 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _assign_pheno(self, name: str, val: int) -> None:
-        """Set phenotype for a species and redraw."""
+        """Set or toggle phenotype for a species and redraw."""
         if val not in (1, -1):
             return
-        self._phenotypes[name] = val
+        if self._phenotypes.get(name) == val:
+            self._phenotypes.pop(name, None)
+        else:
+            self._phenotypes[name] = val
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
