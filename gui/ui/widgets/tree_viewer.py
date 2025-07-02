@@ -823,10 +823,22 @@ class TreeViewer(QWidget):
             if len(pairs) < 2:
                 raise ValueError("Need at least two pairs")
         except Exception as exc:
+            # Read first 100 characters for context, if possible
+            preview = ""
+            try:
+                with open(path, "r", errors="ignore") as _pf:
+                    preview = _pf.read(100)
+            except Exception:
+                preview = "<unable to read preview>"
+
             QMessageBox.critical(
                 self,
                 "Groups Error",
-                f"Failed to load species groups:\n{exc}",
+                (
+                    "The file format doesn't look right for a species groups file and it couldn't be loaded. "
+                    "Are you sure you meant to load this?\n\n"
+                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n\n{preview}\n\nDetails: {exc}"
+                ),
             )
             return
 
@@ -945,10 +957,22 @@ class TreeViewer(QWidget):
             if not phenos:
                 raise ValueError("No valid phenotype entries found")
         except Exception as exc:
+            # Read first 100 characters for context, if possible
+            preview = ""
+            try:
+                with open(path, "r", errors="ignore") as _pf:
+                    preview = _pf.read(100)
+            except Exception:
+                preview = "<unable to read preview>"
+
             QMessageBox.warning(
                 self,
                 "Phenotypes Error",
-                f"Failed to parse phenotypes file:\n{exc}",
+                (
+                    "The file format doesn't look right for a phenotype file and it couldn't be loaded. "
+                    "Are you sure you meant to load this?\n\n"
+                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}\n\nDetails: {exc}"
+                ),
             )
             return
 
