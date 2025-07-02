@@ -336,6 +336,20 @@ class TreeViewer(QWidget):
         if conv_act is None and ctrl_act is None and cancel_act is None:
             act = menu.addAction("Not a valid option")
             act.setEnabled(False)
+
+        # phenotype change options
+        pheno_conv = pheno_ctrl = pheno_clear = None
+        menu.addSeparator()
+        if pheno == 1:
+            pheno_ctrl = menu.addAction("Change to control phenotype")
+            pheno_clear = menu.addAction("Remove phenotype")
+        elif pheno == -1:
+            pheno_conv = menu.addAction("Change to convergent phenotype")
+            pheno_clear = menu.addAction("Remove phenotype")
+        else:
+            pheno_conv = menu.addAction("Set to convergent phenotype")
+            pheno_ctrl = menu.addAction("Set to control phenotype")
+
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
         if action is None:
@@ -351,6 +365,21 @@ class TreeViewer(QWidget):
             self._current_role = None
             self._current_first = None
             self._update_save_btn()
+        elif action == pheno_conv:
+            self._phenotypes[name] = 1
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+        elif action == pheno_ctrl:
+            self._phenotypes[name] = -1
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+        elif action == pheno_clear:
+            self._phenotypes.pop(name, None)
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
 
     # ------------------------------------------------------------------
     def _show_pair_menu(self, item: QGraphicsTextItem, pos) -> None:
@@ -738,9 +767,28 @@ class TreeViewer(QWidget):
             generator.setFileName(path)
             generator.setSize(bounds.size().toSize())
             generator.setViewBox(bounds)
+            # temporarily force black lines and text
+            saved_lines = {}
+            for lines in self._branch_lines.values():
+                for ln in lines:
+                    saved_lines[ln] = ln.pen()
+                    ln.setPen(QPen(Qt.GlobalColor.black))
+            saved_labels = {}
+            for lbl in self._label_items.values():
+                saved_labels[lbl] = lbl.defaultTextColor()
+                lbl.setDefaultTextColor(QColor("black"))
+            for lbl in self._pair_labels:
+                saved_labels[lbl] = lbl.defaultTextColor()
+                lbl.setDefaultTextColor(QColor("black"))
+
             painter = QPainter(generator)
             self.scene.render(painter)
             painter.end()
+
+            for item, pen in saved_lines.items():
+                item.setPen(pen)
+            for lbl, col in saved_labels.items():
+                lbl.setDefaultTextColor(col)
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -781,8 +829,12 @@ class TreeViewer(QWidget):
             return
 
         self._phenotypes = phenos
+        self._pairs.clear()
+        self._current_role = None
+        self._current_first = None
         self._reset_scene()
         self._draw_tree(self._tree)
+        self._apply_pairs()
         if self._on_pheno_changed:
             self._on_pheno_changed(path)
 
@@ -802,7 +854,9 @@ class TreeViewer(QWidget):
 
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                for name, val in self._phenotypes.items():
+                for leaf in self._tree.get_terminals():
+                    name = leaf.name or ""
+                    val = self._phenotypes.get(name, 0)
                     writer.writerow([name, val])
         except Exception as exc:
             QMessageBox.critical(
