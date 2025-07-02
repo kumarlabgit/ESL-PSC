@@ -155,8 +155,6 @@ class TreeViewer(QWidget):
         # Branch lines storage must be defined before we compute pen
         self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
 
-        # Determine branch line color based on current palette
-        self._update_line_pen()
 
         # Create phenotype buttons
         pheno_btn = QPushButton("Load Phenotype File")
@@ -255,8 +253,8 @@ class TreeViewer(QWidget):
         self._alt_boxes: List[QGraphicsRectItem] = []
         self._main_boxes: Dict[str, QGraphicsRectItem] = {}
 
-
-
+        # Determine branch line color based on current palette
+        self._update_line_pen()
 
         # Flag to control whether we should auto-fit the view (only on first draw)
         self._initial_draw = True
