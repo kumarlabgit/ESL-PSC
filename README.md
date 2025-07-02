@@ -248,6 +248,15 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 7. Sequences must be aligned to each other in each file.
 
 ## Demo ##
+
+### Running the demo in the GUI ###
+To run the C3/C4 demo using the graphical interface:
+1. Launch the GUI (see the installation and launch instructions above).
+2. Click **Load Configuration** (bottom left of the page) and open `demo_config_for_gui.json` found in the repository root folder.
+3. Click **Next** through the pre-filled wizard pages and press **Run Analysis** on the final page.
+4. When the run finishes, press **Show SPS Plot** to view the violin plot, or **Show Top Gene Ranks** to view the most influential genes. You can double click a gene's name to open the protein sequence alignment in the convergent site viewer and examine the residues present in the input species and other species at the strongest convergent sites.
+
+### Running the demo with the command line ###
 You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 

@@ -263,7 +263,7 @@ class TreeViewer(QWidget):
         self.auto_btn.clicked.connect(self._auto_select_pairs)
         self.auto_btn.setEnabled(False)
         self.auto_btn.setToolTip(
-            "Automatically choose contrast pairs based on phenotype changes"
+            "Automatically choose a valid set of contrast pairs based on the current phenotype assignments"
         )
 
         groups_btn = QPushButton("Load Species Groups")
