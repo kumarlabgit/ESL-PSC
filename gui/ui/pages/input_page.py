@@ -101,7 +101,7 @@ class InputPage(BaseWizardPage):
                 "Each pair goes on a pair of lines, with the first line containing a species with the convergent trait "
                 "and optionally one or more close siblings with the trait. The second line contains one or more control species "
                 "that do not have the trait but are close relatives of the species in the first line. "
-                "Subsequent lines follow the same pattern." 
+                "Subsequent lines follow the same pattern. " 
                 "Example:\n\n"
                 "convergent_species1a, convergent_species1b\n"
                 "control_species1a, control_species1b\n"
@@ -116,7 +116,11 @@ class InputPage(BaseWizardPage):
         self.input_files_layout.addWidget(self.species_groups)
 
         # Button to open a Newick tree viewer
-        self.tree_btn = QPushButton("Pick species from a Newick tree")
+        self.tree_btn = QPushButton("Create a Species Groups File Using a Newick Tree")
+        self.tree_btn.setToolTip(
+            "Load a Newick file in a tree viewer where you can select contrast pairs interactively, "
+            "and save a species groups file to use in the analysis."
+        )
         self.tree_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.tree_btn.clicked.connect(self.open_newick_tree)
         self.input_files_layout.addWidget(self.tree_btn)

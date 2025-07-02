@@ -140,7 +140,7 @@ class TreeViewer(QWidget):
         # Legend label (will be aligned to the right)
         legend = QLabel(
             "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
-            "<span style='color: red'>Control</span>"
+            "<span style='color: red'>Non-convergent</span>"
         )
 
         # We will add phenotype buttons first, then a stretch, then the legend (so legend stays on the far right)
@@ -160,7 +160,8 @@ class TreeViewer(QWidget):
         pheno_btn = QPushButton("Load Phenotype File")
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         pheno_btn.setToolTip(
-            "Load a CSV file that maps species names to convergent/control values"
+            "Load a CSV file that maps species names (as they appear in the tree) "
+            "to trait values: 1 for convergent and -1 for ancestral"
         )
         pheno_btn.clicked.connect(self._select_phenotypes)
 
@@ -175,11 +176,26 @@ class TreeViewer(QWidget):
             "Swap convergent and control phenotypes for all species"
         )
         invert_pheno_btn.clicked.connect(self._invert_phenotypes)
-        
+
+        # Additional phenotype utility buttons
+        set_nonconv_btn = QPushButton("Set All to Non-convergent")
+        set_nonconv_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        set_nonconv_btn.setToolTip(
+            "Assign the Non-convergent phenotype (-1) to every species in the tree"
+        )
+        set_nonconv_btn.clicked.connect(self._set_all_non_convergent)
+
+        clear_pheno_btn = QPushButton("Clear Phenotypes")
+        clear_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        clear_pheno_btn.setToolTip("Remove all phenotype assignments")
+        clear_pheno_btn.clicked.connect(self._clear_phenotypes)
+
         # Add phenotype buttons to the top row
         top_row.addWidget(pheno_btn)
         top_row.addWidget(save_pheno_btn)
         top_row.addWidget(invert_pheno_btn)
+        top_row.addWidget(set_nonconv_btn)
+        top_row.addWidget(clear_pheno_btn)
         # Stretch so the legend stays at far right
         top_row.addStretch()
         top_row.addWidget(legend)
@@ -997,6 +1013,25 @@ class TreeViewer(QWidget):
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
+
+    # ------------------------------------------------------------------
+    def _set_all_non_convergent(self) -> None:
+        """Assign the non-convergent phenotype (-1) to every species in the tree."""
+        for leaf in self._tree.get_terminals():
+            self._phenotypes[leaf.name] = -1
+        self._reset_scene()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
+        self._update_auto_btn()
+
+    # ------------------------------------------------------------------
+    def _clear_phenotypes(self) -> None:
+        """Remove all phenotype assignments from the tree."""
+        self._phenotypes.clear()
+        self._reset_scene()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
+        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
