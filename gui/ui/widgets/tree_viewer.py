@@ -126,18 +126,15 @@ class TreeViewer(QWidget):
         # Create a horizontal layout for the top row
         top_row = QHBoxLayout()
         
-        # Add the legend aligned to the left
+        # Legend label (will be aligned to the right)
         legend = QLabel(
             "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
             "<span style='color: red'>Control</span>"
         )
-        top_row.addWidget(legend)
-        
-        # Add stretch to push buttons to the right
-        top_row.addStretch()
-        
-        # Add the top row to the main layout
-        layout.addLayout(top_row)
+
+        # We will add phenotype buttons first, then a stretch, then the legend (so legend stays on the far right)
+        # Add the top row to the main layout at the end of the setup below (after buttons).
+        self._top_row = top_row  # save if needed elsewhere
 
         self._phenotypes = phenotypes or {}
         self._tree = tree
@@ -169,6 +166,12 @@ class TreeViewer(QWidget):
         top_row.addWidget(pheno_btn)
         top_row.addWidget(save_pheno_btn)
         top_row.addWidget(invert_pheno_btn)
+        # Stretch so the legend stays at far right
+        top_row.addStretch()
+        top_row.addWidget(legend)
+
+        # Finally, add this top row to the main layout
+        layout.addLayout(top_row)
 
         export_btn = QPushButton("Export Tree Image")
         export_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -184,22 +187,19 @@ class TreeViewer(QWidget):
         self.save_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.save_btn.clicked.connect(self._save_groups)
 
-        btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.setSpacing(5)
-        btn_layout.addWidget(pheno_btn)
-        btn_layout.addWidget(save_pheno_btn)
-        btn_layout.addWidget(invert_pheno_btn)
-        btn_layout.addSpacing(15)
-        btn_layout.addWidget(export_btn)
-        btn_layout.addSpacing(15)
-        btn_layout.addWidget(groups_btn)
-        btn_layout.addWidget(self.save_btn)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
+        # ---------------------------
+        # Second row: instruction label on left, export & group buttons on right
+        bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
+        bottom_row.setSpacing(5)
 
         instruct = QLabel("Right click species names to add them to the analysis")
-        layout.addWidget(instruct, alignment=Qt.AlignmentFlag.AlignLeft)
+        bottom_row.addWidget(instruct)
+        bottom_row.addStretch()
+        bottom_row.addWidget(export_btn)
+        bottom_row.addWidget(groups_btn)
+        bottom_row.addWidget(self.save_btn)
+        layout.addLayout(bottom_row)
 
         self.view = _ZoomableGraphicsView()
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
