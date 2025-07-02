@@ -635,6 +635,20 @@ class TreeViewer(QWidget):
         self._apply_pairs()
 
     # ------------------------------------------------------------------
+    def _reset_scene(self) -> None:
+        """Clear the scene and reset cached graphics items."""
+        self.scene.clear()
+        self._branch_lines.clear()
+        self._label_items.clear()
+        self._pair_labels.clear()
+        self._alt_lines.clear()
+        self._alt_boxes.clear()
+        self._main_boxes.clear()
+        self._disabled_species.clear()
+        self._species_pair_map.clear()
+        self._selection_rect = None
+
+    # ------------------------------------------------------------------
     def _load_groups(self) -> None:
         """Load a species groups file and apply its pairs."""
         path, _ = QFileDialog.getOpenFileName(
@@ -767,7 +781,7 @@ class TreeViewer(QWidget):
             return
 
         self._phenotypes = phenos
-        self.scene.clear()
+        self._reset_scene()
         self._draw_tree(self._tree)
         if self._on_pheno_changed:
             self._on_pheno_changed(path)
@@ -818,7 +832,7 @@ class TreeViewer(QWidget):
         if self._selection_rect is not None and self._current_first is not None:
             color = QColor("blue") if self._current_role == "convergent" else QColor("red")
             self._selection_rect.setPen(QPen(color, 2))
-        self.scene.clear()
+        self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
 
