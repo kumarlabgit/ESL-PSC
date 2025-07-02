@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPainter, QPen, QColor, QPalette
 from PyQt6.QtSvg import QSvgGenerator
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
 
 
@@ -151,13 +151,8 @@ class TreeViewer(QWidget):
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
 
-        pal = self.palette()
-        window_lum = pal.color(QPalette.ColorRole.Window).lightness()
-        text_lum = pal.color(QPalette.ColorRole.WindowText).lightness()
-        self._line_color = (
-            Qt.GlobalColor.white if window_lum < text_lum else Qt.GlobalColor.black
-        )
-        self._line_pen = QPen(self._line_color)
+        # Determine branch line color based on current palette
+        self._update_line_pen()
 
         # Create phenotype buttons
         pheno_btn = QPushButton("Load Phenotype File")
@@ -236,19 +231,48 @@ class TreeViewer(QWidget):
         self._disabled_species: set[str] = set()
         self._species_pair_map: Dict[str, int] = {}
         self._label_items: Dict[str, QGraphicsTextItem] = {}
-        self._branch_lines: Dict[Tuple[Clade, Clade], List] = {}
+
         self._pair_labels: List[QGraphicsTextItem] = []
         self._selection_rect: QGraphicsRectItem | None = None
         self._alt_lines: List[Tuple[List, List]] = []
         self._alt_boxes: List[QGraphicsRectItem] = []
         self._main_boxes: Dict[str, QGraphicsRectItem] = {}
 
+        # Keep track of all QGraphicsLineItems representing branches so their
+        # pen can be updated when the system palette (light/dark mode) changes.
+        self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
+
+
+        # Flag to control whether we should auto-fit the view (only on first draw)
+        self._initial_draw = True
         self._draw_tree(tree)
 
         # Initial window size
         self.resize(1200, 1200)
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self._update_auto_btn()
+
+    # ------------------------------------------------------------------
+    def changeEvent(self, event):
+        """Update colors when palette (e.g., system light/dark mode) changes."""
+        if event.type() == QEvent.Type.PaletteChange:
+            self._update_line_pen()
+        super().changeEvent(event)
+
+    # ------------------------------------------------------------------
+    def _update_line_pen(self):
+        """Recalculate branch line pen color based on current palette."""
+        pal = self.palette()
+        window_lum = pal.color(QPalette.ColorRole.Window).lightness()
+        text_lum = pal.color(QPalette.ColorRole.WindowText).lightness()
+        self._line_color = (
+            Qt.GlobalColor.white if window_lum < text_lum else Qt.GlobalColor.black
+        )
+        self._line_pen = QPen(self._line_color)
+        # Apply new pen to all existing branch lines.
+        for items in self._branch_lines.values():
+            for it in items:
+                it.setPen(self._line_pen)
 
     # ------------------------------------------------------------------
     def showEvent(self, event):
@@ -1068,8 +1092,16 @@ class TreeViewer(QWidget):
         # Set scene rect based on all items so panning works when zoomed
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
-        self.view.resetTransform()
-        self.view.fitInView(
-            self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio
-        )
+
+        # Only auto-fit the view on the initial draw. Afterwards preserve the
+        # user's zoom level when the tree is redrawn (e.g., after phenotype
+        # changes).
+        if getattr(self, "_initial_draw", False):
+            self.view.resetTransform()
+            self.view.fitInView(
+                self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio
+            )
+            # Mark that the initial draw has completed so subsequent redraws do
+            # not override the user's zoom.
+            self._initial_draw = False
 
