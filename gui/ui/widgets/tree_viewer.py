@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSizePolicy,
 )
-from PyQt6.QtGui import QPainter, QPen, QColor
+from PyQt6.QtGui import QPainter, QPen, QColor, QPalette
 from PyQt6.QtCore import Qt
 from Bio.Phylo.Newick import Tree, Clade
 
@@ -42,9 +42,11 @@ class _ZoomableGraphicsView(QGraphicsView):
         if isinstance(item, QGraphicsTextItem) and hasattr(item, "species_name"):
             parent._show_label_menu(item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            item.setCursor(Qt.CursorShape.OpenHandCursor)
         elif isinstance(item, QGraphicsTextItem) and hasattr(item, "pair_index"):
             parent._show_pair_menu(item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            item.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
             super().contextMenuEvent(event)
 
@@ -94,17 +96,24 @@ class TreeViewer(QWidget):
         self.setWindowTitle("Phylogenetic Tree")
         layout = QVBoxLayout(self)
 
-        if phenotypes:
-            legend = QLabel(
-                "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
-                "<span style='color: red'>Ancestral</span>"
-            )
-            layout.addWidget(legend, alignment=Qt.AlignmentFlag.AlignRight)
+        legend = QLabel(
+            "<b>Legend:</b> <span style='color: blue'>Convergent</span> | "
+            "<span style='color: red'>Control</span>"
+        )
+        layout.addWidget(legend, alignment=Qt.AlignmentFlag.AlignRight)
 
         self._phenotypes = phenotypes or {}
         self._tree = tree
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
+
+        pal = self.palette()
+        window_lum = pal.color(QPalette.ColorRole.Window).lightness()
+        text_lum = pal.color(QPalette.ColorRole.WindowText).lightness()
+        self._line_color = (
+            Qt.GlobalColor.white if window_lum < text_lum else Qt.GlobalColor.black
+        )
+        self._line_pen = QPen(self._line_color)
 
         pheno_btn = QPushButton("Load Phenotype File")
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -129,6 +138,9 @@ class TreeViewer(QWidget):
         btn_layout.addWidget(self.save_btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+
+        instruct = QLabel("Right click species names to add them to the analysis")
+        layout.addWidget(instruct, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.view = _ZoomableGraphicsView()
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -185,10 +197,43 @@ class TreeViewer(QWidget):
             None,
         )
         if pair_idx is not None:
-            remove = menu.addAction("Remove Pair")
-            if menu.exec(pos) == remove:
+            pair = self._pairs[pair_idx - 1]
+            make_conv = make_ctrl = remove_alt = None
+            if name in pair.conv_alts or name in pair.ctrl_alts:
+                make_conv = menu.addAction("Make main convergent")
+                make_ctrl = menu.addAction("Make main control")
+                remove_alt = menu.addAction("Remove from alternates")
+                menu.addSeparator()
+            remove_pair = menu.addAction("Remove Pair")
+            action = menu.exec(pos)
+            if action is None:
+                self._apply_pairs()
+            elif action == remove_pair:
                 self._remove_pair(pair_idx)
+            elif action == remove_alt:
+                if name in pair.conv_alts:
+                    pair.conv_alts.remove(name)
+                elif name in pair.ctrl_alts:
+                    pair.ctrl_alts.remove(name)
+                self._apply_pairs()
+            elif action == make_conv:
+                if name in pair.conv_alts:
+                    pair.conv_alts.remove(name)
+                if pair.convergent not in pair.conv_alts:
+                    pair.conv_alts.append(pair.convergent)
+                pair.convergent = name
+                self._apply_pairs()
+            elif action == make_ctrl:
+                if name in pair.conv_alts:
+                    pair.conv_alts.remove(name)
+                if name in pair.ctrl_alts:
+                    pair.ctrl_alts.remove(name)
+                if pair.control not in pair.ctrl_alts:
+                    pair.ctrl_alts.append(pair.control)
+                pair.control = name
+                self._apply_pairs()
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
         if name in self._disabled_species:
             tgt_idx = self._species_pair_map.get(name)
@@ -207,13 +252,17 @@ class TreeViewer(QWidget):
                 act = menu.addAction("Not a valid option")
                 act.setEnabled(False)
                 menu.exec(pos)
+                self._apply_pairs()
             else:
                 action = menu.exec(pos)
                 if action == conv_act:
                     self._add_alternate(name, tgt_idx, "convergent")
                 elif action == ctrl_act:
                     self._add_alternate(name, tgt_idx, "control")
+                else:
+                    self._apply_pairs()
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
 
         idx = len(self._pairs) + 1
@@ -253,8 +302,11 @@ class TreeViewer(QWidget):
         remove = menu.addAction("Remove Pair")
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+        item.setCursor(Qt.CursorShape.OpenHandCursor)
         if action == remove:
             self._remove_pair(idx)
+        else:
+            self._apply_pairs()
 
     # ------------------------------------------------------------------
     def _update_save_btn(self) -> None:
@@ -356,7 +408,7 @@ class TreeViewer(QWidget):
         # reset visuals
         for lines in self._branch_lines.values():
             for l in lines:
-                l.setPen(QPen(Qt.GlobalColor.black))
+                l.setPen(QPen(self._line_color))
                 l.setVisible(True)
         for overlay_lines, bases in getattr(self, "_alt_lines", []):
             for item in overlay_lines:
@@ -653,7 +705,7 @@ class TreeViewer(QWidget):
         def scaled_x(clade: Clade) -> float:
             return depths.get(clade, 0) * px_per_unit
 
-        pen = QPen(Qt.GlobalColor.black)
+        pen = QPen(self._line_color)
         self._parent_map = {}
         self._node_pos = {}
         for clade in tree.find_clades(order="preorder"):
