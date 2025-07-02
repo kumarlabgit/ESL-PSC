@@ -223,7 +223,20 @@ class InputPage(BaseWizardPage):
         )
         if not path:
             return
+        # Basic validation: ensure equal number of opening and closing parentheses
         try:
+            with open(path, "r", errors="ignore") as _nf:
+                newick_text = _nf.read()
+            open_paren = newick_text.count("(")
+            close_paren = newick_text.count(")")
+            if open_paren != close_paren:
+                preview = newick_text[:100]
+                raise ValueError(
+                    "The file does not appear to be valid Newick: mismatched parentheses ("
+                    f"{open_paren} '(' vs {close_paren} ')').\n\n"
+                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
+                )
+
             tree = Phylo.read(path, "newick")
         except Exception as exc:
             QMessageBox.critical(
