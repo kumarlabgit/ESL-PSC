@@ -288,6 +288,13 @@ class TreeViewer(QWidget):
         for items in self._branch_lines.values():
             for it in items:
                 it.setPen(self._line_pen)
+        # Update text color for unassigned species and pair labels
+        default_color = pal.color(QPalette.ColorRole.WindowText)
+        for name, lbl in self._label_items.items():
+            if self._phenotypes.get(name) not in (1, -1):
+                lbl.setDefaultTextColor(default_color)
+        for lbl in self._pair_labels:
+            lbl.setDefaultTextColor(default_color)
 
     # ------------------------------------------------------------------
     def showEvent(self, event):
@@ -505,7 +512,7 @@ class TreeViewer(QWidget):
             label = self._label_items.get(name)
             if label:
                 color = QColor("blue") if role == "convergent" else QColor("red")
-                rect = label.boundingRect().adjusted(-2, -2, 2, 2)
+                rect = label.boundingRect().adjusted(-2, 0, 2, 0)
                 rect.moveTo(label.pos())
                 self._selection_rect = self.scene.addRect(rect, QPen(color, 2))
                 self._selection_rect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -647,7 +654,7 @@ class TreeViewer(QWidget):
             ]:
                 label = self._label_items.get(name)
                 if label:
-                    rect = label.boundingRect().adjusted(-2, -2, 2, 2)
+                    rect = label.boundingRect().adjusted(-2, 0, 2, 0)
                     rect.moveTo(label.pos())
                     box = self.scene.addRect(rect, QPen(color, 2))
                     box.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -669,7 +676,6 @@ class TreeViewer(QWidget):
                         else:
                             c = QColor("gray")
                         lbl.setDefaultTextColor(c)
-                        lbl.setToolTip("Not a valid option")
                     self._disabled_species.add(lname)
 
             # draw alternate paths
@@ -696,7 +702,7 @@ class TreeViewer(QWidget):
                     self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
                 if label:
-                    rect = label.boundingRect().adjusted(-2, -2, 2, 2)
+                    rect = label.boundingRect().adjusted(-2, 0, 2, 0)
                     rect.moveTo(label.pos())
                     box = self.scene.addRect(
                         rect, QPen(QColor("#87CEFA"), 2, Qt.PenStyle.DashLine)
@@ -726,7 +732,7 @@ class TreeViewer(QWidget):
                     self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
                 if label:
-                    rect = label.boundingRect().adjusted(-2, -2, 2, 2)
+                    rect = label.boundingRect().adjusted(-2, 0, 2, 0)
                     rect.moveTo(label.pos())
                     box = self.scene.addRect(
                         rect, QPen(QColor("#f4aaaa"), 2, Qt.PenStyle.DashLine)
@@ -739,6 +745,9 @@ class TreeViewer(QWidget):
             y = self._node_pos.get(ancestor, (0, 0))[1]
             label = _HoverLabelItem(f"Pair {idx}")
             label.pair_index = idx
+            label.setDefaultTextColor(
+                self.palette().color(QPalette.ColorRole.WindowText)
+            )
             self.scene.addItem(label)
             label.setPos(x - label.boundingRect().width() - 5, y)
             self._pair_labels.append(label)
@@ -1110,6 +1119,10 @@ class TreeViewer(QWidget):
                 label.setDefaultTextColor(QColor("blue"))
             elif pheno == -1:
                 label.setDefaultTextColor(QColor("red"))
+            else:
+                label.setDefaultTextColor(
+                    self.palette().color(QPalette.ColorRole.WindowText)
+                )
             self.scene.addItem(label)
             label.setPos(x_max_scaled + 10, y_leaf - label.boundingRect().height() / 2)
             self._label_items[label.species_name] = label
@@ -1129,4 +1142,7 @@ class TreeViewer(QWidget):
             # Mark that the initial draw has completed so subsequent redraws do
             # not override the user's zoom.
             self._initial_draw = False
+
+        # Ensure label colors reflect the current palette
+        self._update_line_pen()
 
