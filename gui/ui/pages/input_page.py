@@ -229,7 +229,8 @@ class InputPage(BaseWizardPage):
                 newick_text = _nf.read()
             open_paren = newick_text.count("(")
             close_paren = newick_text.count(")")
-            if open_paren != close_paren:
+            # Must have at least one pair of parentheses and counts must match
+            if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
                 preview = newick_text[:100]
                 raise ValueError(
                     "The file does not appear to be valid Newick: mismatched parentheses ("
