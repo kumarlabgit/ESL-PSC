@@ -1,7 +1,8 @@
 """Input-selection page of the ESL-PSC wizard."""
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
-    QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox
+    QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
+    QSizePolicy
 )
 import os
 
@@ -115,7 +116,8 @@ class InputPage(BaseWizardPage):
         self.input_files_layout.addWidget(self.species_groups)
 
         # Button to open a Newick tree viewer
-        self.tree_btn = QPushButton("Help me pick species from a Newick tree")
+        self.tree_btn = QPushButton("Pick species from a Newick tree")
+        self.tree_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.tree_btn.clicked.connect(self.open_newick_tree)
         self.input_files_layout.addWidget(self.tree_btn)
         
