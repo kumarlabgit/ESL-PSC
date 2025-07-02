@@ -788,14 +788,14 @@ class TreeViewer(QWidget):
         try:
             with open(path) as f:
                 lines = [ln.strip() for ln in f if ln.strip()]
-            if len(lines) % 2 != 0:
-                raise ValueError("File must have an even number of lines")
+            if len(lines) < 2 or len(lines) % 2 != 0:
+                raise ValueError("File must contain an even number of non-empty lines")
             pairs: List[PairInfo] = []
             for i in range(0, len(lines), 2):
                 conv_parts = [s.strip() for s in lines[i].split(',') if s.strip()]
                 ctrl_parts = [s.strip() for s in lines[i + 1].split(',') if s.strip()]
                 if not conv_parts or not ctrl_parts:
-                    raise ValueError("Invalid pair entry")
+                    raise ValueError(f"Invalid pair entry near lines {i+1}-{i+2}")
                 pairs.append(
                     PairInfo(
                         conv_parts[0],
@@ -804,6 +804,8 @@ class TreeViewer(QWidget):
                         ctrl_parts[1:],
                     )
                 )
+            if len(pairs) < 2:
+                raise ValueError("Need at least two pairs")
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -915,12 +917,17 @@ class TreeViewer(QWidget):
 
             with open(path, newline="") as f:
                 reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        try:
-                            phenos[row[0].strip()] = int(row[1])
-                        except ValueError:
-                            continue
+                for idx, row in enumerate(reader, start=1):
+                    if not row:
+                        continue
+                    if len(row) < 2:
+                        raise ValueError(f"Line {idx} must have two columns")
+                    val = int(row[1])
+                    if val not in (1, -1):
+                        raise ValueError(f"Invalid value '{row[1]}' on line {idx}")
+                    phenos[row[0].strip()] = val
+            if not phenos:
+                raise ValueError("No valid phenotype entries found")
         except Exception as exc:
             QMessageBox.warning(
                 self,
