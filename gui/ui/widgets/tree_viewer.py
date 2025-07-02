@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QGraphicsTextItem,
     QGraphicsRectItem,
+    QGraphicsLineItem,
     QLabel,
     QPushButton,
     QFileDialog,
@@ -151,6 +152,9 @@ class TreeViewer(QWidget):
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
 
+        # Branch lines storage must be defined before we compute pen
+        self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
+
         # Determine branch line color based on current palette
         self._update_line_pen()
 
@@ -238,9 +242,7 @@ class TreeViewer(QWidget):
         self._alt_boxes: List[QGraphicsRectItem] = []
         self._main_boxes: Dict[str, QGraphicsRectItem] = {}
 
-        # Keep track of all QGraphicsLineItems representing branches so their
-        # pen can be updated when the system palette (light/dark mode) changes.
-        self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
+
 
 
         # Flag to control whether we should auto-fit the view (only on first draw)
