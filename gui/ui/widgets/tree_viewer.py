@@ -121,9 +121,13 @@ class TreeViewer(QWidget):
         self.save_btn.clicked.connect(self._save_groups)
 
         btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setSpacing(5)
         btn_layout.addWidget(pheno_btn)
+        btn_layout.addSpacing(15)
         btn_layout.addWidget(groups_btn)
         btn_layout.addWidget(self.save_btn)
+        btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         self.view = _ZoomableGraphicsView()
@@ -147,8 +151,9 @@ class TreeViewer(QWidget):
         self._branch_lines: Dict[Tuple[Clade, Clade], List] = {}
         self._pair_labels: List[QGraphicsTextItem] = []
         self._selection_rect: QGraphicsRectItem | None = None
-        self._alt_lines: List = []
+        self._alt_lines: List[Tuple[List, List]] = []
         self._alt_boxes: List[QGraphicsRectItem] = []
+        self._main_boxes: Dict[str, QGraphicsRectItem] = {}
 
         self._draw_tree(tree)
 
@@ -211,7 +216,7 @@ class TreeViewer(QWidget):
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             return
 
-        idx = len(self._pairs) + (1 if self._current_role is None else 0)
+        idx = len(self._pairs) + 1
         pheno = self._phenotypes.get(name)
         allow_conv = pheno != -1
         allow_ctrl = pheno != 1
@@ -253,7 +258,15 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _update_save_btn(self) -> None:
-        self.save_btn.setEnabled(len(self._pairs) >= 2)
+        if len(self._pairs) >= 2 and self._current_role is None:
+            self.save_btn.setEnabled(True)
+            self.save_btn.setToolTip("")
+        else:
+            self.save_btn.setEnabled(False)
+            if len(self._pairs) < 2:
+                self.save_btn.setToolTip("Must have at least two pairs")
+            else:
+                self.save_btn.setToolTip("There is an unselected pair")
 
     # ------------------------------------------------------------------
     def _add_species(self, name: str, role: str) -> None:
@@ -266,6 +279,7 @@ class TreeViewer(QWidget):
                 rect = label.boundingRect().adjusted(-2, -2, 2, 2)
                 rect.moveTo(label.pos())
                 self._selection_rect = self.scene.addRect(rect, QPen(color, 2))
+            self._update_save_btn()
         else:
             if role == self._current_role:
                 return
@@ -343,12 +357,19 @@ class TreeViewer(QWidget):
         for lines in self._branch_lines.values():
             for l in lines:
                 l.setPen(QPen(Qt.GlobalColor.black))
-        for line in getattr(self, "_alt_lines", []):
-            self.scene.removeItem(line)
+                l.setVisible(True)
+        for overlay_lines, bases in getattr(self, "_alt_lines", []):
+            for item in overlay_lines:
+                self.scene.removeItem(item)
+            for b in bases:
+                b.setVisible(True)
         self._alt_lines.clear()
         for box in getattr(self, "_alt_boxes", []):
             self.scene.removeItem(box)
         self._alt_boxes.clear()
+        for box in getattr(self, "_main_boxes", {}).values():
+            self.scene.removeItem(box)
+        self._main_boxes.clear()
         for name, label in self._label_items.items():
             pheno = self._phenotypes.get(name)
             if pheno == 1:
@@ -384,6 +405,17 @@ class TreeViewer(QWidget):
                 for l in self._branch_lines.get((parent, child), []):
                     l.setPen(QPen(QColor("red"), 2))
 
+            for name, color in [
+                (conv_name, QColor("blue")),
+                (ctrl_name, QColor("red")),
+            ]:
+                label = self._label_items.get(name)
+                if label:
+                    rect = label.boundingRect().adjusted(-2, -2, 2, 2)
+                    rect.moveTo(label.pos())
+                    box = self.scene.addRect(rect, QPen(color, 2))
+                    self._main_boxes[name] = box
+
             # gray out other descendants but allow alternates
             excluded = {conv_name, ctrl_name, *pair.conv_alts, *pair.ctrl_alts}
             for leaf in ancestor.get_terminals():
@@ -404,16 +436,26 @@ class TreeViewer(QWidget):
                     self._disabled_species.add(lname)
 
             # draw alternate paths
+            cc_edges = set(conv_path + ctrl_path)
             for alt_name in pair.conv_alts:
                 alt_leaf = next(self._tree.find_clades(name=alt_name))
-                alt_path = self._path_to(ancestor, alt_leaf)
-                for parent, child in alt_path:
-                    for base in self._branch_lines.get((parent, child), []):
+                full_path = self._path_to(ancestor, alt_leaf)
+                trimmed = []
+                for edge in full_path:
+                    if edge in cc_edges:
+                        break
+                    trimmed.append(edge)
+                for parent, child in trimmed:
+                    bases = self._branch_lines.get((parent, child), [])
+                    overlay_lines = []
+                    for base in bases:
+                        base.setVisible(False)
                         line = self.scene.addLine(
                             base.line(),
                             QPen(QColor("#87CEFA"), 2, Qt.PenStyle.DashLine),
                         )
-                        self._alt_lines.append(line)
+                        overlay_lines.append(line)
+                    self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
                 if label:
                     rect = label.boundingRect().adjusted(-2, -2, 2, 2)
@@ -425,14 +467,23 @@ class TreeViewer(QWidget):
 
             for alt_name in pair.ctrl_alts:
                 alt_leaf = next(self._tree.find_clades(name=alt_name))
-                alt_path = self._path_to(ancestor, alt_leaf)
-                for parent, child in alt_path:
-                    for base in self._branch_lines.get((parent, child), []):
+                full_path = self._path_to(ancestor, alt_leaf)
+                trimmed = []
+                for edge in full_path:
+                    if edge in cc_edges:
+                        break
+                    trimmed.append(edge)
+                for parent, child in trimmed:
+                    bases = self._branch_lines.get((parent, child), [])
+                    overlay_lines = []
+                    for base in bases:
+                        base.setVisible(False)
                         line = self.scene.addLine(
                             base.line(),
                             QPen(QColor("#f4aaaa"), 2, Qt.PenStyle.DashLine),
                         )
-                        self._alt_lines.append(line)
+                        overlay_lines.append(line)
+                    self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
                 if label:
                     rect = label.boundingRect().adjusted(-2, -2, 2, 2)
