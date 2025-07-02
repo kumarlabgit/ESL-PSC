@@ -38,15 +38,23 @@ class _ZoomableGraphicsView(QGraphicsView):
         if not isinstance(parent, TreeViewer):
             super().contextMenuEvent(event)
             return
-        item = self.itemAt(event.pos())
-        if isinstance(item, QGraphicsTextItem) and hasattr(item, "species_name"):
-            parent._show_label_menu(item, self.mapToGlobal(event.pos()))
+        items = self.items(event.pos())
+        label_item = None
+        pair_item = None
+        for it in items:
+            if isinstance(it, QGraphicsTextItem) and hasattr(it, "species_name"):
+                label_item = it
+                break
+            if isinstance(it, QGraphicsTextItem) and hasattr(it, "pair_index"):
+                pair_item = it
+        if label_item is not None:
+            parent._show_label_menu(label_item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            item.setCursor(Qt.CursorShape.OpenHandCursor)
-        elif isinstance(item, QGraphicsTextItem) and hasattr(item, "pair_index"):
-            parent._show_pair_menu(item, self.mapToGlobal(event.pos()))
+            label_item.setCursor(Qt.CursorShape.OpenHandCursor)
+        elif pair_item is not None:
+            parent._show_pair_menu(pair_item, self.mapToGlobal(event.pos()))
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            item.setCursor(Qt.CursorShape.OpenHandCursor)
+            pair_item.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
             super().contextMenuEvent(event)
 
@@ -206,9 +214,7 @@ class TreeViewer(QWidget):
                 menu.addSeparator()
             remove_pair = menu.addAction("Remove Pair")
             action = menu.exec(pos)
-            if action is None:
-                self._apply_pairs()
-            elif action == remove_pair:
+            if action == remove_pair:
                 self._remove_pair(pair_idx)
             elif action == remove_alt:
                 if name in pair.conv_alts:
@@ -232,6 +238,8 @@ class TreeViewer(QWidget):
                     pair.ctrl_alts.append(pair.control)
                 pair.control = name
                 self._apply_pairs()
+            elif action is None:
+                return
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
@@ -252,15 +260,14 @@ class TreeViewer(QWidget):
                 act = menu.addAction("Not a valid option")
                 act.setEnabled(False)
                 menu.exec(pos)
-                self._apply_pairs()
             else:
                 action = menu.exec(pos)
                 if action == conv_act:
                     self._add_alternate(name, tgt_idx, "convergent")
                 elif action == ctrl_act:
                     self._add_alternate(name, tgt_idx, "control")
-                else:
-                    self._apply_pairs()
+                elif action is None:
+                    return
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
             return
@@ -269,7 +276,7 @@ class TreeViewer(QWidget):
         pheno = self._phenotypes.get(name)
         allow_conv = pheno != -1
         allow_ctrl = pheno != 1
-        conv_act = ctrl_act = None
+        conv_act = ctrl_act = cancel_act = None
         if self._current_role is None:
             if allow_conv:
                 conv_act = menu.addAction(f"Add as convergent for Pair {idx}")
@@ -278,9 +285,13 @@ class TreeViewer(QWidget):
         elif self._current_role == "convergent":
             if allow_ctrl:
                 ctrl_act = menu.addAction(f"Add as control for Pair {idx}")
+            if name == self._current_first:
+                cancel_act = menu.addAction("Cancel Selection")
         else:
             if allow_conv:
                 conv_act = menu.addAction(f"Add as convergent for Pair {idx}")
+            if name == self._current_first:
+                cancel_act = menu.addAction("Cancel Selection")
         if conv_act is None and ctrl_act is None:
             act = menu.addAction("Not a valid option")
             act.setEnabled(False)
@@ -292,6 +303,13 @@ class TreeViewer(QWidget):
             self._add_species(name, "convergent")
         elif action == ctrl_act:
             self._add_species(name, "control")
+        elif action == cancel_act:
+            if self._selection_rect is not None:
+                self.scene.removeItem(self._selection_rect)
+                self._selection_rect = None
+            self._current_role = None
+            self._current_first = None
+            self._update_save_btn()
 
     # ------------------------------------------------------------------
     def _show_pair_menu(self, item: QGraphicsTextItem, pos) -> None:
@@ -305,6 +323,8 @@ class TreeViewer(QWidget):
         item.setCursor(Qt.CursorShape.OpenHandCursor)
         if action == remove:
             self._remove_pair(idx)
+        elif action is None:
+            return
         else:
             self._apply_pairs()
 
@@ -331,6 +351,7 @@ class TreeViewer(QWidget):
                 rect = label.boundingRect().adjusted(-2, -2, 2, 2)
                 rect.moveTo(label.pos())
                 self._selection_rect = self.scene.addRect(rect, QPen(color, 2))
+                self._selection_rect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._update_save_btn()
         else:
             if role == self._current_role:
@@ -466,6 +487,7 @@ class TreeViewer(QWidget):
                     rect = label.boundingRect().adjusted(-2, -2, 2, 2)
                     rect.moveTo(label.pos())
                     box = self.scene.addRect(rect, QPen(color, 2))
+                    box.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                     self._main_boxes[name] = box
 
             # gray out other descendants but allow alternates
@@ -506,6 +528,7 @@ class TreeViewer(QWidget):
                             base.line(),
                             QPen(QColor("#87CEFA"), 2, Qt.PenStyle.DashLine),
                         )
+                        line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                         overlay_lines.append(line)
                     self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
@@ -515,6 +538,7 @@ class TreeViewer(QWidget):
                     box = self.scene.addRect(
                         rect, QPen(QColor("#87CEFA"), 2, Qt.PenStyle.DashLine)
                     )
+                    box.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                     self._alt_boxes.append(box)
 
             for alt_name in pair.ctrl_alts:
@@ -534,6 +558,7 @@ class TreeViewer(QWidget):
                             base.line(),
                             QPen(QColor("#f4aaaa"), 2, Qt.PenStyle.DashLine),
                         )
+                        line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                         overlay_lines.append(line)
                     self._alt_lines.append((overlay_lines, bases))
                 label = self._label_items.get(alt_name)
@@ -543,6 +568,7 @@ class TreeViewer(QWidget):
                     box = self.scene.addRect(
                         rect, QPen(QColor("#f4aaaa"), 2, Qt.PenStyle.DashLine)
                     )
+                    box.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                     self._alt_boxes.append(box)
 
             # label the pair
