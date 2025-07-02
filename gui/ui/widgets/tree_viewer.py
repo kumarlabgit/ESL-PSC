@@ -590,7 +590,9 @@ class TreeViewer(QWidget):
             elif pheno == -1:
                 color = QColor("red")
             else:
-                color = QColor("black")
+                # Show unassigned species in the default text color so they
+                # remain visible in dark mode.
+                color = self.palette().color(QPalette.ColorRole.WindowText)
             label.setDefaultTextColor(color)
             label.setToolTip("")
         for p in self._pair_labels:
@@ -838,16 +840,20 @@ class TreeViewer(QWidget):
             generator.setFileName(path)
             generator.setSize(bounds.size().toSize())
             generator.setViewBox(bounds)
-            # temporarily force black lines and text
+            # When exporting in dark mode, temporary switch default-colored
+            # elements to black so the SVG looks like light mode output.
             saved_lines = {}
             for lines in self._branch_lines.values():
                 for ln in lines:
-                    saved_lines[ln] = ln.pen()
-                    ln.setPen(QPen(Qt.GlobalColor.black))
+                    if ln.pen().color() == self._line_color:
+                        saved_lines[ln] = ln.pen()
+                        ln.setPen(QPen(Qt.GlobalColor.black))
+
             saved_labels = {}
-            for lbl in self._label_items.values():
-                saved_labels[lbl] = lbl.defaultTextColor()
-                lbl.setDefaultTextColor(QColor("black"))
+            for name, lbl in self._label_items.items():
+                if self._phenotypes.get(name) not in (1, -1):
+                    saved_labels[lbl] = lbl.defaultTextColor()
+                    lbl.setDefaultTextColor(QColor("black"))
             for lbl in self._pair_labels:
                 saved_labels[lbl] = lbl.defaultTextColor()
                 lbl.setDefaultTextColor(QColor("black"))
