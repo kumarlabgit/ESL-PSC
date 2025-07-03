@@ -1,11 +1,14 @@
 """Input-selection page of the ESL-PSC wizard."""
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
-    QLabel, QButtonGroup, QFormLayout
+    QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
+    QSizePolicy
 )
 import os
 
 from gui.ui.widgets.file_selectors import FileSelector
+from gui.ui.widgets.tree_viewer import TreeViewer
+from Bio import Phylo
 from .base_page import BaseWizardPage
 
 class InputPage(BaseWizardPage):
@@ -98,7 +101,7 @@ class InputPage(BaseWizardPage):
                 "Each pair goes on a pair of lines, with the first line containing a species with the convergent trait "
                 "and optionally one or more close siblings with the trait. The second line contains one or more control species "
                 "that do not have the trait but are close relatives of the species in the first line. "
-                "Subsequent lines follow the same pattern." 
+                "Subsequent lines follow the same pattern. " 
                 "Example:\n\n"
                 "convergent_species1a, convergent_species1b\n"
                 "control_species1a, control_species1b\n"
@@ -111,6 +114,16 @@ class InputPage(BaseWizardPage):
             lambda p: setattr(self.config, 'species_groups_file', p)
         )
         self.input_files_layout.addWidget(self.species_groups)
+
+        # Button to open a Newick tree viewer
+        self.tree_btn = QPushButton("Create a Species Groups File Using a Newick Tree")
+        self.tree_btn.setToolTip(
+            "Load a Newick file in a tree viewer where you can select contrast pairs interactively, "
+            "and save a species groups file to use in the analysis."
+        )
+        self.tree_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.tree_btn.clicked.connect(self.open_newick_tree)
+        self.input_files_layout.addWidget(self.tree_btn)
         
         # Response directory selector (initially hidden)
         self.response_dir = FileSelector(
@@ -199,6 +212,77 @@ class InputPage(BaseWizardPage):
         
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    def open_newick_tree(self):
+        """Open a Newick file and display it in a tree viewer."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Newick File",
+            os.getcwd(),
+            "Newick Files (*.nwk *.newick *.tree *.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        # Basic validation: ensure equal number of opening and closing parentheses
+        try:
+            with open(path, "r", errors="ignore") as _nf:
+                newick_text = _nf.read()
+            open_paren = newick_text.count("(")
+            close_paren = newick_text.count(")")
+            # Must have at least one pair of parentheses and counts must match
+            if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
+                preview = newick_text[:100]
+                raise ValueError(
+                    "The file does not appear to be valid Newick: mismatched parentheses ("
+                    f"{open_paren} '(' vs {close_paren} ')').\n\n"
+                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
+                )
+
+            tree = Phylo.read(path, "newick")
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to parse Newick file:\n{exc}",
+            )
+            return
+
+        phenos = {}
+        pheno_path = getattr(self.config, "species_phenotypes_file", "")
+        if pheno_path and os.path.exists(pheno_path):
+            try:
+                import csv
+
+                with open(pheno_path, newline="") as f:
+                    reader = csv.reader(f)
+                    for row in reader:
+                        if len(row) >= 2:
+                            try:
+                                phenos[row[0].strip()] = int(row[1])
+                            except ValueError:
+                                continue
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Phenotypes Error",
+                    f"Failed to parse phenotypes file:\n{exc}",
+                )
+
+        self._tree_window = TreeViewer(
+            tree,
+            phenotypes=phenos,
+            on_pheno_changed=self._update_phenotype_file,
+            on_groups_saved=self._update_groups_file,
+        )
+        self._tree_window.show()
+
+    def _update_phenotype_file(self, path: str) -> None:
+        """Update the phenotype file selector and config."""
+        self.species_phenotypes.set_path(path)
+
+    def _update_groups_file(self, path: str) -> None:
+        self.species_groups.set_path(path)
+        setattr(self.config, 'species_groups_file', path)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard

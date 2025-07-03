@@ -412,6 +412,14 @@ def main(raw_args=None):
 
     validate_specific_paths(args) #verify that dir and file paths are real
 
+    # Ensure all alignments are in 2-line FASTA format
+    ecf.validate_alignment_dir_two_line(args.alignments_dir)
+    if (args.prediction_alignments_dir
+            and args.prediction_alignments_dir != args.alignments_dir):
+        ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+    if args.use_existing_alignments and args.canceled_alignments_dir:
+        ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
+
     # set output_dir
     if not args.output_dir:
         args.output_dir = args.esl_main_dir

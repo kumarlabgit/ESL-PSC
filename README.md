@@ -39,6 +39,22 @@ Now compatible with Windows, Mac, and Linux.
 
 ![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
 
+#### July  2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
+
+The GUI now features an **interactive phylogenetic tree viewer** that lets you:
+
+* Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
+* Assign convergent vs. non-convergent phenotypes by right-clicking species names.
+* Assign species to contrast pairs which are then marked on the tree view.
+* Automatically generate sensible convergent/control contrast pairs with a single click.
+* Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
+* Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
+
+Simply press **“Create a Species Groups File Using a Newick Tree”** on the first page, then use the toolbar at the top of the viewer.
+
+![Tree Viewer](./images/tree_viewer.png)
+
+
 ### Running the GUI
 1. Ensure the GUI dependencies are installed:
    ```bash
@@ -232,6 +248,15 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 7. Sequences must be aligned to each other in each file.
 
 ## Demo ##
+
+### Running the demo in the GUI ###
+To run the C3/C4 demo using the graphical interface:
+1. Launch the GUI (see the installation and launch instructions above).
+2. Click **Load Configuration** (bottom left of the page) and open `demo_config_for_gui.json` found in the repository root folder.
+3. Click **Next** through the pre-filled wizard pages and press **Run Analysis** on the final page.
+4. When the run finishes, press **Show SPS Plot** to view the violin plot, or **Show Top Gene Ranks** to view the most influential genes. You can double click a gene's name to open the protein sequence alignment in the convergent site viewer and examine the residues present in the input species and other species at the strongest convergent sites.
+
+### Running the demo with the command line ###
 You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 

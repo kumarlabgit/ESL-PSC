@@ -289,7 +289,7 @@ class ParametersPage(BaseWizardPage):
 
         # Keep raw output
         self.keep_raw_output_chk = QCheckBox("Keep raw model weights files")
-        self.keep_raw_output_chk.setToolTip("If checked, keep model weights files generated during analysis.")
+        self.keep_raw_output_chk.setToolTip("If checked, keep raw model weights files generated during analysis.")
         self.keep_raw_output_chk.stateChanged.connect(
             lambda s: setattr(self.config, 'keep_raw_output', s == 2)  # 2 is Qt.Checked
         )
@@ -298,9 +298,9 @@ class ParametersPage(BaseWizardPage):
         output_layout.addWidget(self.keep_raw_output_chk)
         
         # Show selected sites
-        self.show_selected_sites = QCheckBox("Show selected sites in output (currently slow)")
+        self.show_selected_sites = QCheckBox("Show selected sites in output")
         self.show_selected_sites.setToolTip(
-            "If checked, include a dictionary of all selected sites with their highest model score for every gene."
+            "If checked, include an additional output file with selected sites and their highest position score."
         )
         self.show_selected_sites.stateChanged.connect(
             lambda s: setattr(self.config, 'show_selected_sites', s == 2)
