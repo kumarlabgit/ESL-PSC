@@ -1,0 +1,85 @@
+name: Build Nuitka Distributables
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_os:
+        description: "Platform to build"
+        required: true
+        type: choice
+        default: macos
+        options:
+          - macos
+          - windows
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build-macos:
+    if: ${{ github.event.inputs.target_os == 'macos' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: app
+          output-dir: build
+          lto: "yes"
+          enable-plugins: |
+            pyqt6
+            matplotlib
+          include-qt-plugins: |
+            platforms
+            printsupport
+            svg
+          nofollow-import-to: "*.tests"
+      - name: Rename .app bundle
+        run: mv build/main.app build/ESL-PSC.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-macOS
+          path: build/ESL-PSC.app
+
+  build-windows:
+    if: ${{ github.event.inputs.target_os == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: app
+          output-dir: build
+          lto: "yes"
+          enable-plugins: |
+            pyqt6
+            matplotlib
+          include-qt-plugins: |
+            platforms
+            printsupport
+            svg
+          nofollow-import-to: "*.tests"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-Windows
+          path: build/main.exe
