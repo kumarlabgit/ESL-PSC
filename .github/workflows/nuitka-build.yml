@@ -43,7 +43,8 @@ jobs:
           include-qt-plugins: |
             platforms
             imageformats
-            svg
+            styles
+            iconengines
           nofollow-import-to: "*.tests"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
@@ -85,7 +86,8 @@ jobs:
           include-qt-plugins: |
             platforms
             imageformats
-            svg
+            styles
+            iconengines
           nofollow-import-to: "*.tests"
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
