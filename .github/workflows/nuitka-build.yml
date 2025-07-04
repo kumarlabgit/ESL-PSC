@@ -49,7 +49,7 @@ jobs:
       - name: Bundle Qt frameworks
         run: |
           QT_BIN="$(brew --prefix qt@6)/bin/macdeployqt"
-          "$QT_BIN" build/ESL-PSC.app -verbose=1 -strip -dmg
+          "$QT_BIN" build/ESL-PSC.app -verbose=1 -dmg
       - name: Add CLI binaries
         run: |
           mkdir -p build/bin
