@@ -42,7 +42,7 @@ jobs:
             matplotlib
           include-qt-plugins: |
             platforms
-            printsupport
+            imageformats
             svg
           nofollow-import-to: "*.tests"
       - name: Rename .app bundle
@@ -84,7 +84,7 @@ jobs:
             matplotlib
           include-qt-plugins: |
             platforms
-            printsupport
+            imageformats
             svg
           nofollow-import-to: "*.tests"
       - name: Rename executable
