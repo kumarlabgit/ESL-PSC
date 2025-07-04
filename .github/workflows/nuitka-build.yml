@@ -40,22 +40,21 @@ jobs:
           enable-plugins: |
             pyside6
             matplotlib
-            upx
+          macos-create-app-bundle: "yes"
           nofollow-import-to: "*.tests"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
-      - name: Install Qt tools
-        run: brew install qt@6
-      - name: Bundle Qt frameworks
+      - name: Add CLI helpers
         run: |
-          QT_BIN="$(brew --prefix qt@6)/bin/macdeployqt"
-          "$QT_BIN" build/ESL-PSC.app -verbose=1 -dmg
-      - name: Add CLI binaries
+          mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
+          cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess
+          cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso
+          chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Create DMG
         run: |
-          mkdir -p build/bin
-          cp bin/preprocess_mac build/bin/preprocess
-          cp bin/sg_lasso_mac build/bin/sg_lasso
-          chmod +x build/bin/preprocess build/bin/sg_lasso
+          hdiutil create -volname "ESL-PSC" \
+                         -srcfolder build/ESL-PSC.app \
+                         -ov -format UDZO build/ESL-PSC.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-macOS
