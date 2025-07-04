@@ -40,7 +40,6 @@ jobs:
           enable-plugins: |
             pyside6
             matplotlib
-          macos-create-app-bundle: "yes"
           nofollow-import-to: "*.tests"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
