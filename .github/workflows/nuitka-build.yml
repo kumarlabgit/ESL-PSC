@@ -1,0 +1,102 @@
+name: Build Nuitka Distributables
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_os:
+        description: "Platform to build"
+        required: true
+        type: choice
+        default: macos
+        options:
+          - macos
+          - windows
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build-macos:
+    if: ${{ github.event.inputs.target_os == 'macos' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: app
+          output-dir: build
+          lto: "yes"
+          include-package: esl_psc_cli
+          enable-plugins: |
+            pyqt6
+            matplotlib
+          include-qt-plugins: |
+            platforms
+            printsupport
+            svg
+          nofollow-import-to: "*.tests"
+      - name: Rename .app bundle
+        run: mv build/main.app build/ESL-PSC.app
+      - name: Add CLI binaries
+        run: |
+          mkdir -p build/bin
+          cp bin/preprocess_mac build/bin/preprocess
+          cp bin/sg_lasso_mac build/bin/sg_lasso
+          chmod +x build/bin/preprocess build/bin/sg_lasso
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-macOS
+          path: build/**
+
+  build-windows:
+    if: ${{ github.event.inputs.target_os == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: app
+          output-dir: build
+          lto: "yes"
+          include-package: esl_psc_cli
+          enable-plugins: |
+            pyqt6
+            matplotlib
+          include-qt-plugins: |
+            platforms
+            printsupport
+            svg
+          nofollow-import-to: "*.tests"
+      - name: Rename executable
+        run: move build\\main.exe build\\ESL-PSC.exe
+        shell: pwsh
+      - name: Add CLI binaries
+        shell: bash
+        run: |
+          mkdir -p build/bin
+          cp bin/preprocess.exe build/bin/preprocess.exe
+          cp bin/sg_lasso.exe build/bin/sg_lasso.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-Windows
+          path: build/**
