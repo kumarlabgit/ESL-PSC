@@ -36,6 +36,7 @@ jobs:
           mode: app
           output-dir: build
           lto: "yes"
+          include-package: esl_psc_cli
           enable-plugins: |
             pyqt6
             matplotlib
@@ -46,10 +47,16 @@ jobs:
           nofollow-import-to: "*.tests"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
+      - name: Add CLI binaries
+        run: |
+          mkdir -p build/bin
+          cp bin/preprocess_mac build/bin/preprocess
+          cp bin/sg_lasso_mac build/bin/sg_lasso
+          chmod +x build/bin/preprocess build/bin/sg_lasso
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-macOS
-          path: build/ESL-PSC.app
+          path: build/**
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
@@ -71,6 +78,7 @@ jobs:
           mode: app
           output-dir: build
           lto: "yes"
+          include-package: esl_psc_cli
           enable-plugins: |
             pyqt6
             matplotlib
@@ -79,7 +87,16 @@ jobs:
             printsupport
             svg
           nofollow-import-to: "*.tests"
+      - name: Rename executable
+        run: move build\\main.exe build\\ESL-PSC.exe
+        shell: pwsh
+      - name: Add CLI binaries
+        shell: bash
+        run: |
+          mkdir -p build/bin
+          cp bin/preprocess.exe build/bin/preprocess.exe
+          cp bin/sg_lasso.exe build/bin/sg_lasso.exe
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
-          path: build/main.exe
+          path: build/**
