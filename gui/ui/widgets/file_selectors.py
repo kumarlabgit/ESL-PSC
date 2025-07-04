@@ -2,16 +2,16 @@
 File and directory selection widgets for the ESL-PSC GUI.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFileDialog
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 class FileSelector(QWidget):
     """A widget for selecting a file or directory with a browse button and optional description."""
     
-    path_changed = pyqtSignal(str)  # Signal emitted when path changes
+    path_changed = Signal(str)  # Signal emitted when path changes
     
     def __init__(self, label, mode='file', default_path='', description='', parent=None):
         """

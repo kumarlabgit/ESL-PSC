@@ -6,8 +6,8 @@ A graphical interface for running ESL-PSC analyses with an intuitive wizard.
 """
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import Qt
 from gui.core.logging_utils import setup_logging
 from gui.ui.main_window import MainWindow
 def main():

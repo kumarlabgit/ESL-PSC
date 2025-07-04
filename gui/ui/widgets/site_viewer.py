@@ -4,9 +4,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Dict, List
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush, QFont
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush, QFont
+from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QSlider, QComboBox, QLabel, QPushButton,
     QCheckBox, QAbstractItemView, QMessageBox, QMenu
@@ -438,7 +438,7 @@ class SiteViewer(QWidget):
         Toggles visibility of the 'other species' bottom splitter.
         """
         # ``state`` arrives as an ``int`` while ``Qt.CheckState.Checked`` is an
-        # enum in PyQt6.  Cast explicitly so the comparison works on PyQt5/6.
+        # enum in PySide6.  Cast explicitly so the comparison works on PyQt5/6.
         self.show_all_species = (Qt.CheckState(state) == Qt.CheckState.Checked)
         if self.show_all_species:
             self.bottom_splitter.setSizes(self.top_splitter.sizes())

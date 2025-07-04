@@ -7,17 +7,17 @@ import re
 import threading
 import subprocess
 import sys
-from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
+from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
-    output = pyqtSignal(str)
-    error = pyqtSignal(str)
-    finished = pyqtSignal(int)  # exit code
+    output = Signal(str)
+    error = Signal(str)
+    finished = Signal(int)  # exit code
 
-    overall_progress = pyqtSignal(int) # Overall progress (0-100)
-    step_progress = pyqtSignal(int)    # Progress of current step (0-100)
-    step_status = pyqtSignal(str)      # Text description of current step
+    overall_progress = Signal(int) # Overall progress (0-100)
+    step_progress = Signal(int)    # Progress of current step (0-100)
+    step_status = Signal(str)      # Text description of current step
 
 
 class ESLWorker(QRunnable):
@@ -47,7 +47,7 @@ class ESLWorker(QRunnable):
             except Exception:
                 self.alignments_dir = None
     
-    @pyqtSlot()
+    @Slot()
     def run(self):
         """Execute esl_multimatrix in a subprocess and stream its output."""
         self.is_running = True

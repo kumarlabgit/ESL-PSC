@@ -1,12 +1,12 @@
 """Run-analysis page of the ESL-PSC wizard (live output & progress)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QThreadPool, Qt
+from PySide6.QtCore import QThreadPool, Qt
 import os
-from PyQt6.QtGui import QFontDatabase
-from PyQt6.QtWidgets import (
+from PySide6.QtGui import QFontDatabase
+from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame
 )
 
 from gui.core.worker import ESLWorker
@@ -31,10 +31,12 @@ class RunPage(BaseWizardPage):
         
         # Create scroll area and main container
         scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
         container = QWidget()
         scroll.setWidget(container)
         container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
         
         # Terminal Output GroupBox
         cmd_group = QGroupBox("Analysis Terminal Output")

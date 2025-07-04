@@ -38,7 +38,7 @@ jobs:
           lto: "yes"
           include-package: esl_psc_cli
           enable-plugins: |
-            pyqt6
+            pyside6
             matplotlib
           include-qt-plugins: |
             platforms
@@ -81,7 +81,7 @@ jobs:
           lto: "yes"
           include-package: esl_psc_cli
           enable-plugins: |
-            pyqt6
+            pyside6
             matplotlib
           include-qt-plugins: |
             platforms

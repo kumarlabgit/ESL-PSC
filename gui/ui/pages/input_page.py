@@ -1,5 +1,5 @@
 """Input-selection page of the ESL-PSC wizard."""
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
     QSizePolicy
@@ -22,6 +22,7 @@ class InputPage(BaseWizardPage):
         
         # Create scroll area
         scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
         
         # Create a container widget for the scroll area
@@ -30,6 +31,7 @@ class InputPage(BaseWizardPage):
         
         # Create a layout for the container
         container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
         
         # Required inputs group
         req_group = QGroupBox("Required Inputs")

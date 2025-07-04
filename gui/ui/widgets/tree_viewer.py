@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QGraphicsView,
     QGraphicsScene,
@@ -21,9 +21,9 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSizePolicy,
 )
-from PyQt6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
-from PyQt6.QtSvg import QSvgGenerator
-from PyQt6.QtCore import Qt, QEvent
+from PySide6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
+from PySide6.QtSvg import QSvgGenerator
+from PySide6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
 
 

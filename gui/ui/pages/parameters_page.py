@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import os
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QWizard
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWizard
 from gui.ui.widgets.file_selectors import FileSelector
 from dataclasses import fields
 from gui.core.config import ESLConfig
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFormLayout, QHBoxLayout,
     QLabel, QButtonGroup, QRadioButton, QLineEdit, QDoubleSpinBox, QSpinBox,
     QComboBox, QCheckBox, QPushButton, QStackedWidget, QFrame, QFileDialog,
@@ -42,7 +42,8 @@ class ParametersPage(BaseWizardPage):
         # Create container widget for scroll area
         container = QWidget()
         self.container_layout = QVBoxLayout(container)
-        self.container_layout.setContentsMargins(10, 10, 10, 10)
+        # Eliminate extra left/right margins so page fills full width.
+        self.container_layout.setContentsMargins(0, 10, 0, 10)
         self.container_layout.setSpacing(15)
         
         # Add container to scroll area
