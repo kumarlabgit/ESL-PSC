@@ -217,22 +217,33 @@ class ESLWorker(QRunnable):
             out_stream = StreamEmitter(self, stream_type='stdout')
             err_stream = StreamEmitter(self, stream_type='stderr')
 
-            def _pick_interpreter() -> Path:
-                """Return a runnable Python interpreter for both normal and Nuitka modes."""
-                exe = Path(sys.executable)
+            def _build_command() -> list[str]:
+                """
+                * Dev run (`python -m gui.main`)           -> python -u -m esl_psc_cli…
+                * Packaged app/EXE (compiled launcher)    -> sibling binary esl_multimatrix
+                """
+                launch_path = Path(os.path.realpath(sys.argv[0]))
 
-                # When packaged with Nuitka as an ".app" bundle, sys.executable points
-                # to a copy of libpython that isn't actually runnable. Nuitka sets
-                # the nuitka_mode flag in sys.flags for detection.
-                if getattr(sys.flags, "nuitka_mode", False):
-                    # Use the compiled launcher that executed the GUI (argv[0])
-                    exe = Path(os.path.realpath(sys.argv[0]))
+                # Heuristic: in the packaged bundle launch_path is an **executable**
+                # with no '.py' suffix (e.g. ".../MacOS/main"); in dev it's a .py file.
+                running_from_source = launch_path.suffix.lower() == ".py"
 
-                return exe
+                if running_from_source:
+                    return [
+                        sys.executable,
+                        "-u",
+                        "-m",
+                        "esl_psc_cli.esl_multimatrix",
+                        *self.command_args,
+                    ]
 
-            interpreter = _pick_interpreter()
+                # Packaged → call helper binary that sits next to “main”
+                cli_helper = launch_path.with_name(
+                    "esl_multimatrix" + (".exe" if os.name == "nt" else "")
+                )
+                return [str(cli_helper), *self.command_args]
 
-            command = [str(interpreter), '-u', '-m', 'esl_psc_cli.esl_multimatrix', *self.command_args]
+            command = _build_command()
             self.process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
