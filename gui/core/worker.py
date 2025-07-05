@@ -7,6 +7,7 @@ import re
 import threading
 import subprocess
 import sys
+from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 
 class WorkerSignals(QObject):
@@ -216,7 +217,22 @@ class ESLWorker(QRunnable):
             out_stream = StreamEmitter(self, stream_type='stdout')
             err_stream = StreamEmitter(self, stream_type='stderr')
 
-            command = [sys.executable, '-u', '-m', 'esl_psc_cli.esl_multimatrix', *self.command_args]
+            def _pick_interpreter() -> Path:
+                """Return a runnable Python interpreter for both normal and Nuitka modes."""
+                exe = Path(sys.executable)
+
+                # When packaged with Nuitka as an ".app" bundle, sys.executable points
+                # to a copy of libpython that isn't actually runnable. Nuitka sets
+                # the nuitka_mode flag in sys.flags for detection.
+                if getattr(sys.flags, "nuitka_mode", False):
+                    # Use the compiled launcher that executed the GUI (argv[0])
+                    exe = Path(os.path.realpath(sys.argv[0]))
+
+                return exe
+
+            interpreter = _pick_interpreter()
+
+            command = [str(interpreter), '-u', '-m', 'esl_psc_cli.esl_multimatrix', *self.command_args]
             self.process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
