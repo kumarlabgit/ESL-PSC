@@ -51,8 +51,6 @@ jobs:
           cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess
           cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
-      - name: Ensure bundled Python is executable
-        run: chmod +x build/ESL-PSC.app/Contents/MacOS/python
       - name: Create DMG
         run: |
           hdiutil create -volname "ESL-PSC" \
