@@ -150,8 +150,8 @@ ESL-PSC generates two main types of output files: a Predictions File and a Gene 
 The predictions file contains every prediction made by every model generated using every species combination in the analysis. Each line in the file lists the following information:
 
 1. Species combination (an abrevaited list of the species used to train the model. for very large numbers of species, a name like combo_1 will be assigned instead for each combination)
-2. Lambda1 (first sparsity hyperparameter)
-3. Lambda2 (second sparsity hyperparameter)
+2. Lambda1 (site sparsity hyperparameter)
+3. Lambda2 (gene sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
 5. Number of genes (the number of genes/proteins with sites included in the model)
 6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
