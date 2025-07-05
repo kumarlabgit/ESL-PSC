@@ -377,7 +377,7 @@ def main(raw_args=None):
     # 1) Where all intermediate ESL artefacts live
     if not getattr(args, "esl_inputs_outputs_dir", None):
         args.esl_inputs_outputs_dir = os.path.join(project_root,
-                                                   "preprocessed_data_and_outputs")
+                                                   "preprocessed_data_and_models")
 
     # 2) Root of the ESL install (used when spawning helper binaries);
     #    only override if the user did *not* supply a value.
@@ -420,9 +420,6 @@ def main(raw_args=None):
     if args.use_existing_alignments and args.canceled_alignments_dir:
         ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
 
-    # set output_dir
-    if not args.output_dir:
-        args.output_dir = args.esl_main_dir
     # ensure the output directory actually exists
     os.makedirs(args.output_dir, exist_ok=True)
     
@@ -487,14 +484,12 @@ def main(raw_args=None):
     # 2) Generate Gap-canceled Alignments
     if not args.use_existing_alignments: # skip if using existing alignments
         if not args.canceled_alignments_dir: # new alignments path not given
-            # if no canceled_alignments_dir was given, generate a name for one
-            aligns_parent_dir = os.path.split(args.alignments_dir)[0]
             if args.species_groups_file: # use species groups file name
-                dir_name = args.species_groups_file.replace('.txt','')
+                dir_name = os.path.basename(args.species_groups_file).replace('.txt','')
             else: # use output base name if no groups file
                 dir_name = args.output_file_base_name.replace('.txt','')
             dir_name += '_gap-canceled_alignments'
-            args.canceled_alignments_dir = os.path.join(aligns_parent_dir,
+            args.canceled_alignments_dir = os.path.join(args.output_dir,
                                                     dir_name)
         # if the folder already exists, remove it, but check with user first
         elif os.path.exists(args.canceled_alignments_dir):
