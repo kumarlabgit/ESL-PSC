@@ -219,29 +219,35 @@ class ESLWorker(QRunnable):
 
             def _build_command() -> list[str]:
                 """
-                * Dev run (`python -m gui.main`)           -> python -u -m esl_psc_cli…
-                * Packaged app/EXE (compiled launcher)    -> sibling binary esl_multimatrix
+                • If we’re running from source (argv[0] ends with .py), use
+                    the current Python to launch the module with -m.
+                • Otherwise we’re inside the packaged bundle: call the helper
+                  binary `esl_multimatrix(.exe)` that lives next to the GUI
+                  launcher (`main` on macOS, `ESL-PSC.exe` on Windows).
                 """
-                launch_path = Path(os.path.realpath(sys.argv[0]))
-
-                # Heuristic: in the packaged bundle launch_path is an **executable**
-                # with no '.py' suffix (e.g. ".../MacOS/main"); in dev it's a .py file.
-                running_from_source = launch_path.suffix.lower() == ".py"
+                launcher_path = Path(os.path.realpath(sys.argv[0]))
+                running_from_source = launcher_path.suffix.lower() == ".py"
 
                 if running_from_source:
                     return [
-                        sys.executable,
-                        "-u",
-                        "-m",
+                        sys.executable, "-u", "-m",
                         "esl_psc_cli.esl_multimatrix",
                         *self.command_args,
                     ]
 
-                # Packaged → call helper binary that sits next to “main”
-                cli_helper = launch_path.with_name(
-                    "esl_multimatrix" + (".exe" if os.name == "nt" else "")
-                )
-                return [str(cli_helper), *self.command_args]
+                # -------- packaged path --------
+                exe_name = "esl_multimatrix" + (".exe" if os.name == "nt" else "")
+                cli_helper = launcher_path.with_name(exe_name)
+
+                # Pass the bundle’s MacOS/ (or Windows dir) so the helper
+                # can find bin/preprocess and bin/sg_lasso
+                bundle_dir = launcher_path.parent  # Contents/MacOS or the exe dir
+
+                return [
+                    str(cli_helper),
+                    "--esl_main_dir", str(bundle_dir),
+                    *self.command_args,
+                ]
 
             command = _build_command()
             self.process = subprocess.Popen(
