@@ -41,7 +41,9 @@ def get_esl_args(parser = None):
     help_txt = '''* The name of this overall run to use in the output files'''
     group.add_argument('--output_file_base_name', help = help_txt,
                            type = str, required = True)
-    help_txt = '''where the output will be saved. default = ESL-PSC directory'''
+    help_txt = '''Directory to store all output files. If omitted, a folder
+    named <output_file_base_name>_<timestamp> will be created next to the
+    ESL-PSC project directory.'''
     group.add_argument('--output_dir', help = help_txt, type = str)
 
     ######### Hyperparameters #########
@@ -445,9 +447,6 @@ if __name__ == '__main__':
             and args.prediction_alignments_dir != args.input_alignments_dir):
         ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
 
-    # set output_dir
-    if not args.output_dir:
-        args.output_dir = args.esl_main_dir
 
     # set group penalty std if necessary
     if args.group_penalty_type == "std":
@@ -514,16 +513,16 @@ if __name__ == '__main__':
     
     # call output functions which should generate output text files
     if not args.no_genes_output:  # skip this output if flag is true
-        generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
+        generate_gene_ranks_output(gene_objects_dict, args.output_dir,
                                    args.output_file_base_name,
                                    show_sites=args.show_selected_sites)
         if args.show_selected_sites:
-            generate_selected_sites_output(gene_objects_dict, args.esl_main_dir,
+            generate_selected_sites_output(gene_objects_dict, args.output_dir,
                                            args.output_file_base_name)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
-        preds_output_path = os.path.join(args.esl_main_dir,
+        preds_output_path = os.path.join(args.output_dir,
                                          args.output_file_base_name
                                          + '_species_predictions.csv')
         generate_predictions_output(esl_run_list,

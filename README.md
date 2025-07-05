@@ -144,7 +144,7 @@ To use this feature:
 
 ## Output Data ##
 
-ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the ESL-PSC directory.
+ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the directory specified by `--output_dir`.
 
 #### Predictions File ####
 The predictions file contains every prediction made by every model generated using every species combination in the analysis. Each line in the file lists the following information:
@@ -192,7 +192,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
 * `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
 * `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
-* `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the preprocessed_data_and_outputs directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in .txt will be cleared from this directory before each ESL-PSC run.
+* `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the `preprocessed_data_and_models` directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in `.txt` will be cleared from this directory before each ESL-PSC run.
+* `--output_dir`: Directory where all output will be stored. If not supplied, a folder named `<output_file_base_name>_<timestamp>` will be created one level above the ESL-PSC project directory. Intermediate folders like `preprocessed_data_and_models`, `gap-canceled_alignments` and `response_matrices` will be created inside this location as needed.
 * `--show_selected_sites`: Output the top-scoring sites for each gene. When enabled, the gene ranks file gains a `num_selected_sites` column and a separate `<output_name>_selected_sites.csv` file lists each site with its PSS (Position Sparsity Score). **Positions in this file are 1-indexed for readability**, whereas positions in the raw model output remain 0-indexed.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
