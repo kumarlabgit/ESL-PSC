@@ -41,6 +41,7 @@ jobs:
             pyside6
             matplotlib
           nofollow-import-to: "*.tests"
+          macos-app-icon: assets/icons/app.icns
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
       - name: Add CLI helpers
@@ -85,6 +86,7 @@ jobs:
             matplotlib
             upx
           nofollow-import-to: "*.tests"
+          windows-icon-from-ico: assets/icons/app.ico
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
