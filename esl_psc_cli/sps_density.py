@@ -1,5 +1,7 @@
 #Author: Louise Dupont (with some additions by John)
 import matplotlib.pyplot as plt
+# Explicitly import the SVG backend so tools like Nuitka bundle it correctly
+from matplotlib.backends import backend_svg  # noqa: F401
 import seaborn as sns
 import pandas as pd
 import numpy as np
