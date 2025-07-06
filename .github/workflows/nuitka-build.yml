@@ -51,6 +51,7 @@ jobs:
           output-dir: build/cli
           lto: "yes"
           include-package: esl_psc_cli
+          python-flag: "-u"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
       - name: Embed CLI binary into bundle
@@ -109,6 +110,7 @@ jobs:
           output-dir: build/cli
           lto: "yes"
           include-package: esl_psc_cli
+          python-flag: "-u"
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
