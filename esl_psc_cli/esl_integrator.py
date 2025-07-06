@@ -1,7 +1,7 @@
 # a unified script for running integrated ESL analyses
 
 import argparse, os, time
-from . import esl_psc_functions as ecf
+from esl_psc_cli import esl_psc_functions as ecf
 from collections import defaultdict
 
 

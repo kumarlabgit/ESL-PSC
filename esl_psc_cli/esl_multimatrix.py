@@ -2,9 +2,9 @@
 #  matrices of species
 
 import argparse, os, time, shutil, random, itertools
-from . import esl_integrator as esl_int
-from . import esl_psc_functions as ecf
-from . import deletion_canceler as dc
+from esl_psc_cli import esl_integrator as esl_int
+from esl_psc_cli import esl_psc_functions as ecf
+from esl_psc_cli import deletion_canceler as dc
 from Bio import SeqIO
 from Bio.Seq import Seq
 
