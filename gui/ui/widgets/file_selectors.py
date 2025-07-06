@@ -12,6 +12,8 @@ class FileSelector(QWidget):
     """A widget for selecting a file or directory with a browse button and optional description."""
     
     path_changed = Signal(str)  # Signal emitted when path changes
+    # Class-level attribute tracking the most recently selected directory across all widgets
+    last_selected_dir = os.getcwd()
     
     def __init__(self, label, mode='file', default_path='', description='', parent=None):
         """
@@ -26,7 +28,7 @@ class FileSelector(QWidget):
         """
         super().__init__(parent)
         self.mode = mode
-        self.default_path = default_path or os.getcwd()
+        self.default_path = default_path or FileSelector.last_selected_dir
         
         # Create main layout
         main_layout = QVBoxLayout(self)
@@ -42,8 +44,10 @@ class FileSelector(QWidget):
         
         # Add path display
         self.path_edit = QLineEdit()
-        self.path_edit.setReadOnly(True)
+        self.path_edit.setReadOnly(False)
         self.path_edit.setPlaceholderText(f"Select {mode}...")
+        # Allow manual editing and propagate changes when editing finishes
+        self.path_edit.editingFinished.connect(self._on_edit_finished)
         top_row.addWidget(self.path_edit, 1)  # Stretch factor 1
         
         # Add browse button
@@ -62,16 +66,23 @@ class FileSelector(QWidget):
             main_layout.addWidget(self.desc_label)
     
     def browse(self):
-        """Open a file/directory dialog to select the path."""
+        """Open a file/directory dialog to select the path.
+
+        The dialog starts in the directory that was most recently selected in any
+        FileSelector instance.  This greatly speeds up workflows that require
+        choosing multiple related files.
+        """
+        start_dir = FileSelector.last_selected_dir or self.default_path
+
         if self.mode == 'file':
             path, _ = QFileDialog.getOpenFileName(
-                self, f"Select {self.mode}", self.default_path
+                self, f"Select {self.mode}", start_dir
             )
         else:  # directory
             path = QFileDialog.getExistingDirectory(
-                self, f"Select {self.mode}", self.default_path
+                self, f"Select {self.mode}", start_dir
             )
-        
+
         if path:
             self.set_path(path)
     
@@ -94,13 +105,21 @@ class FileSelector(QWidget):
         self.path_edit.setText(path)
         self.path_changed.emit(path)
 
-        # Update default path for the next browse action
+        # Update default path for both this instance and all other FileSelector instances
         if os.path.exists(path):
-            if os.path.isfile(path):
-                self.default_path = os.path.dirname(path)
-            else:
-                self.default_path = path
+            # Always use the PARENT directory of the selected item as the next
+            # default location.  This applies to both files and directories so
+            # that selecting a folder does not cause the dialog to reopen
+            # *inside* that folder.
+            next_dir = os.path.dirname(path)
+            # Edge-case: os.path.dirname('/') returns '/', keep it.
+            self.default_path = next_dir or path
+            FileSelector.last_selected_dir = self.default_path
     
+    def _on_edit_finished(self):
+        """Synchronise manual line-edit changes with the widget state."""
+        self.set_path(self.path_edit.text())
+
     def clear(self):
         """Clear the current selection."""
         self.path_edit.clear()

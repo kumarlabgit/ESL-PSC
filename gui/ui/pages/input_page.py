@@ -151,6 +151,8 @@ class InputPage(BaseWizardPage):
             use_response_dir = self.use_response_dir.isChecked()
             self.species_groups.setVisible(not use_response_dir)
             self.response_dir.setVisible(use_response_dir)
+            # Show/hide the helper button for creating a species groups file
+            self.tree_btn.setVisible(not use_response_dir)
             
             # Update config to reflect the active input type
             if use_response_dir:

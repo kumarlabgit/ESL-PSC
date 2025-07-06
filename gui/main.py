@@ -7,6 +7,7 @@ A graphical interface for running ESL-PSC analyses with an intuitive wizard.
 import sys
 import os
 from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
 from gui.core.logging_utils import setup_logging
 from gui.ui.main_window import MainWindow
@@ -32,6 +33,20 @@ def main():
         print("Creating QApplication...")
         app = QApplication(sys.argv)
         print("QApplication created")
+
+        # ──────────────────────────────────────────────────────────────────
+        # Set application icon (affects Dock / task-bar and all dialogs)
+        # ──────────────────────────────────────────────────────────────────
+        try:
+            from pathlib import Path
+            icon_path = Path(__file__).resolve().parent.parent / "assets" / "icons" / "app.png"
+            if icon_path.is_file():
+                app.setWindowIcon(QIcon(str(icon_path)))
+                print(f"Set window icon to {icon_path}")
+            else:
+                print(f"Icon not found at {icon_path}, using default icon")
+        except Exception as e:
+            print(f"Could not set window icon: {e}")
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")
