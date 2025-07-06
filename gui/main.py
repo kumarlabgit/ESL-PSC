@@ -43,7 +43,7 @@ def main():
         # binary to unpack while the user is filling out the wizard so the
         # later real invocation is instantaneous.
         if getattr(sys, "frozen", False):
-            import threading, subprocess, os
+            import threading, subprocess
             from pathlib import Path
 
             def _warm_up_cli():
