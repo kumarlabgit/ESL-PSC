@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from collections import defaultdict, Counter
 from Bio import SeqIO
 import numpy as np
-from . import sps_density
+from esl_psc_cli import sps_density
 import pandas as pd
 import matplotlib.pyplot as plt
 from itertools import combinations, chain
