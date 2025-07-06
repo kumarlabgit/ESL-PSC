@@ -7,14 +7,14 @@ import os
 # Use shared FASTA reader
 from gui.core.fasta_io import read_fasta
 import pandas as pd
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
     QLabel, QHeaderView
 )
-from PyQt6.QtSvgWidgets import QSvgWidget
+from PySide6.QtSvgWidgets import QSvgWidget
 
 from gui.ui.widgets.protein_map import ProteinMapWidget
 from gui.ui.widgets.site_viewer import SiteViewer

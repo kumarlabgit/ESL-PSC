@@ -13,7 +13,7 @@ on:
           - windows
 
 env:
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.11'
 
 jobs:
   build-macos:
@@ -37,26 +37,44 @@ jobs:
           output-dir: build
           lto: "yes"
           include-package: esl_psc_cli
+          no-deployment-flag: self-execution
           enable-plugins: |
-            pyqt6
+            pyside6
             matplotlib
-          include-qt-plugins: |
-            platforms
-            printsupport
-            svg
           nofollow-import-to: "*.tests"
+          macos-app-icon: assets/icons/app.icns
+      - name: Build CLI helper with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: esl_psc_cli/esl_multimatrix.py
+          mode: onefile
+          output-dir: build/cli
+          lto: "yes"
+          include-package: esl_psc_cli
+          enable-plugins: |
+            matplotlib
+          python-flag: "-u"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
-      - name: Add CLI binaries
+      - name: Embed CLI binary into bundle
         run: |
-          mkdir -p build/bin
-          cp bin/preprocess_mac build/bin/preprocess
-          cp bin/sg_lasso_mac build/bin/sg_lasso
-          chmod +x build/bin/preprocess build/bin/sg_lasso
+          cp build/cli/esl_multimatrix.bin build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
+          chmod +x build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
+      - name: Add CLI helpers
+        run: |
+          mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
+          cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
+          cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
+          chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "ESL-PSC" \
+                         -srcfolder build/ESL-PSC.app \
+                         -ov -format UDZO build/ESL-PSC.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-macOS
-          path: build/**
+          path: build/ESL-PSC.dmg
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
@@ -79,24 +97,46 @@ jobs:
           output-dir: build
           lto: "yes"
           include-package: esl_psc_cli
+          no-deployment-flag: self-execution
           enable-plugins: |
-            pyqt6
+            pyside6
             matplotlib
-          include-qt-plugins: |
-            platforms
-            printsupport
-            svg
+            upx
           nofollow-import-to: "*.tests"
+          windows-icon-from-ico: assets/icons/app.ico
+      - name: Build CLI helper with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: esl_psc_cli/esl_multimatrix.py
+          mode: onefile
+          output-dir: build/cli
+          lto: "yes"
+          include-package: esl_psc_cli
+          enable-plugins: |
+            matplotlib
+          python-flag: "-u"
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
+      - name: Install Qt tools
+        run: choco install -y qt6-default
+        shell: pwsh
+      - name: Bundle Qt frameworks
+        shell: pwsh
+        run: |
+          $wqt = & where windeployqt.exe
+          & $wqt build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
       - name: Add CLI binaries
         shell: bash
         run: |
+          cp build/cli/esl_multimatrix.exe build/esl_multimatrix.exe
           mkdir -p build/bin
           cp bin/preprocess.exe build/bin/preprocess.exe
           cp bin/sg_lasso.exe build/bin/sg_lasso.exe
+      - name: Compress build to ZIP
+        shell: pwsh
+        run: Compress-Archive -Path build\* -DestinationPath ESL-PSC-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
-          path: build/**
+          path: ESL-PSC-Windows.zip

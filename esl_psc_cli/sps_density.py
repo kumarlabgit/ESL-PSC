@@ -1,5 +1,7 @@
 #Author: Louise Dupont (with some additions by John)
 import matplotlib.pyplot as plt
+# Explicitly import the SVG backend so tools like Nuitka bundle it correctly
+from matplotlib.backends import backend_svg  # noqa: F401
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -163,8 +165,8 @@ def create_sps_plot_violin(csv_file_path=None,
     axes.set_facecolor('#ececec')
     sns.despine(left=True, bottom=True)
     
-    # save the plot to a file
-    fig.savefig(fig_path, format = 'svg')
+    # save the plot to a file. Let matplotlib infer format from file extension to ensure the required backend is available.
+    fig.savefig(fig_path)
 
 
 # calculates percent accuracy directly from csv file- no longer use

@@ -28,6 +28,14 @@
 
 This directory includes scritps used to implement the benchmarking and simulation analyses in (Allard et al. 2024). Many of these are designed to be run on an HPC cluster using the Torque resource manager. Several of these scripts automatically generate and submit PBS job scripts in order to run many thousands of analyses in parallel. A `requirements.txt` file is include in this directory that lists dependencies for these scripts on an HPC cluster. In order to use these scripts, it is necessary to create and use a virtual environment (env) that conatins these dependencies. The path to the env, along with the locations of local scratch memory etc. will need to be adjusted in each script as needed for the cluster on which they are running.
 
+#### Note on software version ####
+
+These supplementary scripts were developed and used in conjunction with ESL-PSC version 1.0.0 (tag `v1.0.0`), which corresponds to the code version used in (Allard et al. 2025). Subsequent changes to ESL-PSC (e.g., improvements to default output paths and command-line options) may break the hard-coded assumptions in the scripts below. We recommend checking out this version before using any of the scripts:
+
+```bash
+git checkout v1.0.0
+```
+
 Brief overviews of each included script are given below. Information on inputs and parameters can be viewed by running `python [script name] --help`
 
 ## asr_convergence_checker.py ##

@@ -9,14 +9,21 @@ def test_demo_run_smoke(tmp_path):
     """Runs the CLI on the demo data and checks that output files are created."""
     project_root = Path(__file__).parent.parent
     alignments_dir = project_root / "photosynthesis_alignments"
-    species_groups_file = project_root / "photo_single_LC_matrix_species_groups.txt"
+    species_groups_src = project_root / "photo_single_LC_matrix_species_groups.txt"
+    species_groups_file = tmp_path / "smoke_groups.txt"
     species_pheno_file = project_root / "photo_species_phenotypes.txt"
 
     assert alignments_dir.exists(), "Demo alignments directory not found!"
-    assert species_groups_file.exists(), "Demo species groups file not found!"
+    assert species_groups_src.exists(), "Demo species groups file not found!"
+
+    # Create a smaller species groups file using only the first two pairs
+    with open(species_groups_src) as src, open(species_groups_file, "w") as dst:
+        for _ in range(4):
+            dst.write(src.readline())
 
     output_basename = "smoke_test_output"
-    output_dir = tmp_path
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
 
     command = [
         sys.executable,
@@ -45,6 +52,14 @@ def test_demo_run_smoke(tmp_path):
     assert expected_predictions_file.exists(), "Predictions output file was not created."
     assert expected_ranks_file.exists(), "Gene ranks output file was not created."
     assert expected_sites_file.exists(), "Selected sites output file was not created."
+
+    # Intermediate folders should be inside the output directory
+    preprocess_dir = output_dir / "preprocessed_data_and_models"
+    gap_dir = output_dir / f"{species_groups_file.stem}_gap-canceled_alignments"
+    resp_dir = output_dir / f"{species_groups_file.stem}_response_matrices"
+
+    for folder in (preprocess_dir, gap_dir, resp_dir):
+        assert folder.exists() and any(folder.iterdir()), f"{folder} missing or empty"
 
     assert expected_ranks_file.stat().st_size > 0, "Gene ranks file is empty."
     assert expected_sites_file.stat().st_size > 0, "Selected sites file is empty."

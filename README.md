@@ -138,20 +138,18 @@ To use this feature:
 
 2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
 
-3. Canceled alignments directory. Full path to the new alignments directory. Gap-canceled alignments for each species combo will be placed here. This may also be an existing folder of gap-canceled alignments for multimatrix ESL-PSC. Use the argument `--canceled_alignments_dir` and give the full absolute path to the directory.
-
-4. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, you can submit a limited genes list file, which is a text file containing one alignment file name on each line. Note that these names must exactly match the ones in the alignments directory, and must end in `.fas` like they do. Use the argument `--limited_genes_list` and give the full absolute path to the file.
+3. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, you can submit a limited genes list file, which is a text file containing one alignment file name on each line. Note that these names must exactly match the ones in the alignments directory, and must end in `.fas` like they do. Use the argument `--limited_genes_list` and give the full absolute path to the file.
 
 ## Output Data ##
 
-ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the ESL-PSC directory.
+ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the directory specified by `--output_dir`.
 
 #### Predictions File ####
 The predictions file contains every prediction made by every model generated using every species combination in the analysis. Each line in the file lists the following information:
 
 1. Species combination (an abrevaited list of the species used to train the model. for very large numbers of species, a name like combo_1 will be assigned instead for each combination)
-2. Lambda1 (first sparsity hyperparameter)
-3. Lambda2 (second sparsity hyperparameter)
+2. Lambda1 (site sparsity hyperparameter)
+3. Lambda2 (gene sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
 5. Number of genes (the number of genes/proteins with sites included in the model)
 6. Input Root Mean Squared Error (RMSE; this is referred to as the Model Fit Score (MFS) by [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
@@ -192,7 +190,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
 * `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
 * `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
-* `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the preprocessed_data_and_outputs directory. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in .txt will be cleared from this directory before each ESL-PSC run.
+* `--output_dir`: Directory where all output will be stored. If not supplied, a folder named `<output_file_base_name>_<timestamp>` will be created one level above the ESL-PSC project directory. Intermediate folders like `preprocessed_data_and_models`, `gap-canceled_alignments` and `response_matrices` will be created inside this location as needed.
+* `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the `preprocessed_data_and_models` directory within the directory specified by `--output_dir`. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in `.txt` will be cleared from this directory before each ESL-PSC run.
 * `--show_selected_sites`: Output the top-scoring sites for each gene. When enabled, the gene ranks file gains a `num_selected_sites` column and a separate `<output_name>_selected_sites.csv` file lists each site with its PSS (Position Sparsity Score). **Positions in this file are 1-indexed for readability**, whereas positions in the raw model output remain 0-indexed.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
@@ -204,12 +203,13 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--cancel_only_partner`: Only cancel partner of any gap species at the site instead of eliminating the entire column.
 * `--min_pairs`: The minimum number of pairs that must not have gaps or the whole site will be canceled.
 * `--limited_genes_list`: Use only genes in this list. One file per line.
+* `--canceled_alignments_dir`: Full path to the new alignments directory. Gap-canceled alignments for each species combo will be placed here. This may also be an existing folder of gap-canceled alignments for multimatrix ESL-PSC. 
+* `--use_existing_alignments`: Use existing files in canceled_alignments_dir instead of running deletion canceling.
 
 ##### Multimatrix-specific Optional Arguments:
 * `--top_rank_frac`: Fraction of genes to count as "top genes" for the purpose of rankings across multiple species combinations. A setting of 0 will result in counting the single highest ranked gene as a top gene. The default is 0.01 (1%).
-* `--response_dir`: Folder with response matrices. Any txt file in this folder is assumed to be a response matrix file.
+* `--response_dir`: Folder with response matrices. You can provide this instead of using a species groups file. Any txt file in this folder is assumed to be a response matrix file.
 * `--use_uncanceled_alignments`: Use the alignments_dir alignments for all matrices without doing gap canceling (not recommended).
-* `--use_existing_alignments`: Use existing files in canceled_alignments_dir.
 * `--delete_preprocess`: Clear preprocess folders after each matrix run.
 * `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). 
 * `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL-PSC integration will be repeated for each one. The results are then aggregated for all (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)).
@@ -240,12 +240,11 @@ OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with Mo
 
 Problems with the inputs can cause segmentation fault errors in the ESL preprocess step. Here are some common causes of problems:
 1. An incorrect file path. It is recommended to use absolute file paths. Dragging the file icon onto the terminal window is a good way to make sure the path is entered correctly.
-2. Misspelling a species name. It is recommended to copy and paste the species identifiers from the alignment file when you set up your species groups file.  It's easy to miss a slight spelling error.
-3. Having an extra blank new line in one of the input files.
-4. having a duplicate alignment file name.
-5. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
-6. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
-7. Sequences must be aligned to each other in each file.
+2. Having an extra blank new line in one of the input files.
+3. having a duplicate alignment file name.
+4. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
+5. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
+6. Sequences must be aligned to each other in each file.
 
 ## Demo ##
 

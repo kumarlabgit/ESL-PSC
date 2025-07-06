@@ -9,9 +9,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from collections import defaultdict, Counter
 from Bio import SeqIO
 import numpy as np
-from . import sps_density
+from esl_psc_cli import sps_density
 import pandas as pd
 import matplotlib.pyplot as plt
+# Ensure the SVG backend is available when compiled with tools like Nuitka
+from matplotlib.backends import backend_svg  # noqa: F401
 from itertools import combinations, chain
 from statistics import median
 
@@ -41,26 +43,35 @@ def parse_args_with_config(parser, raw_args=None):
     else: 
         print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args(cmdline)
+
     # Point esl_main_dir at the *project root* (one level above this package)
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+    if not getattr(args, "esl_main_dir", None):
+        args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+
+    # Determine default output directory
+    if not getattr(args, "output_dir", None):
+        parent = os.path.abspath(os.path.join(args.esl_main_dir, os.pardir))
+        base = getattr(args, "output_file_base_name", "esl_psc_output")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        args.output_dir = os.path.join(parent, f"{base}_{timestamp}")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Default other directories relative to output_dir
+    if not getattr(args, "esl_inputs_outputs_dir", None):
+        args.esl_inputs_outputs_dir = os.path.join(
+            args.output_dir, "preprocessed_data_and_models")
+
+    # Create the preprocess directory if it was auto-assigned
+    os.makedirs(args.esl_inputs_outputs_dir, exist_ok=True)
     # sanity-check: make sure the ESL preprocess binary is actually there
     preprocess_bin = get_binary_path(args.esl_main_dir, "preprocess")
     if not os.path.exists(preprocess_bin):
         raise FileNotFoundError(
             f"Expected ESL binaries in {args.esl_main_dir!s}/bin but none were found"
         )
-    # Ensure esl_inputs_outputs_dir is set if not already provided
-    if not getattr(args, "esl_inputs_outputs_dir", None):
-        this_dir  = os.path.dirname(os.path.abspath(__file__))    # …/esl_psc_cli
-        root_dir  = os.path.abspath(os.path.join(this_dir, os.pardir))  # project root
-        args.esl_inputs_outputs_dir = os.path.join(
-            root_dir,
-            "preprocessed_data_and_outputs"
-        )
 
-    # Create the directory if it does not yet exist
-    os.makedirs(args.esl_inputs_outputs_dir, exist_ok=True)
 
     # Conditional error for missing species_pheno_path when plot generation is requested
     plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)
@@ -71,8 +82,8 @@ def parse_args_with_config(parser, raw_args=None):
 
     # Check for relative paths and adjust them to be absolute
     path_args = [
-        'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir', 
-        'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file', 
+        'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir',
+        'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file',
         'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir'
     ]
 
@@ -447,7 +458,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     # make sure the input file names are right including ".txt" or get seg fault
     print(' '.join(preprocess_command_list))
     try:
-        subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
+        subprocess.run(preprocess_command_list, check=True)
     except subprocess.CalledProcessError as e:
         if e.returncode == 126:
             executable_name = e.cmd.split()[0].split('/')[-1]
@@ -513,7 +524,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         
     for index, rmse_cutoff in enumerate(rmse_cutoffs):
         # create each plot
-        print("making plot with MFS cutoff: " + str(rmse_cutoff))
+        # print("making plot with MFS cutoff: " + str(rmse_cutoff))
         if plot_type == 'kde':    
             sps_density.create_sps_plot(df = df,
                                     RMSE_rank = rmse_cutoff,
