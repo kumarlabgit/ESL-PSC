@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 import os
+import random
 from PyQt6.QtWidgets import (
     QWidget,
     QGraphicsView,
@@ -20,11 +21,14 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QMenu,
     QSizePolicy,
+    QProgressDialog,
 )
 from PyQt6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
 from PyQt6.QtSvg import QSvgGenerator
 from PyQt6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
+
+from gui.core.fasta_io import read_fasta
 
 
 class _ZoomableGraphicsView(QGraphicsView):
@@ -147,6 +151,38 @@ class CandidatePair:
     descendants: set[str] = field(default_factory=set)
 
 
+class AutoSelectOptionsDialog(QMessageBox):
+    """Simple dialog to choose auto-select behavior."""
+
+    def __init__(self, allow_longest: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Auto Select Options")
+        self.setText("Choose how to resolve equally valid siblings")
+
+        self.default_btn = self.addButton("Default", QMessageBox.ButtonRole.AcceptRole)
+        if allow_longest:
+            self.longest_btn = self.addButton("Longest Sequence", QMessageBox.ButtonRole.ActionRole)
+        else:
+            self.longest_btn = None
+        self.random_btn = self.addButton("Random", QMessageBox.ButtonRole.ActionRole)
+        self.addButton(QMessageBox.StandardButton.Cancel)
+
+        self.choice: str | None = None
+
+    def exec(self) -> int:
+        result = super().exec()
+        clicked = self.clickedButton()
+        if clicked == self.default_btn:
+            self.choice = "default"
+        elif clicked == self.longest_btn:
+            self.choice = "longest"
+        elif clicked == self.random_btn:
+            self.choice = "random"
+        else:
+            self.choice = None
+        return result
+
+
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
 
@@ -157,6 +193,7 @@ class TreeViewer(QWidget):
         *,
         on_pheno_changed: Optional[Callable[[str], None]] = None,
         on_groups_saved: Optional[Callable[[str], None]] = None,
+        alignments_dir: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -192,6 +229,8 @@ class TreeViewer(QWidget):
         self._tree = tree
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
+        self._alignments_dir = alignments_dir
+        self._seq_lengths: Dict[str, int] = {}
 
         # Branch lines storage must be defined before we compute pen
         self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
@@ -1172,6 +1211,14 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
+        dlg = AutoSelectOptionsDialog(bool(self._alignments_dir), parent=self)
+        if dlg.exec() != QMessageBox.DialogCode.Accepted or not dlg.choice:
+            return
+        method = dlg.choice
+
+        if method == "longest":
+            self._ensure_sequence_lengths()
+
         existing_desc: set[str] = set()
         for pair in self._pairs:
             conv_leaf = next(self._tree.find_clades(name=pair.convergent))
@@ -1212,7 +1259,8 @@ class TreeViewer(QWidget):
             cand = candidates.pop(0)
             if cand.descendants & invalid:
                 continue
-            added.append(PairInfo(cand.convergent, cand.control))
+            pair = self._resolve_pair(cand, method)
+            added.append(pair)
             invalid.update(cand.descendants)
             candidates = [c for c in candidates if not (c.descendants & invalid)]
 
@@ -1230,6 +1278,79 @@ class TreeViewer(QWidget):
             self._current_role = None
             self._current_first = None
             self._apply_pairs()
+
+    # ------------------------------------------------------------------
+    def _ensure_sequence_lengths(self) -> None:
+        """Gather sequence length totals for all assigned species."""
+        if not self._alignments_dir:
+            return
+        needed = [n for n, v in self._phenotypes.items() if v in (1, -1) and n not in self._seq_lengths]
+        if not needed:
+            return
+
+        files = [f for f in os.listdir(self._alignments_dir) if f.lower().endswith((".fas", ".fasta", ".fa"))]
+        progress = QProgressDialog("Scanning alignments...", "Cancel", 0, len(files), self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        count = 0
+        for fname in files:
+            count += 1
+            path = os.path.join(self._alignments_dir, fname)
+            try:
+                records = read_fasta(path)
+            except Exception:
+                records = []
+            length = len(records[0][1]) if records else 0
+            if length:
+                for rid, seq in records:
+                    sp = rid.split()[0]
+                    if sp in needed and seq.strip("-"):
+                        self._seq_lengths[sp] = self._seq_lengths.get(sp, 0) + length
+            progress.setValue(count)
+            if progress.wasCanceled():
+                break
+        progress.close()
+
+    # ------------------------------------------------------------------
+    def _pick_longest(self, names: List[str]) -> str:
+        lengths = {n: self._seq_lengths.get(n, 0) for n in names}
+        if not lengths:
+            return names[0]
+        max_len = max(lengths.values())
+        best = [n for n, l in lengths.items() if l == max_len]
+        return random.choice(best)
+
+    # ------------------------------------------------------------------
+    def _resolve_pair(self, cand: CandidatePair, method: str) -> PairInfo:
+        conv_leaf = next(self._tree.find_clades(name=cand.convergent))
+        ctrl_leaf = next(self._tree.find_clades(name=cand.control))
+        anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+
+        convs: List[str] = []
+        ctrls: List[str] = []
+        for leaf in anc.get_terminals():
+            nm = leaf.name or ""
+            ph = self._phenotypes.get(nm)
+            if ph == 1:
+                convs.append(nm)
+            elif ph == -1:
+                ctrls.append(nm)
+
+        conv_choice = cand.convergent
+        ctrl_choice = cand.control
+        if method == "longest":
+            if len(convs) > 1:
+                conv_choice = self._pick_longest(convs)
+            if len(ctrls) > 1:
+                ctrl_choice = self._pick_longest(ctrls)
+        elif method == "random":
+            if len(convs) > 1:
+                conv_choice = random.choice(convs)
+            if len(ctrls) > 1:
+                ctrl_choice = random.choice(ctrls)
+
+        conv_alts = [n for n in convs if n != conv_choice]
+        ctrl_alts = [n for n in ctrls if n != ctrl_choice]
+        return PairInfo(conv_choice, ctrl_choice, conv_alts, ctrl_alts)
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:

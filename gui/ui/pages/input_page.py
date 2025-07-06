@@ -273,6 +273,7 @@ class InputPage(BaseWizardPage):
             phenotypes=phenos,
             on_pheno_changed=self._update_phenotype_file,
             on_groups_saved=self._update_groups_file,
+            alignments_dir=getattr(self.config, 'alignments_dir', ''),
         )
         self._tree_window.show()
 
