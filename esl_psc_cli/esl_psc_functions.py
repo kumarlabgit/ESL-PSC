@@ -12,6 +12,8 @@ import numpy as np
 from esl_psc_cli import sps_density
 import pandas as pd
 import matplotlib.pyplot as plt
+# Ensure the SVG backend is available when compiled with tools like Nuitka
+from matplotlib.backends import backend_svg  # noqa: F401
 from itertools import combinations, chain
 from statistics import median
 
