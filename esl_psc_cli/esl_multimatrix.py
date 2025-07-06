@@ -533,9 +533,10 @@ def main(raw_args=None):
     # Print a clear, multi-line summary so the GUI output isn't squished
     print("\nmultimatrix integration finished!")
     print(f"A total of {len(master_run_list)} ESL models were built")
-    print("The arguments for this integration run were:")
-    for key, value in vars(args).items():
-        print(f"{key} = {value}")
+    # Show concise reproducible command instead of every argument
+    import sys, shlex
+    cmd = ' '.join(shlex.quote(a) for a in sys.argv)
+    print(f"\nRun command: {cmd}\n")
 
     # print these paths so they don't get lost
     print("\nResponse matrices directory:", response_dir)

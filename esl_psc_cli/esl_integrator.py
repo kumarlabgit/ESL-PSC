@@ -513,9 +513,10 @@ if __name__ == '__main__':
     # Print a clear, multi-line summary so the GUI output isn't squished
     print("\nESL-PSC integration finished!")
     print(f"A total of {len(esl_run_list)} ESL models were built")
-    print("The arguments for this integration run were:")
-    for key, value in vars(args).items():
-        print(f"{key} = {value}")
+    # Show concise reproducible command instead of every argument
+    import sys, shlex
+    cmd = ' '.join(shlex.quote(a) for a in sys.argv)
+    print(f"\nRun command for this run: {cmd}\n")
     
     # call output functions which should generate output text files
     if not args.no_genes_output:  # skip this output if flag is true
