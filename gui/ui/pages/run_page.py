@@ -184,7 +184,7 @@ class RunPage(BaseWizardPage):
             
             self.cmd_display.clear()
             self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
-            self.step_status_label.setText("Starting analysis...")
+            self.step_status_label.setText("Starting analysis (may take 10 seconds)...")
             self.sps_btn.hide()
             self.gene_btn.hide()
             self.sps_plot_path = None

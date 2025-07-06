@@ -524,7 +524,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         
     for index, rmse_cutoff in enumerate(rmse_cutoffs):
         # create each plot
-        print("making plot with MFS cutoff: " + str(rmse_cutoff))
+        # print("making plot with MFS cutoff: " + str(rmse_cutoff))
         if plot_type == 'kde':    
             sps_density.create_sps_plot(df = df,
                                     RMSE_rank = rmse_cutoff,

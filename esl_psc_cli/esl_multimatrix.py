@@ -540,7 +540,7 @@ def main(raw_args=None):
 
     # print these paths so they don't get lost
     print("\nResponse matrices directory:", response_dir)
-    print("Gap-canceled alignments directory:",
+    print("\nGap-canceled alignments directory:",
           args.canceled_alignments_dir)
     
     # call output functions which should generate output files
