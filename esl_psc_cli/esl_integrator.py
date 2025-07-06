@@ -23,6 +23,12 @@ def get_esl_args(parser = None):
     '''
     group.add_argument('--esl_inputs_outputs_dir', help = help_txt,
                            type = str)
+
+    help_txt = '''Root folder of the ESL-PSC installation. This directory
+    must contain the ``bin`` subfolder with the ESL helper binaries. This
+    is typically auto-detected, but packaged builds may need to override it.'''
+    group.add_argument('--esl_main_dir', help = help_txt, type = str,
+                       required = False)
     help_txt = '''The full path to the species phenotypes file which has the 
     species name then a comma and then a 1 or -1 for the phenotype class.
     Any species that is not in the phenotype file will not be included in the

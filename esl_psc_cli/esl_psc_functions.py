@@ -44,7 +44,8 @@ def parse_args_with_config(parser, raw_args=None):
 
     # Point esl_main_dir at the *project root* (one level above this package)
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+    if not getattr(args, "esl_main_dir", None):
+        args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
 
     # Determine default output directory
     if not getattr(args, "output_dir", None):
