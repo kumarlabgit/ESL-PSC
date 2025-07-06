@@ -38,6 +38,31 @@ def main():
         app.setApplicationVersion("0.1.0")
         app.setOrganizationName("ESL-PSC")
         
+        # If we are running inside a packaged (Nuitka) build, kick off a
+        # background warm-up run of the CLI helper.  This forces the one-file
+        # binary to unpack while the user is filling out the wizard so the
+        # later real invocation is instantaneous.
+        if getattr(sys, "frozen", False):
+            import threading, subprocess, os
+            from pathlib import Path
+
+            def _warm_up_cli():
+                try:
+                    launcher = Path(os.path.realpath(sys.argv[0]))
+                    exe = launcher.with_name("esl_multimatrix" + (".exe" if os.name == "nt" else ""))
+                    if exe.is_file():
+                        bundle_dir = str(launcher.parent)  # Contents/MacOS or exe dir
+                        subprocess.run([
+                            str(exe),
+                            "--esl_main_dir", bundle_dir,
+                            "--help",
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                except Exception as e:
+                    # Log but never interrupt the GUI
+                    print(f"[warm-up] CLI pre-extract failed: {e!r}", file=sys.__stderr__)
+
+            threading.Thread(target=_warm_up_cli, daemon=True).start()
+
         # Create and show main window
         print("Creating main window...")
         window = MainWindow()

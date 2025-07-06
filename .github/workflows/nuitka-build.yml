@@ -51,6 +51,8 @@ jobs:
           output-dir: build/cli
           lto: "yes"
           include-package: esl_psc_cli
+          enable-plugins: |
+            matplotlib
           python-flag: "-u"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
@@ -110,6 +112,8 @@ jobs:
           output-dir: build/cli
           lto: "yes"
           include-package: esl_psc_cli
+          enable-plugins: |
+            matplotlib
           python-flag: "-u"
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe

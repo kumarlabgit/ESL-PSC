@@ -240,12 +240,11 @@ OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with Mo
 
 Problems with the inputs can cause segmentation fault errors in the ESL preprocess step. Here are some common causes of problems:
 1. An incorrect file path. It is recommended to use absolute file paths. Dragging the file icon onto the terminal window is a good way to make sure the path is entered correctly.
-2. Misspelling a species name. It is recommended to copy and paste the species identifiers from the alignment file when you set up your species groups file.  It's easy to miss a slight spelling error.
-3. Having an extra blank new line in one of the input files.
-4. having a duplicate alignment file name.
-5. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
-6. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
-7. Sequences must be aligned to each other in each file.
+2. Having an extra blank new line in one of the input files.
+3. having a duplicate alignment file name.
+4. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
+5. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
+6. Sequences must be aligned to each other in each file.
 
 ## Demo ##
 

@@ -30,10 +30,10 @@ This directory includes scritps used to implement the benchmarking and simulatio
 
 #### Note on software version ####
 
-These supplementary scripts were developed and used in conjunction with the version of ESL-PSC as of commit `be9533e6e656ddc47df2e4f18043b9219cb2ade0`, which corresponds to the code version used in (Allard et al. 2025). Subsequent changes to ESL-PSC (e.g., improvements to default output paths and command-line options) may break the hard-coded assumptions in the scripts below. We recommend checking out that commit before using any of the scripts:
+These supplementary scripts were developed and used in conjunction with ESL-PSC version 1.0.0 (tag `v1.0.0`), which corresponds to the code version used in (Allard et al. 2025). Subsequent changes to ESL-PSC (e.g., improvements to default output paths and command-line options) may break the hard-coded assumptions in the scripts below. We recommend checking out this version before using any of the scripts:
 
 ```bash
-git checkout be9533e6e656ddc47df2e4f18043b9219cb2ade0
+git checkout v1.0.0
 ```
 
 Brief overviews of each included script are given below. Information on inputs and parameters can be viewed by running `python [script name] --help`
