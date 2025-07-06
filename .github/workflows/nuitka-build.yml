@@ -50,12 +50,12 @@ jobs:
           mode: onefile
           output-dir: build/cli
           lto: "yes"
-      - name: Embed CLI binary into bundle
-        run: |
-          cp build/cli/esl_multimatrix build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
-          chmod +x build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
+      - name: Embed CLI binary into bundle
+        run: |
+          cp build/cli/esl_multimatrix.bin build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
+          chmod +x build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
       - name: Add CLI helpers
         run: |
           mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
@@ -121,10 +121,10 @@ jobs:
       - name: Add CLI binaries
         shell: bash
         run: |
+          cp build/cli/esl_multimatrix.exe build/esl_multimatrix.exe
           mkdir -p build/bin
           cp bin/preprocess.exe build/bin/preprocess.exe
           cp bin/sg_lasso.exe build/bin/sg_lasso.exe
-          cp build/cli/esl_multimatrix.exe build/bin/esl_multimatrix.exe
       - name: Compress build to ZIP
         shell: pwsh
         run: Compress-Archive -Path build\* -DestinationPath ESL-PSC-Windows.zip
