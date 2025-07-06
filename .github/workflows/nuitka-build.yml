@@ -60,8 +60,8 @@ jobs:
       - name: Add CLI helpers
         run: |
           mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
-          cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess
-          cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso
+          cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
+          cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Create DMG
         run: |
