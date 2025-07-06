@@ -1,6 +1,7 @@
 """
 Worker thread for running ESL-PSC commands.
 """
+from __future__ import annotations
 import os
 import io
 import re
@@ -111,16 +112,23 @@ class ESLWorker(QRunnable):
                     # Not a direct progress update we want to show in bar yet
                     return False
 
-                # Deletion-canceler per-combo progress: "Generating alignments for: <species...>"
+                # Deletion-canceler per-combo progress: original line lists every species,
+                # which overflows the GUI. Replace it with a concise message.
                 if "Generating alignments for" in line:
                     # Increment completed combo counter and compute % if total known
                     if self.worker.del_total_combos:
                         self.worker.del_current_combo += 1
                         pct = int(self.worker.del_current_combo / self.worker.del_total_combos * 100)
                         self.signals.step_progress.emit(pct)
-                    # Update status text regardless
-                    self.signals.step_status.emit(line.strip())
-                    return False
+                    # Build a friendly short status like "Generating alignments for combo 3 of 18…"
+                    combo_msg = f"combo {self.worker.del_current_combo}"
+                    if self.worker.del_total_combos:
+                        combo_msg += f" of {self.worker.del_total_combos}"
+                    friendly = f"Generating alignments for {combo_msg}..."
+                    # Emit to status bar and to log (output). Suppress original long line.
+                    self.signals.step_status.emit(friendly)
+                    self.signals.output.emit(friendly)
+                    return True
 
                 # ESL preprocess step indicator
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
