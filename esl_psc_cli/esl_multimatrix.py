@@ -2,6 +2,12 @@
 #  matrices of species
 
 import argparse, os, time, shutil, random, itertools
+import faulthandler
+# Enable faulthandler so that **all Python threads** print a traceback when
+# the interpreter receives a fatal signal (SIGSEGV, SIGFPE, SIGABRT, etc.).
+# `all_threads=True` ensures we get the stacks of worker threads as well,
+# which is invaluable for debugging native crashes.
+faulthandler.enable(all_threads=True)
 from esl_psc_cli import esl_integrator as esl_int
 from esl_psc_cli import esl_psc_functions as ecf
 from esl_psc_cli import deletion_canceler as dc

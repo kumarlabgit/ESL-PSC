@@ -718,26 +718,30 @@ class ESLRun():
         preprocessed_dir_name = self.run_family.preprocessed_input_folder
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
-        # generate the command for calling ESL logistic lasso
+        # Build command list for ESL logistic lasso.
+        # Use an argument list (shell=False) so paths that contain spaces are
+        # passed intact to the executable.
         esl_command_list = [
-                            get_binary_path(self.run_family.args.esl_main_dir,
-                                           'sg_lasso'),
-                            '-f', preprocessed_dir_name + '/feature_' +
-                            preprocessed_dir_name + '.txt',
-                            '-z', str(self.lambda1),
-                            '-y', str(self.lambda2),
-                            '-n', preprocessed_dir_name + '/group_indices_' +
-                            preprocessed_dir_name + '.txt',
-                            '-r', preprocessed_dir_name + '/response_' +
-                            preprocessed_dir_name + '.txt',
-                            '-w', output_name + '_out_feature_weights']
-        # run esl and silence noisy output from the underlying binary.  We still
-        # capture stdout/stderr so that errors can be surfaced if the command
-        # fails, but we do not display the informational messages printed by the
-        # SLEP implementation during normal operation.
+            get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
+            "-f",
+            os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
+            "-z",
+            str(self.lambda1),
+            "-y",
+            str(self.lambda2),
+            "-n",
+            os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
+            "-r",
+            os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
+            "-w",
+            f"{output_name}_out_feature_weights",
+        ]
+
+        # Run ESL and silence noisy output from sg_lasso. We still capture
+        # stdout/stderr so that errors can be surfaced if the command fails.
         proc = subprocess.run(
-            ' '.join(esl_command_list),
-            shell=True,
+            esl_command_list,
+            shell=False,
             capture_output=True,
             text=True,
         )
