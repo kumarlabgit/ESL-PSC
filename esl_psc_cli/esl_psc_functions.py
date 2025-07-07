@@ -138,6 +138,8 @@ def validate_alignment_dir_two_line(directory, recursive=False):
     """Ensure all FASTA files in *directory* are 2-line format."""
     if not directory or not os.path.isdir(directory):
         return
+        
+    print("Verifying alignment format...")
 
     walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
     for root, _dirs, files in walker:

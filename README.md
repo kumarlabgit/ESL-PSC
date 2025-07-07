@@ -5,7 +5,7 @@
 1. [Description](#description)
 2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
 3. [CLI Usage](#cli-usage)
-4. [Installation and Dependncies](#installation-and-dependncies)
+4. [Installation and Dependencies](#installation-and-dependencies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 6. [Input Data](#input-data)
 7. [Output Data](#output-data)
@@ -71,7 +71,7 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
 The GUI requires **PyQt6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 ### Roadmap
-* **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows users can run ESL-PSC without installing Python dependencies.
+* **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows and MacOS users can run ESL-PSC without installing Python dependencies.
 * **Continuous Numerical Phenotypes** – In the near future we will enable support for continuous numerical  response values so you can test phenotypes that are not binary (e.g. gene expression levels, etc.).
   
 
@@ -84,17 +84,13 @@ Here is an example of how to run the script:
 
 `python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
-##### We also include `esl_multimatrix.exe` which can be substituted for `python esl_multimatrix.py` in the above command and will run on Windows. 
-
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
-## Installation and Dependncies ##
+## Installation and Dependencies ##
 
-When running on Windows using `esl_multimatrix.exe` all dependencies are included and no further installations are necessary.
-
-When running ESL-PSC using the included python scripts, it requires a linux operating system and python 3. It has been tested using Ubuntu 20 with Python 3.8. The following Python libraries are required:
+ESL-PSC requires python 3.10 or higher. It has been tested on recent MacOS, Windows and Linux systems. The following Python libraries are required:
 
 - BioPython
 - NumPy
@@ -105,8 +101,6 @@ When running ESL-PSC using the included python scripts, it requires a linux oper
 You can install these libraries using pip:
 
 `pip install biopython numpy pandas matplotlib seaborn`
-
-ESL-PSC can be run on Windows by substituting 
 
 ### Using a Configuration File with ESL-PSC ###
 
