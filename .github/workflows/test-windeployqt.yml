@@ -13,7 +13,6 @@ jobs:
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.7.*'
-          modules: 'qtbase'
         
       - name: Create test executable (dummy)
         run: |
@@ -32,14 +31,3 @@ jobs:
           }
           Write-Host "✅ windeployqt ran successfully and Qt6Core.dll found"
 
-          # Prepend directory to PATH and run it
-          $env:PATH = "$($wqt.Directory.FullName);$env:PATH"
-          & $wqt.FullName build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
-          
-          # Verify the deployment
-          if (Test-Path "build\Qt6Core.dll") {
-            Write-Host "✅ windeployqt ran successfully!"
-          } else {
-            Write-Error "❌ windeployqt failed to deploy Qt libraries"
-            exit 1
-          }
