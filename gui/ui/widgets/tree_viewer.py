@@ -162,13 +162,21 @@ class AutoSelectOptionsDialog(QMessageBox):
         self.setWindowTitle("Auto Select Options")
         self.setText("Choose how to resolve equally valid siblings")
 
-        self.default_btn = self.addButton("Default", QMessageBox.ButtonRole.AcceptRole)
+        self.default_btn = self.addButton(
+            "Default", QMessageBox.ButtonRole.AcceptRole
+        )
         if allow_longest:
-            self.longest_btn = self.addButton("Longest Sequence", QMessageBox.ButtonRole.ActionRole)
+            self.longest_btn = self.addButton(
+                "Longest Sequence", QMessageBox.ButtonRole.ActionRole
+            )
         else:
             self.longest_btn = None
-        self.random_btn = self.addButton("Random", QMessageBox.ButtonRole.ActionRole)
-        self.addButton(QMessageBox.StandardButton.Cancel)
+        self.random_btn = self.addButton(
+            "Random", QMessageBox.ButtonRole.ActionRole
+        )
+        self.cancel_btn = self.addButton(
+            "Cancel", QMessageBox.ButtonRole.RejectRole
+        )
 
         self.choice: str | None = None
 
@@ -1215,7 +1223,8 @@ class TreeViewer(QWidget):
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
         dlg = AutoSelectOptionsDialog(bool(self._alignments_dir), parent=self)
-        if dlg.exec() != QMessageBox.DialogCode.Accepted or not dlg.choice:
+        dlg.exec()
+        if not dlg.choice:
             return
         method = dlg.choice
 
@@ -1351,9 +1360,7 @@ class TreeViewer(QWidget):
             if len(ctrls) > 1:
                 ctrl_choice = random.choice(ctrls)
 
-        conv_alts = [n for n in convs if n != conv_choice]
-        ctrl_alts = [n for n in ctrls if n != ctrl_choice]
-        return PairInfo(conv_choice, ctrl_choice, conv_alts, ctrl_alts)
+        return PairInfo(conv_choice, ctrl_choice)
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
