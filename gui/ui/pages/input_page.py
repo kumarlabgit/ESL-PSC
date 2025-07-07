@@ -277,6 +277,7 @@ class InputPage(BaseWizardPage):
             phenotypes=phenos,
             on_pheno_changed=self._update_phenotype_file,
             on_groups_saved=self._update_groups_file,
+            on_alignments_changed=self._update_alignment_dir,
             alignments_dir=getattr(self.config, 'alignments_dir', ''),
         )
         self._tree_window.show()
@@ -288,6 +289,11 @@ class InputPage(BaseWizardPage):
     def _update_groups_file(self, path: str) -> None:
         self.species_groups.set_path(path)
         setattr(self.config, 'species_groups_file', path)
+
+    def _update_alignment_dir(self, path: str) -> None:
+        """Update the alignment directory selector and config."""
+        self.alignment_dir.set_path(path)
+        setattr(self.config, 'alignments_dir', path)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard
