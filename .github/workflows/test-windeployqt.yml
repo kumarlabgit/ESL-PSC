@@ -26,8 +26,6 @@ jobs:
         run: |
           $pathExe = (Get-Command windeployqt.exe -ErrorAction Stop).Source
           Write-Host "Found windeployqt at $pathExe"
-          windeployqt.exe --version
+          & $pathExe --version
           Write-Host "✅ windeployqt is available and runnable"
-          }
-          Write-Host "✅ windeployqt ran successfully and Qt6Core.dll found"
 
