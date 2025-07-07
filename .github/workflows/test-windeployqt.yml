@@ -9,8 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Qt tools
-        run: choco install -y qt6-base-dev --params "/Path"
+      - name: Install Qt (libs + tools)
+        run: choco install -y qt6-base-dev qt6-tools --params "/Path"
         shell: pwsh
         
       - name: Create test executable (dummy)
@@ -23,12 +23,16 @@ jobs:
       - name: Test windeployqt
         shell: pwsh
         run: |
-          # Add Qt binaries to PATH
-          $qtPath = "C:\Qt\6.7.0\msvc2019_64\bin"
-          $env:PATH = "$qtPath;$env:PATH"
-          
-          # Run windeployqt with verbose output
-          windeployqt.exe build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
+          # Locate windeployqt.exe installed by Chocolatey (path may vary by version)
+          $wqt = Get-ChildItem -Path 'C:\Qt' -Filter windeployqt.exe -Recurse | Select-Object -First 1
+          if (-not $wqt) {
+            Write-Error 'windeployqt.exe not found after installing qt6-tools'
+            exit 1
+          }
+
+          # Prepend directory to PATH and run it
+          $env:PATH = "$($wqt.Directory.FullName);$env:PATH"
+          & $wqt.FullName build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
           
           # Verify the deployment
           if (Test-Path "build\Qt6Core.dll") {
