@@ -124,8 +124,7 @@ jobs:
       - name: Bundle Qt frameworks
         shell: pwsh
         run: |
-          $wqt = & where windeployqt.exe
-          & $wqt build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
+          windeployqt.exe build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
       - name: Add CLI binaries
         shell: bash
         run: |
