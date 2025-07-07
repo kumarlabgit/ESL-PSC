@@ -264,7 +264,11 @@ class TreeViewer(QWidget):
         self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
 
+        # Map explicit species name to total aligned amino acid sequence length.
         self._seq_lengths: Dict[str, int] = {}
+        # If the user chose the "Longest Sequence" option during auto-selection, we
+        # annotate species labels with their sequence length for display only.
+        self._show_seq_lengths: bool = False
 
         # Branch lines storage must be defined before we compute pen
         self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
@@ -953,6 +957,8 @@ class TreeViewer(QWidget):
         self._update_save_btn()
         self._update_auto_btn()
         self._update_assign_cursor()
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
 
     # ------------------------------------------------------------------
     def _remove_pair(self, idx: int) -> None:
@@ -1250,6 +1256,8 @@ class TreeViewer(QWidget):
         if not dlg.choice:
             return
         method = dlg.choice
+        # Toggle display of sequence-length annotations depending on user choice.
+        self._show_seq_lengths = method == "longest"
 
         if method == "longest":
             if not self._alignments_dir and not self._prompt_alignment_dir():
@@ -1345,7 +1353,11 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _ensure_sequence_lengths(self) -> None:
-        """Gather sequence length totals for all assigned species."""
+        """Gather sequence length totals for all assigned species.
+
+        If the *Longest Sequence* auto-select mode is active, the label
+        annotations are refreshed after lengths are gathered.
+        """
         if not self._alignments_dir:
             return
         needed = [n for n, v in self._phenotypes.items() if v in (1, -1) and n not in self._seq_lengths]
@@ -1384,6 +1396,32 @@ class TreeViewer(QWidget):
             if progress.wasCanceled():
                 break
         progress.close()
+
+        # Update on-screen label annotations if requested. This keeps the view in
+        # sync even when auto-selection isn't immediately followed by a full
+        # redraw.
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
+
+    # ------------------------------------------------------------------
+    def _update_seq_length_annotations(self) -> None:
+        """Refresh label text to include or remove sequence-length annotations.
+
+        The underlying species name used for look-ups remains untouched via the
+        ``species_name`` attribute; we modify only the visible text.
+        """
+        for base_name, label in self._label_items.items():
+            text = base_name
+            if getattr(self, "_show_seq_lengths", False):
+                length = self._seq_lengths.get(base_name)
+                if length:
+                    text += f" ({length})"
+            label.setPlainText(text)
+            # Re-align the label horizontally because its width may have changed.
+            # We keep the existing x coordinate (set during _draw_tree) and simply
+            # center vertically around the original y.
+            pos = label.pos()
+            label.setPos(pos.x(), pos.y())
 
     # ------------------------------------------------------------------
     def _pick_longest(self, names: List[str]) -> str:
@@ -1500,6 +1538,10 @@ class TreeViewer(QWidget):
         # Set scene rect based on all items so panning works when zoomed
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+
+        # Include sequence length annotations if requested.
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
 
         # Only auto-fit the view on the initial draw. Afterwards preserve the
         # user's zoom level when the tree is redrawn (e.g., after phenotype
