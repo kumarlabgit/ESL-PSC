@@ -119,7 +119,7 @@ jobs:
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
       - name: Install Qt tools
-        run: choco install -y qt6-default
+        run: choco install -y qt6-base-dev --params "/Path"
         shell: pwsh
       - name: Bundle Qt frameworks
         shell: pwsh
