@@ -9,9 +9,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Qt (libs + tools)
-        run: choco install -y qt6-base-dev qt6-tools --params "/Path"
-        shell: pwsh
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.7.*'
+          modules: 'qtbase'
         
       - name: Create test executable (dummy)
         run: |
@@ -23,12 +25,12 @@ jobs:
       - name: Test windeployqt
         shell: pwsh
         run: |
-          # Locate windeployqt.exe installed by Chocolatey (path may vary by version)
-          $wqt = Get-ChildItem -Path 'C:\Qt' -Filter windeployqt.exe -Recurse | Select-Object -First 1
-          if (-not $wqt) {
-            Write-Error 'windeployqt.exe not found after installing qt6-tools'
+          windeployqt.exe build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
+          if (-not (Test-Path "build\Qt6Core.dll")) {
+            Write-Error "windeployqt did not deploy Qt6Core.dll"
             exit 1
           }
+          Write-Host "✅ windeployqt ran successfully and Qt6Core.dll found"
 
           # Prepend directory to PATH and run it
           $env:PATH = "$($wqt.Directory.FullName);$env:PATH"
