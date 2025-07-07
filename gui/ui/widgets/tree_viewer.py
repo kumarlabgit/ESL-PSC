@@ -204,6 +204,7 @@ class TreeViewer(QWidget):
         *,
         on_pheno_changed: Optional[Callable[[str], None]] = None,
         on_groups_saved: Optional[Callable[[str], None]] = None,
+        on_alignments_changed: Optional[Callable[[str], None]] = None,
         alignments_dir: str = "",
         parent=None,
     ):
@@ -240,6 +241,7 @@ class TreeViewer(QWidget):
         self._tree = tree
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
+        self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
         self._seq_lengths: Dict[str, int] = {}
 
@@ -1222,13 +1224,15 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
-        dlg = AutoSelectOptionsDialog(bool(self._alignments_dir), parent=self)
+        dlg = AutoSelectOptionsDialog(True, parent=self)
         dlg.exec()
         if not dlg.choice:
             return
         method = dlg.choice
 
         if method == "longest":
+            if not self._alignments_dir and not self._prompt_alignment_dir():
+                return
             self._ensure_sequence_lengths()
 
         existing_desc: set[str] = set()
@@ -1290,6 +1294,33 @@ class TreeViewer(QWidget):
             self._current_role = None
             self._current_first = None
             self._apply_pairs()
+
+    # ------------------------------------------------------------------
+    def _prompt_alignment_dir(self) -> bool:
+        """Ask the user to choose an alignments directory."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Alignment Directory Required")
+        msg.setText(
+            "To use the longest sequence method, you must select a directory of alignments for the species with assigned phenotypes on the tree"
+        )
+        choose_btn = msg.addButton(
+            "Choose alignment directory", QMessageBox.ButtonRole.AcceptRole
+        )
+        msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        if msg.clickedButton() != choose_btn:
+            return False
+
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Alignment Directory", os.getcwd()
+        )
+        if not path:
+            return False
+
+        self._alignments_dir = path
+        if callable(self._on_alignments_changed):
+            self._on_alignments_changed(path)
+        return True
 
     # ------------------------------------------------------------------
     def _ensure_sequence_lengths(self) -> None:
