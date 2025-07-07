@@ -1,5 +1,5 @@
 import os, argparse, itertools, time
-from . import esl_psc_functions as ecf
+from esl_psc_cli import esl_psc_functions as ecf
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord

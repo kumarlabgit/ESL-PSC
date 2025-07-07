@@ -6,8 +6,9 @@ A graphical interface for running ESL-PSC analyses with an intuitive wizard.
 """
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt
 from gui.core.logging_utils import setup_logging
 from gui.ui.main_window import MainWindow
 def main():
@@ -32,12 +33,51 @@ def main():
         print("Creating QApplication...")
         app = QApplication(sys.argv)
         print("QApplication created")
+
+        # ──────────────────────────────────────────────────────────────────
+        # Set application icon (affects Dock / task-bar and all dialogs)
+        # ──────────────────────────────────────────────────────────────────
+        try:
+            from pathlib import Path
+            icon_path = Path(__file__).resolve().parent.parent / "assets" / "icons" / "app.png"
+            if icon_path.is_file():
+                app.setWindowIcon(QIcon(str(icon_path)))
+                print(f"Set window icon to {icon_path}")
+            else:
+                print(f"Icon not found at {icon_path}, using default icon")
+        except Exception as e:
+            print(f"Could not set window icon: {e}")
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")
         app.setApplicationVersion("0.1.0")
         app.setOrganizationName("ESL-PSC")
         
+        # If we are running inside a packaged (Nuitka) build, kick off a
+        # background warm-up run of the CLI helper.  This forces the one-file
+        # binary to unpack while the user is filling out the wizard so the
+        # later real invocation is instantaneous.
+        if getattr(sys, "frozen", False):
+            import threading, subprocess
+            from pathlib import Path
+
+            def _warm_up_cli():
+                try:
+                    launcher = Path(os.path.realpath(sys.argv[0]))
+                    exe = launcher.with_name("esl_multimatrix" + (".exe" if os.name == "nt" else ""))
+                    if exe.is_file():
+                        bundle_dir = str(launcher.parent)  # Contents/MacOS or exe dir
+                        subprocess.run([
+                            str(exe),
+                            "--esl_main_dir", bundle_dir,
+                            "--help",
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                except Exception as e:
+                    # Log but never interrupt the GUI
+                    print(f"[warm-up] CLI pre-extract failed: {e!r}", file=sys.__stderr__)
+
+            threading.Thread(target=_warm_up_cli, daemon=True).start()
+
         # Create and show main window
         print("Creating main window...")
         window = MainWindow()

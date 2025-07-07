@@ -25,7 +25,7 @@
   "use_existing_alignments": false,
   "canceled_alignments_dir": "",
   "use_existing_preprocess": false,
-  "output_dir": "./demo_output",
+  "output_dir": "demo_output",
   "output_file_base_name": "demo",
   "keep_raw_output": false,
   "show_selected_sites": false,

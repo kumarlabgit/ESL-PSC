@@ -1,0 +1,39 @@
+name: Test WindeployQT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Qt tools
+        run: choco install -y qt6-base-dev --params "/Path"
+        shell: pwsh
+        
+      - name: Create test executable (dummy)
+        run: |
+          New-Item -ItemType Directory -Force -Path build
+          # Create a minimal Windows executable
+          [System.IO.File]::WriteAllText("build\ESL-PSC.exe", "This is a test executable")
+        shell: pwsh
+        
+      - name: Test windeployqt
+        shell: pwsh
+        run: |
+          # Add Qt binaries to PATH
+          $qtPath = "C:\Qt\6.7.0\msvc2019_64\bin"
+          $env:PATH = "$qtPath;$env:PATH"
+          
+          # Run windeployqt with verbose output
+          windeployqt.exe build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
+          
+          # Verify the deployment
+          if (Test-Path "build\Qt6Core.dll") {
+            Write-Host "✅ windeployqt ran successfully!"
+          } else {
+            Write-Error "❌ windeployqt failed to deploy Qt libraries"
+            exit 1
+          }

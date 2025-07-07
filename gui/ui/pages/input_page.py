@@ -1,5 +1,5 @@
 """Input-selection page of the ESL-PSC wizard."""
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
     QSizePolicy
@@ -22,6 +22,7 @@ class InputPage(BaseWizardPage):
         
         # Create scroll area
         scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
         
         # Create a container widget for the scroll area
@@ -30,6 +31,7 @@ class InputPage(BaseWizardPage):
         
         # Create a layout for the container
         container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
         
         # Required inputs group
         req_group = QGroupBox("Required Inputs")
@@ -149,6 +151,8 @@ class InputPage(BaseWizardPage):
             use_response_dir = self.use_response_dir.isChecked()
             self.species_groups.setVisible(not use_response_dir)
             self.response_dir.setVisible(use_response_dir)
+            # Show/hide the helper button for creating a species groups file
+            self.tree_btn.setVisible(not use_response_dir)
             
             # Update config to reflect the active input type
             if use_response_dir:
@@ -273,6 +277,7 @@ class InputPage(BaseWizardPage):
             phenotypes=phenos,
             on_pheno_changed=self._update_phenotype_file,
             on_groups_saved=self._update_groups_file,
+            on_alignments_changed=self._update_alignment_dir,
             alignments_dir=getattr(self.config, 'alignments_dir', ''),
         )
         self._tree_window.show()
@@ -284,6 +289,11 @@ class InputPage(BaseWizardPage):
     def _update_groups_file(self, path: str) -> None:
         self.species_groups.set_path(path)
         setattr(self.config, 'species_groups_file', path)
+
+    def _update_alignment_dir(self, path: str) -> None:
+        """Update the alignment directory selector and config."""
+        self.alignment_dir.set_path(path)
+        setattr(self.config, 'alignments_dir', path)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard

@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 import os
+
 import random
-from PyQt6.QtWidgets import (
+
+from PySide6.QtWidgets import (
+    QApplication,
+
     QWidget,
     QGraphicsView,
     QGraphicsScene,
@@ -23,9 +27,9 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QProgressDialog,
 )
-from PyQt6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
-from PyQt6.QtSvg import QSvgGenerator
-from PyQt6.QtCore import Qt, QEvent
+from PySide6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
+from PySide6.QtSvg import QSvgGenerator
+from PySide6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
 
 from gui.core.fasta_io import read_fasta
@@ -159,13 +163,29 @@ class AutoSelectOptionsDialog(QMessageBox):
         self.setWindowTitle("Auto Select Options")
         self.setText("Choose how to resolve equally valid siblings")
 
-        self.default_btn = self.addButton("Default", QMessageBox.ButtonRole.AcceptRole)
-        if allow_longest:
-            self.longest_btn = self.addButton("Longest Sequence", QMessageBox.ButtonRole.ActionRole)
-        else:
-            self.longest_btn = None
-        self.random_btn = self.addButton("Random", QMessageBox.ButtonRole.ActionRole)
-        self.addButton(QMessageBox.StandardButton.Cancel)
+        # Create buttons in the desired visual order: Longest → Random → Default → Cancel.
+        # All buttons use ActionRole so Qt preserves the insertion order across platforms.
+        self.longest_btn = self.addButton(
+            "Longest Sequence", QMessageBox.ButtonRole.ActionRole
+        )
+        # Disable Longest Sequence if no alignments directory set
+        if not allow_longest:
+            self.longest_btn.setEnabled(False)
+            self.longest_btn.setToolTip("Set an alignments directory in the input page, to enable this option")
+
+        self.random_btn = self.addButton(
+            "Random", QMessageBox.ButtonRole.ActionRole
+        )
+
+        self.default_btn = self.addButton(
+            "Default", QMessageBox.ButtonRole.ActionRole
+        )
+        # Make this the default/blue-accept button even though its role is ActionRole.
+        self.setDefaultButton(self.default_btn)
+        # Cancel button comes last.
+        self.cancel_btn = self.addButton(
+            "Cancel", QMessageBox.ButtonRole.RejectRole
+        )
 
         self.choice: str | None = None
 
@@ -182,6 +202,16 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.choice = None
         return result
 
+    def reject(self) -> None:
+        """Handle programmatic rejection (e.g., Esc)."""
+        self.choice = None
+        super().reject()
+
+    def closeEvent(self, event):
+        """Treat window close as cancel."""
+        self.choice = None
+        super().closeEvent(event)
+
 
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
@@ -193,6 +223,8 @@ class TreeViewer(QWidget):
         *,
         on_pheno_changed: Optional[Callable[[str], None]] = None,
         on_groups_saved: Optional[Callable[[str], None]] = None,
+        on_alignments_changed: Optional[Callable[[str], None]] = None,
+
         alignments_dir: str = "",
         parent=None,
     ):
@@ -229,8 +261,14 @@ class TreeViewer(QWidget):
         self._tree = tree
         self._on_pheno_changed = on_pheno_changed
         self._on_groups_saved = on_groups_saved
+        self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
+
+        # Map explicit species name to total aligned amino acid sequence length.
         self._seq_lengths: Dict[str, int] = {}
+        # If the user chose the "Longest Sequence" option during auto-selection, we
+        # annotate species labels with their sequence length for display only.
+        self._show_seq_lengths: bool = False
 
         # Branch lines storage must be defined before we compute pen
         self._branch_lines: Dict[Tuple[Clade, Clade | None], List[QGraphicsLineItem]] = {}
@@ -919,6 +957,8 @@ class TreeViewer(QWidget):
         self._update_save_btn()
         self._update_auto_btn()
         self._update_assign_cursor()
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
 
     # ------------------------------------------------------------------
     def _remove_pair(self, idx: int) -> None:
@@ -1211,12 +1251,17 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
-        dlg = AutoSelectOptionsDialog(bool(self._alignments_dir), parent=self)
-        if dlg.exec() != QMessageBox.DialogCode.Accepted or not dlg.choice:
+        dlg = AutoSelectOptionsDialog(True, parent=self)
+        dlg.exec()
+        if not dlg.choice:
             return
         method = dlg.choice
+        # Toggle display of sequence-length annotations depending on user choice.
+        self._show_seq_lengths = method == "longest"
 
         if method == "longest":
+            if not self._alignments_dir and not self._prompt_alignment_dir():
+                return
             self._ensure_sequence_lengths()
 
         existing_desc: set[str] = set()
@@ -1280,8 +1325,39 @@ class TreeViewer(QWidget):
             self._apply_pairs()
 
     # ------------------------------------------------------------------
+    def _prompt_alignment_dir(self) -> bool:
+        """Ask the user to choose an alignments directory."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Alignment Directory Required")
+        msg.setText(
+            "To use the longest sequence method, you must select a directory of alignments for the species with assigned phenotypes on the tree"
+        )
+        choose_btn = msg.addButton(
+            "Choose alignment directory", QMessageBox.ButtonRole.AcceptRole
+        )
+        msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        if msg.clickedButton() != choose_btn:
+            return False
+
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Alignment Directory", os.getcwd()
+        )
+        if not path:
+            return False
+
+        self._alignments_dir = path
+        if callable(self._on_alignments_changed):
+            self._on_alignments_changed(path)
+        return True
+
+    # ------------------------------------------------------------------
     def _ensure_sequence_lengths(self) -> None:
-        """Gather sequence length totals for all assigned species."""
+        """Gather sequence length totals for all assigned species.
+
+        If the *Longest Sequence* auto-select mode is active, the label
+        annotations are refreshed after lengths are gathered.
+        """
         if not self._alignments_dir:
             return
         needed = [n for n, v in self._phenotypes.items() if v in (1, -1) and n not in self._seq_lengths]
@@ -1291,24 +1367,61 @@ class TreeViewer(QWidget):
         files = [f for f in os.listdir(self._alignments_dir) if f.lower().endswith((".fas", ".fasta", ".fa"))]
         progress = QProgressDialog("Scanning alignments...", "Cancel", 0, len(files), self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)  # show immediately even for quick tasks
+        progress.show()
         count = 0
         for fname in files:
             count += 1
             path = os.path.join(self._alignments_dir, fname)
             try:
-                records = read_fasta(path)
+                records = read_fasta(path)  # returns List[Tuple[str, str]]
             except Exception:
                 records = []
-            length = len(records[0][1]) if records else 0
-            if length:
+
+            if records:
                 for rid, seq in records:
                     sp = rid.split()[0]
-                    if sp in needed and seq.strip("-"):
-                        self._seq_lengths[sp] = self._seq_lengths.get(sp, 0) + length
+                    if sp not in needed:
+                        continue
+                    # Count non-gap, non-whitespace characters ("-" and "." treated as gaps)
+                    aa_count = sum(1 for c in seq if c not in ("-", ".", " ", "\n", "\r"))
+                    if aa_count:
+                        self._seq_lengths[sp] = self._seq_lengths.get(sp, 0) + aa_count
+
+            # Update progress dialog
             progress.setValue(count)
+            progress.setLabelText(f"Scanning alignments... {count}/{len(files)}")
+            QApplication.processEvents()  # allow UI to update
+
             if progress.wasCanceled():
                 break
         progress.close()
+
+        # Update on-screen label annotations if requested. This keeps the view in
+        # sync even when auto-selection isn't immediately followed by a full
+        # redraw.
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
+
+    # ------------------------------------------------------------------
+    def _update_seq_length_annotations(self) -> None:
+        """Refresh label text to include or remove sequence-length annotations.
+
+        The underlying species name used for look-ups remains untouched via the
+        ``species_name`` attribute; we modify only the visible text.
+        """
+        for base_name, label in self._label_items.items():
+            text = base_name
+            if getattr(self, "_show_seq_lengths", False):
+                length = self._seq_lengths.get(base_name)
+                if length:
+                    text += f" ({length})"
+            label.setPlainText(text)
+            # Re-align the label horizontally because its width may have changed.
+            # We keep the existing x coordinate (set during _draw_tree) and simply
+            # center vertically around the original y.
+            pos = label.pos()
+            label.setPos(pos.x(), pos.y())
 
     # ------------------------------------------------------------------
     def _pick_longest(self, names: List[str]) -> str:
@@ -1348,9 +1461,7 @@ class TreeViewer(QWidget):
             if len(ctrls) > 1:
                 ctrl_choice = random.choice(ctrls)
 
-        conv_alts = [n for n in convs if n != conv_choice]
-        ctrl_alts = [n for n in ctrls if n != ctrl_choice]
-        return PairInfo(conv_choice, ctrl_choice, conv_alts, ctrl_alts)
+        return PairInfo(conv_choice, ctrl_choice)
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:
@@ -1427,6 +1538,10 @@ class TreeViewer(QWidget):
         # Set scene rect based on all items so panning works when zoomed
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+
+        # Include sequence length annotations if requested.
+        if getattr(self, "_show_seq_lengths", False):
+            self._update_seq_length_annotations()
 
         # Only auto-fit the view on the initial draw. Afterwards preserve the
         # user's zoom level when the tree is redrawn (e.g., after phenotype

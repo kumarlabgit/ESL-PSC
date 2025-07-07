@@ -2,9 +2,15 @@
 #  matrices of species
 
 import argparse, os, time, shutil, random, itertools
-from . import esl_integrator as esl_int
-from . import esl_psc_functions as ecf
-from . import deletion_canceler as dc
+import faulthandler
+# Enable faulthandler so that **all Python threads** print a traceback when
+# the interpreter receives a fatal signal (SIGSEGV, SIGFPE, SIGABRT, etc.).
+# `all_threads=True` ensures we get the stacks of worker threads as well,
+# which is invaluable for debugging native crashes.
+faulthandler.enable(all_threads=True)
+from esl_psc_cli import esl_integrator as esl_int
+from esl_psc_cli import esl_psc_functions as ecf
+from esl_psc_cli import deletion_canceler as dc
 from Bio import SeqIO
 from Bio.Seq import Seq
 
@@ -377,7 +383,7 @@ def main(raw_args=None):
     # 1) Where all intermediate ESL artefacts live
     if not getattr(args, "esl_inputs_outputs_dir", None):
         args.esl_inputs_outputs_dir = os.path.join(project_root,
-                                                   "preprocessed_data_and_outputs")
+                                                   "preprocessed_data_and_models")
 
     # 2) Root of the ESL install (used when spawning helper binaries);
     #    only override if the user did *not* supply a value.
@@ -420,9 +426,6 @@ def main(raw_args=None):
     if args.use_existing_alignments and args.canceled_alignments_dir:
         ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
 
-    # set output_dir
-    if not args.output_dir:
-        args.output_dir = args.esl_main_dir
     # ensure the output directory actually exists
     os.makedirs(args.output_dir, exist_ok=True)
     
@@ -487,14 +490,12 @@ def main(raw_args=None):
     # 2) Generate Gap-canceled Alignments
     if not args.use_existing_alignments: # skip if using existing alignments
         if not args.canceled_alignments_dir: # new alignments path not given
-            # if no canceled_alignments_dir was given, generate a name for one
-            aligns_parent_dir = os.path.split(args.alignments_dir)[0]
             if args.species_groups_file: # use species groups file name
-                dir_name = args.species_groups_file.replace('.txt','')
+                dir_name = os.path.basename(args.species_groups_file).replace('.txt','')
             else: # use output base name if no groups file
                 dir_name = args.output_file_base_name.replace('.txt','')
             dir_name += '_gap-canceled_alignments'
-            args.canceled_alignments_dir = os.path.join(aligns_parent_dir,
+            args.canceled_alignments_dir = os.path.join(args.output_dir,
                                                     dir_name)
         # if the folder already exists, remove it, but check with user first
         elif os.path.exists(args.canceled_alignments_dir):
@@ -538,13 +539,14 @@ def main(raw_args=None):
     # Print a clear, multi-line summary so the GUI output isn't squished
     print("\nmultimatrix integration finished!")
     print(f"A total of {len(master_run_list)} ESL models were built")
-    print("The arguments for this integration run were:")
-    for key, value in vars(args).items():
-        print(f"{key} = {value}")
+    # Show concise reproducible command instead of every argument
+    import sys, shlex
+    cmd = ' '.join(shlex.quote(a) for a in sys.argv)
+    print(f"\nRun command: {cmd}\n")
 
     # print these paths so they don't get lost
     print("\nResponse matrices directory:", response_dir)
-    print("Gap-canceled alignments directory:",
+    print("\nGap-canceled alignments directory:",
           args.canceled_alignments_dir)
     
     # call output functions which should generate output files
