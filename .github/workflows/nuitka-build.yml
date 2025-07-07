@@ -124,16 +124,7 @@ jobs:
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.7.*'
-      - name: Bundle Qt frameworks
-        shell: pwsh
-        run: |
-          $wqt = (Get-Command windeployqt.exe -ErrorAction Stop).Source
-          Write-Host "Using windeployqt at $wqt"
-          & $wqt build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
+
       - name: Add CLI binaries
         shell: bash
         run: |
