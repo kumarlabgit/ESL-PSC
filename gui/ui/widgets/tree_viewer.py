@@ -9,6 +9,7 @@ import os
 import random
 
 from PySide6.QtWidgets import (
+    QApplication,
 
     QWidget,
     QGraphicsView,
@@ -162,18 +163,26 @@ class AutoSelectOptionsDialog(QMessageBox):
         self.setWindowTitle("Auto Select Options")
         self.setText("Choose how to resolve equally valid siblings")
 
-        self.default_btn = self.addButton(
-            "Default", QMessageBox.ButtonRole.AcceptRole
+        # Create buttons in the desired visual order: Longest → Random → Default → Cancel.
+        # All buttons use ActionRole so Qt preserves the insertion order across platforms.
+        self.longest_btn = self.addButton(
+            "Longest Sequence", QMessageBox.ButtonRole.ActionRole
         )
-        if allow_longest:
-            self.longest_btn = self.addButton(
-                "Longest Sequence", QMessageBox.ButtonRole.ActionRole
-            )
-        else:
-            self.longest_btn = None
+        # Disable Longest Sequence if no alignments directory set
+        if not allow_longest:
+            self.longest_btn.setEnabled(False)
+            self.longest_btn.setToolTip("Set an alignments directory in the input page, to enable this option")
+
         self.random_btn = self.addButton(
             "Random", QMessageBox.ButtonRole.ActionRole
         )
+
+        self.default_btn = self.addButton(
+            "Default", QMessageBox.ButtonRole.ActionRole
+        )
+        # Make this the default/blue-accept button even though its role is ActionRole.
+        self.setDefaultButton(self.default_btn)
+        # Cancel button comes last.
         self.cancel_btn = self.addButton(
             "Cancel", QMessageBox.ButtonRole.RejectRole
         )
@@ -193,6 +202,16 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.choice = None
         return result
 
+    def reject(self) -> None:
+        """Handle programmatic rejection (e.g., Esc)."""
+        self.choice = None
+        super().reject()
+
+    def closeEvent(self, event):
+        """Treat window close as cancel."""
+        self.choice = None
+        super().closeEvent(event)
+
 
 class TreeViewer(QWidget):
     """Window displaying a Newick phylogenetic tree."""
@@ -205,6 +224,7 @@ class TreeViewer(QWidget):
         on_pheno_changed: Optional[Callable[[str], None]] = None,
         on_groups_saved: Optional[Callable[[str], None]] = None,
         on_alignments_changed: Optional[Callable[[str], None]] = None,
+
         alignments_dir: str = "",
         parent=None,
     ):
@@ -243,6 +263,7 @@ class TreeViewer(QWidget):
         self._on_groups_saved = on_groups_saved
         self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
+
         self._seq_lengths: Dict[str, int] = {}
 
         # Branch lines storage must be defined before we compute pen
@@ -1334,21 +1355,32 @@ class TreeViewer(QWidget):
         files = [f for f in os.listdir(self._alignments_dir) if f.lower().endswith((".fas", ".fasta", ".fa"))]
         progress = QProgressDialog("Scanning alignments...", "Cancel", 0, len(files), self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)  # show immediately even for quick tasks
+        progress.show()
         count = 0
         for fname in files:
             count += 1
             path = os.path.join(self._alignments_dir, fname)
             try:
-                records = read_fasta(path)
+                records = read_fasta(path)  # returns List[Tuple[str, str]]
             except Exception:
                 records = []
-            length = len(records[0][1]) if records else 0
-            if length:
+
+            if records:
                 for rid, seq in records:
                     sp = rid.split()[0]
-                    if sp in needed and seq.strip("-"):
-                        self._seq_lengths[sp] = self._seq_lengths.get(sp, 0) + length
+                    if sp not in needed:
+                        continue
+                    # Count non-gap, non-whitespace characters ("-" and "." treated as gaps)
+                    aa_count = sum(1 for c in seq if c not in ("-", ".", " ", "\n", "\r"))
+                    if aa_count:
+                        self._seq_lengths[sp] = self._seq_lengths.get(sp, 0) + aa_count
+
+            # Update progress dialog
             progress.setValue(count)
+            progress.setLabelText(f"Scanning alignments... {count}/{len(files)}")
+            QApplication.processEvents()  # allow UI to update
+
             if progress.wasCanceled():
                 break
         progress.close()
