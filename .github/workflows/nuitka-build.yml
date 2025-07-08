@@ -89,6 +89,12 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
+      - name: Stage Windows Binaries
+        shell: bash
+        run: |
+          mkdir -p stage/bin
+          cp bin/preprocess.exe stage/bin/
+          cp bin/sg_lasso.exe stage/bin/
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -105,7 +111,7 @@ jobs:
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
           # This command includes the external helper binaries inside the .exe
-          include-data-dir: bin=bin
+          include-data-dir: stage=.
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
