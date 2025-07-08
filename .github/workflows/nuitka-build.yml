@@ -92,9 +92,9 @@ jobs:
       - name: Stage Windows Binaries
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "stage\bin"
-          Copy-Item -Path "bin\preprocess.exe" -Destination "stage\bin\"
-          Copy-Item -Path "bin\sg_lasso.exe" -Destination "stage\bin\"
+          New-Item -ItemType Directory -Force -Path "stage"
+          Copy-Item -Path "bin\preprocess.exe" -Destination "stage\"
+          Copy-Item -Path "bin\sg_lasso.exe" -Destination "stage\"
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -111,7 +111,7 @@ jobs:
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
           # This command includes the external helper binaries inside the .exe
-          include-data-dir: stage=.
+          include-data-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
