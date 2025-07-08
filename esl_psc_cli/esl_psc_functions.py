@@ -45,9 +45,13 @@ def parse_args_with_config(parser, raw_args=None):
         args = parser.parse_args(cmdline)
 
     # Point esl_main_dir at the *project root* (one level above this package)
-    this_dir = os.path.dirname(os.path.abspath(__file__))
     if not getattr(args, "esl_main_dir", None):
-        args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+        # Determine esl_main_dir; use executable dir only for Windows frozen bundle
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            args.esl_main_dir = os.path.abspath(os.path.dirname(sys.executable))
+        else:
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
 
     # Determine default output directory
     if not getattr(args, "output_dir", None):
