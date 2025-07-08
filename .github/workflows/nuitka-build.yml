@@ -89,18 +89,31 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
-      - name: Verify Staged Files
+      - name: Stage and Verify Windows Binaries
         shell: pwsh
         run: |
-          Write-Host "--- Checking contents of staged directory ---"
-          Get-ChildItem -Path .\stage
-          if (-not (Test-Path -Path ".\stage\preprocess.exe")) {
-              throw "ERROR: preprocess.exe was not copied into the stage directory."
-            }
-          if (-not (Test-Path -Path ".\stage\sg_lasso.exe")) {
-              throw "ERROR: sg_lasso.exe was not copied into the stage directory."
-            }
-          Write-Host "✅ Verification successful. Staged files are present."
+          # Define absolute paths using GitHub's workspace variable for reliability
+          $SourceDir = "$env:GITHUB_WORKSPACE\bin"
+          $StageDir = "$env:GITHUB_WORKSPACE\stage"
+  
+          Write-Host "--- Verifying source files exist at: $SourceDir ---"
+          if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
+            Get-ChildItem -Path $SourceDir # Show what's actually there
+            throw "FATAL: Cannot find preprocess.exe in the source directory."
+          }
+          Write-Host "✅ Source files found."
+  
+          Write-Host "--- Staging files to: $StageDir ---"
+          New-Item -ItemType Directory -Force -Path $StageDir
+          Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
+          Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
+  
+          Write-Host "--- Verifying files in stage directory ---"
+          Get-ChildItem -Path $StageDir
+          if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
+            throw "FATAL: File copy failed. The stage directory is empty or the file is missing."
+          }
+          Write-Host "✅ Staging verification successful."
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
