@@ -90,11 +90,11 @@ jobs:
           pip install -r requirements-gui.txt
           pip install nuitka
       - name: Stage Windows Binaries
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p stage/bin
-          cp bin/preprocess.exe stage/bin/
-          cp bin/sg_lasso.exe stage/bin/
+          New-Item -ItemType Directory -Force -Path "stage\bin"
+          Copy-Item -Path "bin\preprocess.exe" -Destination "stage\bin\"
+          Copy-Item -Path "bin\sg_lasso.exe" -Destination "stage\bin\"
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
