@@ -89,12 +89,18 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
-      - name: Stage Windows Binaries
+      - name: Verify Staged Files
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "stage"
-          Copy-Item -Path "bin\preprocess.exe" -Destination "stage\"
-          Copy-Item -Path "bin\sg_lasso.exe" -Destination "stage\"
+          Write-Host "--- Checking contents of staged directory ---"
+          Get-ChildItem -Path .\stage
+          if (-not (Test-Path -Path ".\stage\preprocess.exe")) {
+              throw "ERROR: preprocess.exe was not copied into the stage directory."
+            }
+          if (-not (Test-Path -Path ".\stage\sg_lasso.exe")) {
+              throw "ERROR: sg_lasso.exe was not copied into the stage directory."
+            }
+          Write-Host "✅ Verification successful. Staged files are present."
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
