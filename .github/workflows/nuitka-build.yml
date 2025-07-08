@@ -130,7 +130,7 @@ jobs:
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
           # This command includes the external helper binaries inside the .exe
-          include-data-dir: stage=bin
+          include-raw-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh

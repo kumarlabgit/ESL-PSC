@@ -44,20 +44,10 @@ def parse_args_with_config(parser, raw_args=None):
         print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args(cmdline)
 
-    # Determine the root directory for the application's resources. This is
-    # the key to finding bundled data files in a packaged build.
-    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        # We are in a Nuitka one-file bundle, the root is the temporary folder
-        app_root = sys._MEIPASS
-    else:
-        # We are running from source, the root is one level above this package
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        app_root = os.path.abspath(os.path.join(this_dir, os.pardir))
-
-    # Set esl_main_dir if it wasn't provided by the user, pointing to our determined root.
-    # This argument is used by other functions to find the helper binaries.
+    # Point esl_main_dir at the *project root* (one level above this package)
+    this_dir = os.path.dirname(os.path.abspath(__file__))
     if not getattr(args, "esl_main_dir", None):
-        args.esl_main_dir = app_root
+        args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
 
     # Determine default output directory
     if not getattr(args, "output_dir", None):
