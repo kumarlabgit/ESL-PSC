@@ -93,7 +93,7 @@ jobs:
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
-          mode: app
+          mode: onefile
           output-dir: build
           lto: "yes"
           include-package: esl_psc_cli
@@ -104,37 +104,14 @@ jobs:
             upx
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
-      - name: Build CLI helper with Nuitka
-        uses: Nuitka/Nuitka-Action@main
-        with:
-          script-name: esl_psc_cli/esl_multimatrix.py
-          mode: onefile
-          output-dir: build/cli
-          lto: "yes"
-          include-package: esl_psc_cli
-          enable-plugins: |
-            matplotlib
-          python-flag: "-u"
-      - name: Ensure CLI helper filename
-        shell: pwsh
-        run: |
-          if (Test-Path "build/cli/esl_multimatrix.bin") {
-            Move-Item "build/cli/esl_multimatrix.bin" "build/cli/esl_multimatrix.exe" -Force
-          }
+          # This command includes the external helper binaries inside the .exe
+          include-data-dir: bin=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
-
-      - name: Add CLI binaries
-        shell: bash
-        run: |
-          cp build/cli/esl_multimatrix.exe build/esl_multimatrix.exe
-          mkdir -p build/bin
-          cp bin/preprocess.exe build/bin/preprocess.exe
-          cp bin/sg_lasso.exe build/bin/sg_lasso.exe
       - name: Compress build to ZIP
         shell: pwsh
-        run: Compress-Archive -Path build\* -DestinationPath ESL-PSC-Windows.zip
+        run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
