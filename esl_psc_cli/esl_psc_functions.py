@@ -48,7 +48,22 @@ def parse_args_with_config(parser, raw_args=None):
     if not getattr(args, "esl_main_dir", None):
         # Determine esl_main_dir; use executable dir only for Windows frozen bundle
         if os.name == "nt" and getattr(sys, "frozen", False):
-            args.esl_main_dir = os.path.abspath(os.path.dirname(sys.executable))
+            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
+            print(f"[DEBUG] Bundle directory: {bundle_dir}")
+            try:
+                print(f"[DEBUG] Contents of bundle_dir:")
+                for entry in os.listdir(bundle_dir):
+                    print(f"    {entry}")
+                # check for bin subdirectory
+                bin_dir = os.path.join(bundle_dir, "bin")
+                if os.path.isdir(bin_dir):
+                    print(f"[DEBUG] Contents of bin_dir ({bin_dir}):")
+                    for entry in os.listdir(bin_dir):
+                        print(f"    {entry}")
+            except Exception as e:
+                print(f"[DEBUG] Error exploring bundle_dir: {e}")
+            args.esl_main_dir = bundle_dir
         else:
             this_dir = os.path.dirname(os.path.abspath(__file__))
             args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
