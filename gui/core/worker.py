@@ -291,7 +291,9 @@ class ESLWorker(QRunnable):
 
                 return False # Not a progress line
 
-        if getattr(sys, 'frozen', False) and os.name == 'nt':
+        # For Windows packaged builds, Nuitka may not always set sys.frozen.
+        # Detect a packaged run either by sys.frozen *or* by the launcher not ending in '.py'.
+        if os.name == 'nt' and (getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"):
             try:
                 # --- NEW PATH: Direct function call for packaged Windows ---
                 out_stream = StreamEmitter(self, stream_type='stdout')
