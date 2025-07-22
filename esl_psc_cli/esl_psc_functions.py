@@ -599,6 +599,9 @@ class ESLRunFamily():
         self.penalty_term = penalty_term # just used to label the family's term
         self.runs_list = []
         self.label = label
+        # Collect paths of temporary XML files generated during runs for
+        # batch cleanup after all models finish.
+        self.xml_files_to_cleanup = []
         self.species_combo_tag = self.get_species_tag()
 
     def __str__(self):
@@ -689,6 +692,17 @@ class ESLRunFamily():
         for i, run in enumerate(self.runs_list, 1):
             print(f"--> Building model (run {i} of {num_runs}): l1={run.lambda1}, l2={run.lambda2}")
             run.run_lasso()
+
+        # After all runs complete, attempt batch cleanup of temporary XML files.
+        if self.xml_files_to_cleanup:
+            print("Cleaning up temporary XML files...")
+            for xml_file in self.xml_files_to_cleanup:
+                try:
+                    os.remove(xml_file)
+                except Exception as exc:
+                    print(f"[WARN] Could not delete {xml_file}: {exc}", file=sys.stderr)
+            # reset list to avoid repeated deletes if method called again
+            self.xml_files_to_cleanup.clear()
 
     def do_all_calculations(self):
         print('Calculating predictions and/or weights...')
@@ -805,7 +819,16 @@ class ESLRun():
         with open(self.output, 'w') as oh:
             oh.writelines(output_line_list)
 
-        os.remove(xml_path)  # XML now redundant
+        # Removing the XML file via os.remove() triggers a kernel-level hang on
+        # some systems (unlink stuck in uninterruptible sleep).  Instead, move
+        # it to a dedicated trash folder so the working directory stays clean
+        # but we avoid the risky syscall.  Users can safely purge or archive
+        # that folder later.
+        # Defer deletion: add to the run-family cleanup list.  Files will be
+        # removed *after* all runs complete, reducing contention with
+        # concurrent file I/O and user activity that seems to trigger the rare
+        # kernel unlink hang.
+        self.run_family.xml_files_to_cleanup.append(xml_path)
         return
 
     def calc_preds_and_weights(self, only_pos_gss = False,
