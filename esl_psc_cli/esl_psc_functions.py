@@ -52,7 +52,7 @@ def parse_args_with_config(parser, raw_args=None):
             print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
             print(f"[DEBUG] Bundle directory: {bundle_dir}")
             try:
-                print(f"[DEBUG] Contents of bundle_dir:")
+                print("[DEBUG] Contents of bundle_dir:")
                 for entry in os.listdir(bundle_dir):
                     print(f"    {entry}")
                 # check for bin subdirectory

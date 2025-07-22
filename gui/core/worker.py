@@ -341,7 +341,9 @@ class ESLWorker(QRunnable):
                         ]
 
                     # -------- packaged path --------
-                    exe_name = "esl_multimatrix" + (".exe" if os.name == "nt" else "")
+                    # On macOS the helper binary is just "esl_multimatrix" with no extension.
+                    # Windows bundles no separate helper; Windows-specific logic is handled elsewhere.
+                    exe_name = "esl_multimatrix"
                     cli_helper = launcher_path.with_name(exe_name)
 
                     # Pass the bundle’s MacOS/ (or Windows dir) so the helper
