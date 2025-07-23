@@ -107,6 +107,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $StageDir
           Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
+
+          # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
+          Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
+          Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
   
           Write-Host "--- Verifying files in stage directory ---"
           Get-ChildItem -Path $StageDir
