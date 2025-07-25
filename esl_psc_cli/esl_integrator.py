@@ -1,7 +1,7 @@
 # a unified script for running integrated ESL analyses
 
 import argparse, os, time
-from . import esl_psc_functions as ecf
+from esl_psc_cli import esl_psc_functions as ecf
 from collections import defaultdict
 
 
@@ -23,6 +23,12 @@ def get_esl_args(parser = None):
     '''
     group.add_argument('--esl_inputs_outputs_dir', help = help_txt,
                            type = str)
+
+    help_txt = '''Root folder of the ESL-PSC installation. This directory
+    must contain the ``bin`` subfolder with the ESL helper binaries. This
+    is typically auto-detected, but packaged builds may need to override it.'''
+    group.add_argument('--esl_main_dir', help = help_txt, type = str,
+                       required = False)
     help_txt = '''The full path to the species phenotypes file which has the 
     species name then a comma and then a 1 or -1 for the phenotype class.
     Any species that is not in the phenotype file will not be included in the
@@ -41,7 +47,9 @@ def get_esl_args(parser = None):
     help_txt = '''* The name of this overall run to use in the output files'''
     group.add_argument('--output_file_base_name', help = help_txt,
                            type = str, required = True)
-    help_txt = '''where the output will be saved. default = ESL-PSC directory'''
+    help_txt = '''Directory to store all output files. If omitted, a folder
+    named <output_file_base_name>_<timestamp> will be created next to the
+    ESL-PSC project directory.'''
     group.add_argument('--output_dir', help = help_txt, type = str)
 
     ######### Hyperparameters #########
@@ -439,9 +447,12 @@ if __name__ == '__main__':
 
     args = ecf.parse_args_with_config(parser)
 
-    # set output_dir
-    if not args.output_dir:
-        args.output_dir = args.esl_main_dir
+    # Validate that alignments used for input/predictions are 2-line FASTA
+    ecf.validate_alignment_dir_two_line(args.input_alignments_dir)
+    if (args.prediction_alignments_dir
+            and args.prediction_alignments_dir != args.input_alignments_dir):
+        ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+
 
     # set group penalty std if necessary
     if args.group_penalty_type == "std":
@@ -502,22 +513,23 @@ if __name__ == '__main__':
     # Print a clear, multi-line summary so the GUI output isn't squished
     print("\nESL-PSC integration finished!")
     print(f"A total of {len(esl_run_list)} ESL models were built")
-    print("The arguments for this integration run were:")
-    for key, value in vars(args).items():
-        print(f"{key} = {value}")
+    # Show concise reproducible command instead of every argument
+    import sys, shlex
+    cmd = ' '.join(shlex.quote(a) for a in sys.argv)
+    print(f"\nRun command for this run: {cmd}\n")
     
     # call output functions which should generate output text files
     if not args.no_genes_output:  # skip this output if flag is true
-        generate_gene_ranks_output(gene_objects_dict, args.esl_main_dir,
+        generate_gene_ranks_output(gene_objects_dict, args.output_dir,
                                    args.output_file_base_name,
                                    show_sites=args.show_selected_sites)
         if args.show_selected_sites:
-            generate_selected_sites_output(gene_objects_dict, args.esl_main_dir,
+            generate_selected_sites_output(gene_objects_dict, args.output_dir,
                                            args.output_file_base_name)
     print('\n')
     if not args.no_pred_output: # skip this output if flag is true
         # make full file path of output predictions file
-        preds_output_path = os.path.join(args.esl_main_dir,
+        preds_output_path = os.path.join(args.output_dir,
                                          args.output_file_base_name
                                          + '_species_predictions.csv')
         generate_predictions_output(esl_run_list,

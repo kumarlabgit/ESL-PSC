@@ -1,5 +1,5 @@
 import os, argparse, itertools, time
-from . import esl_psc_functions as ecf
+from esl_psc_cli import esl_psc_functions as ecf
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -322,6 +322,9 @@ def main(raw_args=None):
     parser = get_deletion_canceler_args(parser)
 
     args = ecf.parse_args_with_config(parser, raw_args) # checks for args in config file
+
+    # Ensure input alignments are in 2-line FASTA format
+    ecf.validate_alignment_dir_two_line(args.alignments_dir)
     
     # get species lists 
     if args.response_file: 

@@ -9,9 +9,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from collections import defaultdict, Counter
 from Bio import SeqIO
 import numpy as np
-from . import sps_density
+from esl_psc_cli import sps_density
 import pandas as pd
 import matplotlib.pyplot as plt
+# Ensure the SVG backend is available when compiled with tools like Nuitka
+from matplotlib.backends import backend_svg  # noqa: F401
 from itertools import combinations, chain
 from statistics import median
 
@@ -41,26 +43,54 @@ def parse_args_with_config(parser, raw_args=None):
     else: 
         print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args(cmdline)
+
     # Point esl_main_dir at the *project root* (one level above this package)
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+    if not getattr(args, "esl_main_dir", None):
+        # Determine esl_main_dir; use executable dir only for Windows frozen bundle
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
+            print(f"[DEBUG] Bundle directory: {bundle_dir}")
+            try:
+                print("[DEBUG] Contents of bundle_dir:")
+                for entry in os.listdir(bundle_dir):
+                    print(f"    {entry}")
+                # check for bin subdirectory
+                bin_dir = os.path.join(bundle_dir, "bin")
+                if os.path.isdir(bin_dir):
+                    print(f"[DEBUG] Contents of bin_dir ({bin_dir}):")
+                    for entry in os.listdir(bin_dir):
+                        print(f"    {entry}")
+            except Exception as e:
+                print(f"[DEBUG] Error exploring bundle_dir: {e}")
+            args.esl_main_dir = bundle_dir
+        else:
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+
+    # Determine default output directory
+    if not getattr(args, "output_dir", None):
+        parent = os.path.abspath(os.path.join(args.esl_main_dir, os.pardir))
+        base = getattr(args, "output_file_base_name", "esl_psc_output")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        args.output_dir = os.path.join(parent, f"{base}_{timestamp}")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Default other directories relative to output_dir
+    if not getattr(args, "esl_inputs_outputs_dir", None):
+        args.esl_inputs_outputs_dir = os.path.join(
+            args.output_dir, "preprocessed_data_and_models")
+
+    # Create the preprocess directory if it was auto-assigned
+    os.makedirs(args.esl_inputs_outputs_dir, exist_ok=True)
     # sanity-check: make sure the ESL preprocess binary is actually there
     preprocess_bin = get_binary_path(args.esl_main_dir, "preprocess")
     if not os.path.exists(preprocess_bin):
         raise FileNotFoundError(
             f"Expected ESL binaries in {args.esl_main_dir!s}/bin but none were found"
         )
-    # Ensure esl_inputs_outputs_dir is set if not already provided
-    if not getattr(args, "esl_inputs_outputs_dir", None):
-        this_dir  = os.path.dirname(os.path.abspath(__file__))    # …/esl_psc_cli
-        root_dir  = os.path.abspath(os.path.join(this_dir, os.pardir))  # project root
-        args.esl_inputs_outputs_dir = os.path.join(
-            root_dir,
-            "preprocessed_data_and_outputs"
-        )
 
-    # Create the directory if it does not yet exist
-    os.makedirs(args.esl_inputs_outputs_dir, exist_ok=True)
 
     # Conditional error for missing species_pheno_path when plot generation is requested
     plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)
@@ -71,8 +101,8 @@ def parse_args_with_config(parser, raw_args=None):
 
     # Check for relative paths and adjust them to be absolute
     path_args = [
-        'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir', 
-        'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file', 
+        'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir',
+        'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file',
         'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir'
     ]
 
@@ -92,6 +122,58 @@ def file_lines_to_list(file_path):
         lines = file.readlines()
     line_list = [line.strip() for line in lines]
     return line_list
+
+def assert_two_line_fasta(fasta_path):
+    """Raise ValueError if *fasta_path* is not in 2-line FASTA format."""
+    header = None
+    seen_seq = False
+    with open(fasta_path, 'r') as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.rstrip('\n')
+            if line.startswith('>'):
+                if header is not None and not seen_seq:
+                    raise ValueError(
+                        f"Header '{header}' has no sequence line before line {lineno}"
+                    )
+                header = line[1:].strip() or f"line {lineno}"
+                seen_seq = False
+            else:
+                if header is None:
+                    raise ValueError(
+                        f"Sequence data found before first header at line {lineno}"
+                    )
+                if seen_seq:
+                    raise ValueError(
+                        f"Sequence for '{header}' spans multiple lines (starting at line {lineno})"
+                    )
+                seen_seq = True
+        if header is None:
+            raise ValueError("File contains no FASTA records")
+        if not seen_seq:
+            raise ValueError(f"Header '{header}' has no sequence line at end of file")
+
+
+def validate_alignment_dir_two_line(directory, recursive=False):
+    """Ensure all FASTA files in *directory* are 2-line format."""
+    if not directory or not os.path.isdir(directory):
+        return
+        
+    print("Verifying alignment format...")
+
+    walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
+    for root, _dirs, files in walker:
+        for fname in files:
+            if is_fasta(fname):
+                fpath = os.path.join(root, fname)
+                try:
+                    assert_two_line_fasta(fpath)
+                except ValueError as e:
+                    msg = (
+                        f"Alignment file '{fpath}' is not in 2-line FASTA format: {e}.\n"
+                        "Each sequence must appear on a single line. "
+                        "You can reformat the file with a tool like 'seqtk seq -l0'."
+                    )
+                    raise ValueError(msg) from None
 
 def get_species_to_check(response_matrix_path, check_order = False):
     '''takes a full path to a response matrix and returns a list of species
@@ -397,7 +479,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     # make sure the input file names are right including ".txt" or get seg fault
     print(' '.join(preprocess_command_list))
     try:
-        subprocess.run(' '.join(preprocess_command_list), shell=True, check=True)
+        subprocess.run(preprocess_command_list, check=True)
     except subprocess.CalledProcessError as e:
         if e.returncode == 126:
             executable_name = e.cmd.split()[0].split('/')[-1]
@@ -463,7 +545,7 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         
     for index, rmse_cutoff in enumerate(rmse_cutoffs):
         # create each plot
-        print("making plot with MFS cutoff: " + str(rmse_cutoff))
+        # print("making plot with MFS cutoff: " + str(rmse_cutoff))
         if plot_type == 'kde':    
             sps_density.create_sps_plot(df = df,
                                     RMSE_rank = rmse_cutoff,
@@ -517,6 +599,9 @@ class ESLRunFamily():
         self.penalty_term = penalty_term # just used to label the family's term
         self.runs_list = []
         self.label = label
+        # Collect paths of temporary XML files generated during runs for
+        # batch cleanup after all models finish.
+        self.xml_files_to_cleanup = []
         self.species_combo_tag = self.get_species_tag()
 
     def __str__(self):
@@ -608,6 +693,17 @@ class ESLRunFamily():
             print(f"--> Building model (run {i} of {num_runs}): l1={run.lambda1}, l2={run.lambda2}")
             run.run_lasso()
 
+        # After all runs complete, attempt batch cleanup of temporary XML files.
+        if self.xml_files_to_cleanup:
+            print("Cleaning up temporary XML files...")
+            for xml_file in self.xml_files_to_cleanup:
+                try:
+                    os.remove(xml_file)
+                except Exception as exc:
+                    print(f"[WARN] Could not delete {xml_file}: {exc}", file=sys.stderr)
+            # reset list to avoid repeated deletes if method called again
+            self.xml_files_to_cleanup.clear()
+
     def do_all_calculations(self):
         print('Calculating predictions and/or weights...')
         num_runs = str(len(self.runs_list))
@@ -657,26 +753,30 @@ class ESLRun():
         preprocessed_dir_name = self.run_family.preprocessed_input_folder
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
-        # generate the command for calling ESL logistic lasso
+        # Build command list for ESL logistic lasso.
+        # Use an argument list (shell=False) so paths that contain spaces are
+        # passed intact to the executable.
         esl_command_list = [
-                            get_binary_path(self.run_family.args.esl_main_dir,
-                                           'sg_lasso'),
-                            '-f', preprocessed_dir_name + '/feature_' +
-                            preprocessed_dir_name + '.txt',
-                            '-z', str(self.lambda1),
-                            '-y', str(self.lambda2),
-                            '-n', preprocessed_dir_name + '/group_indices_' +
-                            preprocessed_dir_name + '.txt',
-                            '-r', preprocessed_dir_name + '/response_' +
-                            preprocessed_dir_name + '.txt',
-                            '-w', output_name + '_out_feature_weights']
-        # run esl and silence noisy output from the underlying binary.  We still
-        # capture stdout/stderr so that errors can be surfaced if the command
-        # fails, but we do not display the informational messages printed by the
-        # SLEP implementation during normal operation.
+            get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
+            "-f",
+            os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
+            "-z",
+            str(self.lambda1),
+            "-y",
+            str(self.lambda2),
+            "-n",
+            os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
+            "-r",
+            os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
+            "-w",
+            f"{output_name}_out_feature_weights",
+        ]
+
+        # Run ESL and silence noisy output from sg_lasso. We still capture
+        # stdout/stderr so that errors can be surfaced if the command fails.
         proc = subprocess.run(
-            ' '.join(esl_command_list),
-            shell=True,
+            esl_command_list,
+            shell=False,
             capture_output=True,
             text=True,
         )
@@ -719,7 +819,16 @@ class ESLRun():
         with open(self.output, 'w') as oh:
             oh.writelines(output_line_list)
 
-        os.remove(xml_path)  # XML now redundant
+        # Removing the XML file via os.remove() triggers a kernel-level hang on
+        # some systems (unlink stuck in uninterruptible sleep).  Instead, move
+        # it to a dedicated trash folder so the working directory stays clean
+        # but we avoid the risky syscall.  Users can safely purge or archive
+        # that folder later.
+        # Defer deletion: add to the run-family cleanup list.  Files will be
+        # removed *after* all runs complete, reducing contention with
+        # concurrent file I/O and user activity that seems to trigger the rare
+        # kernel unlink hang.
+        self.run_family.xml_files_to_cleanup.append(xml_path)
         return
 
     def calc_preds_and_weights(self, only_pos_gss = False,

@@ -4,9 +4,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Dict, List
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush, QFont
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QColor, QBrush, QFont, QPalette
+from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QSlider, QComboBox, QLabel, QPushButton,
     QCheckBox, QAbstractItemView, QMessageBox, QMenu
@@ -365,6 +365,8 @@ class SiteViewer(QWidget):
         main_layout.addLayout(bottom_hbox, stretch=0)
 
         self.setLayout(main_layout)
+        # Adjust gridline colors based on current palette
+        self._apply_gridline_style()
         # Provide a taller default window to better fit all tables
         self.resize(1200, 1000)
 
@@ -438,7 +440,7 @@ class SiteViewer(QWidget):
         Toggles visibility of the 'other species' bottom splitter.
         """
         # ``state`` arrives as an ``int`` while ``Qt.CheckState.Checked`` is an
-        # enum in PyQt6.  Cast explicitly so the comparison works on PyQt5/6.
+        # enum in PySide6.  Cast explicitly so the comparison works on PyQt5/6.
         self.show_all_species = (Qt.CheckState(state) == Qt.CheckState.Checked)
         if self.show_all_species:
             self.bottom_splitter.setSizes(self.top_splitter.sizes())
@@ -1079,3 +1081,26 @@ class SiteViewer(QWidget):
             if r_sid == sid:
                 return seq
         return None
+
+    # ------------------------------------------------------------------
+    def _apply_gridline_style(self) -> None:
+        """Set table gridline colors to match the current color scheme."""
+        pal = self.palette()
+        window_lum = pal.color(QPalette.ColorRole.Window).lightness()
+        text_lum = pal.color(QPalette.ColorRole.WindowText).lightness()
+        is_dark = window_lum < text_lum
+        grid_color = "white" if is_dark else "black"
+        style = f"gridline-color: {grid_color};"
+        for tbl in [
+            self.top_left_table,
+            self.top_right_table,
+            self.bottom_left_table,
+            self.bottom_right_table,
+        ]:
+            tbl.setStyleSheet(style)
+
+    # ------------------------------------------------------------------
+    def changeEvent(self, event):  # noqa: N802 (Qt override)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._apply_gridline_style()
+        super().changeEvent(event)

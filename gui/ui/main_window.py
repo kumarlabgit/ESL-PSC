@@ -2,12 +2,12 @@
 Main window for the ESL-PSC Wizard application.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWizard, QVBoxLayout, QWidget, QPushButton, QApplication,
     QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import QEvent
-from PyQt6.QtGui import QPalette
+from PySide6.QtCore import QEvent
+from PySide6.QtGui import QPalette
 import json
 from dataclasses import asdict
 
@@ -173,7 +173,19 @@ class ESLWizard(QWizard):
 
             # Hide the default “Finish” button – we use only Back / Next / Quit
             self.button(QWizard.WizardButton.FinishButton).hide()
+
+            # Explicitly set the first page as the start/current page.
+            try:
+                first_page_id = self.pageIds()[0]  # InputPage (id 0)
+                self.setStartId(first_page_id)
+                self.setCurrentId(first_page_id)
+            except (IndexError, Exception):
+                # Should never happen, but don't crash if page list is empty
+                pass
             
+            # Restart the wizard so the first page is shown immediately
+            self.restart()
+
             # Connect signals
             self.currentIdChanged.connect(self.on_current_id_changed)
             
@@ -200,11 +212,14 @@ class ESLWizard(QWizard):
         is_dark_mode = window_lum < text_lum          # darker background → dark theme
         border_color = "rgba(255, 255, 255, 180)" if is_dark_mode else "rgba(0, 0, 0, 80)"
 
-        # User prefers the default Qt look – disable the custom stylesheet entirely
+        # Keep default Qt look but always strip the wizard page side-margins.
         qApp = QApplication.instance()
         if qApp:
-            qApp.setStyleSheet("")  # clear any previously-set stylesheet
-        return  # Skip the custom stylesheet construction below
+            qApp.setStyleSheet(
+                "QWizardPage { margin-left: 0px; margin-right: 0px; "
+                "padding-left: 0px; padding-right: 0px; }"
+            )
+        return  # Skip the rest of the custom stylesheet construction below
 
         # DEBUG: print once every time the stylesheet is (re)applied
         print(f"[apply_stylesheet] dark_mode={is_dark_mode}  "

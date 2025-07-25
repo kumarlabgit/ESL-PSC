@@ -1,6 +1,7 @@
 photo_single_LC_matrix_species_groups_gap-canceled_alignments/
 photo_single_LC_matrix_species_groups_response_matrices/
 preprocessed_data_and_outputs/
+preprocessed_data_and_models/
 orthomam_echo_species_alignments/
 orthomam_echo_species_groups_gap-canceled_alignments/
 orthomam_echo_species_groups_response_matrices/
@@ -32,3 +33,4 @@ echo_config.json
 echo_output/echo_gene_ranks.csv
 echo_output/echo_selected_sites.csv
 
+esl_trace.log

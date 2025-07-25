@@ -1,0 +1,147 @@
+name: Build Nuitka Distributables
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_os:
+        description: "Platform to build"
+        required: true
+        type: choice
+        default: macos
+        options:
+          - macos
+          - windows
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-macos:
+    if: ${{ github.event.inputs.target_os == 'macos' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: app
+          output-dir: build
+          lto: "yes"
+          include-package: esl_psc_cli
+          no-deployment-flag: self-execution
+          enable-plugins: |
+            pyside6
+            matplotlib
+          nofollow-import-to: "*.tests"
+          macos-app-icon: assets/icons/app.icns
+      - name: Build CLI helper with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: esl_psc_cli/esl_multimatrix.py
+          mode: onefile
+          output-dir: build/cli
+          lto: "yes"
+          include-package: esl_psc_cli
+          enable-plugins: |
+            matplotlib
+          python-flag: "-u"
+      - name: Rename .app bundle
+        run: mv build/main.app build/ESL-PSC.app
+      - name: Embed CLI binary into bundle
+        run: |
+          cp build/cli/esl_multimatrix.bin build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
+          chmod +x build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
+      - name: Add CLI helpers
+        run: |
+          mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
+          cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
+          cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
+          chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "ESL-PSC" \
+                         -srcfolder build/ESL-PSC.app \
+                         -ov -format UDZO build/ESL-PSC.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-macOS
+          path: build/ESL-PSC.dmg
+
+  build-windows:
+    if: ${{ github.event.inputs.target_os == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Stage and Verify Windows Binaries
+        shell: pwsh
+        run: |
+          # Define absolute paths using GitHub's workspace variable for reliability
+          $SourceDir = "$env:GITHUB_WORKSPACE\bin"
+          $StageDir = "$env:GITHUB_WORKSPACE\stage"
+  
+          Write-Host "--- Verifying source files exist at: $SourceDir ---"
+          if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
+            Get-ChildItem -Path $SourceDir # Show what's actually there
+            throw "FATAL: Cannot find preprocess.exe in the source directory."
+          }
+          Write-Host "✅ Source files found."
+  
+          Write-Host "--- Staging files to: $StageDir ---"
+          New-Item -ItemType Directory -Force -Path $StageDir
+          Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
+          Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
+
+          # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
+          Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
+          Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
+  
+          Write-Host "--- Verifying files in stage directory ---"
+          Get-ChildItem -Path $StageDir
+          if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
+            throw "FATAL: File copy failed. The stage directory is empty or the file is missing."
+          }
+          Write-Host "✅ Staging verification successful."
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: onefile
+          output-dir: build
+          lto: "yes"
+          include-package: esl_psc_cli
+          no-deployment-flag: self-execution
+          enable-plugins: |
+            pyside6
+            matplotlib
+            upx
+          nofollow-import-to: "*.tests"
+          windows-icon-from-ico: assets/icons/app.ico
+          # This command includes the external helper binaries inside the .exe
+          include-raw-dir: stage=bin
+      - name: Rename executable
+        run: move build\\main.exe build\\ESL-PSC.exe
+        shell: pwsh
+      - name: Compress build to ZIP
+        shell: pwsh
+        run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-Windows
+          path: ESL-PSC-Windows.zip
