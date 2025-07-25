@@ -45,9 +45,28 @@ def parse_args_with_config(parser, raw_args=None):
         args = parser.parse_args(cmdline)
 
     # Point esl_main_dir at the *project root* (one level above this package)
-    this_dir = os.path.dirname(os.path.abspath(__file__))
     if not getattr(args, "esl_main_dir", None):
-        args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
+        # Determine esl_main_dir; use executable dir only for Windows frozen bundle
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
+            print(f"[DEBUG] Bundle directory: {bundle_dir}")
+            try:
+                print("[DEBUG] Contents of bundle_dir:")
+                for entry in os.listdir(bundle_dir):
+                    print(f"    {entry}")
+                # check for bin subdirectory
+                bin_dir = os.path.join(bundle_dir, "bin")
+                if os.path.isdir(bin_dir):
+                    print(f"[DEBUG] Contents of bin_dir ({bin_dir}):")
+                    for entry in os.listdir(bin_dir):
+                        print(f"    {entry}")
+            except Exception as e:
+                print(f"[DEBUG] Error exploring bundle_dir: {e}")
+            args.esl_main_dir = bundle_dir
+        else:
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            args.esl_main_dir = os.path.abspath(os.path.join(this_dir, os.pardir))
 
     # Determine default output directory
     if not getattr(args, "output_dir", None):
@@ -580,6 +599,9 @@ class ESLRunFamily():
         self.penalty_term = penalty_term # just used to label the family's term
         self.runs_list = []
         self.label = label
+        # Collect paths of temporary XML files generated during runs for
+        # batch cleanup after all models finish.
+        self.xml_files_to_cleanup = []
         self.species_combo_tag = self.get_species_tag()
 
     def __str__(self):
@@ -670,6 +692,17 @@ class ESLRunFamily():
         for i, run in enumerate(self.runs_list, 1):
             print(f"--> Building model (run {i} of {num_runs}): l1={run.lambda1}, l2={run.lambda2}")
             run.run_lasso()
+
+        # After all runs complete, attempt batch cleanup of temporary XML files.
+        if self.xml_files_to_cleanup:
+            print("Cleaning up temporary XML files...")
+            for xml_file in self.xml_files_to_cleanup:
+                try:
+                    os.remove(xml_file)
+                except Exception as exc:
+                    print(f"[WARN] Could not delete {xml_file}: {exc}", file=sys.stderr)
+            # reset list to avoid repeated deletes if method called again
+            self.xml_files_to_cleanup.clear()
 
     def do_all_calculations(self):
         print('Calculating predictions and/or weights...')
@@ -786,7 +819,16 @@ class ESLRun():
         with open(self.output, 'w') as oh:
             oh.writelines(output_line_list)
 
-        os.remove(xml_path)  # XML now redundant
+        # Removing the XML file via os.remove() triggers a kernel-level hang on
+        # some systems (unlink stuck in uninterruptible sleep).  Instead, move
+        # it to a dedicated trash folder so the working directory stays clean
+        # but we avoid the risky syscall.  Users can safely purge or archive
+        # that folder later.
+        # Defer deletion: add to the run-family cleanup list.  Files will be
+        # removed *after* all runs complete, reducing contention with
+        # concurrent file I/O and user activity that seems to trigger the rare
+        # kernel unlink hang.
+        self.run_family.xml_files_to_cleanup.append(xml_path)
         return
 
     def calc_preds_and_weights(self, only_pos_gss = False,

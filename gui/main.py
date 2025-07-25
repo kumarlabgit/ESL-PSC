@@ -57,7 +57,7 @@ def main():
         # background warm-up run of the CLI helper.  This forces the one-file
         # binary to unpack while the user is filling out the wizard so the
         # later real invocation is instantaneous.
-        if getattr(sys, "frozen", False):
+        if getattr(sys, "frozen", False) and os.name != 'nt':
             import threading, subprocess
             from pathlib import Path
 

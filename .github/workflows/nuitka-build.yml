@@ -89,11 +89,40 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
+      - name: Stage and Verify Windows Binaries
+        shell: pwsh
+        run: |
+          # Define absolute paths using GitHub's workspace variable for reliability
+          $SourceDir = "$env:GITHUB_WORKSPACE\bin"
+          $StageDir = "$env:GITHUB_WORKSPACE\stage"
+  
+          Write-Host "--- Verifying source files exist at: $SourceDir ---"
+          if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
+            Get-ChildItem -Path $SourceDir # Show what's actually there
+            throw "FATAL: Cannot find preprocess.exe in the source directory."
+          }
+          Write-Host "✅ Source files found."
+  
+          Write-Host "--- Staging files to: $StageDir ---"
+          New-Item -ItemType Directory -Force -Path $StageDir
+          Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
+          Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
+
+          # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
+          Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
+          Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
+  
+          Write-Host "--- Verifying files in stage directory ---"
+          Get-ChildItem -Path $StageDir
+          if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
+            throw "FATAL: File copy failed. The stage directory is empty or the file is missing."
+          }
+          Write-Host "✅ Staging verification successful."
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
-          mode: app
+          mode: onefile
           output-dir: build
           lto: "yes"
           include-package: esl_psc_cli
@@ -104,37 +133,14 @@ jobs:
             upx
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
-      - name: Build CLI helper with Nuitka
-        uses: Nuitka/Nuitka-Action@main
-        with:
-          script-name: esl_psc_cli/esl_multimatrix.py
-          mode: onefile
-          output-dir: build/cli
-          lto: "yes"
-          include-package: esl_psc_cli
-          enable-plugins: |
-            matplotlib
-          python-flag: "-u"
+          # This command includes the external helper binaries inside the .exe
+          include-raw-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
-      - name: Install Qt tools
-        run: choco install -y qt6-base-dev --params "/Path"
-        shell: pwsh
-      - name: Bundle Qt frameworks
-        shell: pwsh
-        run: |
-          windeployqt.exe build\ESL-PSC.exe --verbose 1 --release --compiler-runtime
-      - name: Add CLI binaries
-        shell: bash
-        run: |
-          cp build/cli/esl_multimatrix.exe build/esl_multimatrix.exe
-          mkdir -p build/bin
-          cp bin/preprocess.exe build/bin/preprocess.exe
-          cp bin/sg_lasso.exe build/bin/sg_lasso.exe
       - name: Compress build to ZIP
         shell: pwsh
-        run: Compress-Archive -Path build\* -DestinationPath ESL-PSC-Windows.zip
+        run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
