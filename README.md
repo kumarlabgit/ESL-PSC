@@ -75,7 +75,7 @@ Feedback on the beta is welcome! Please open an issue on the [GitHub repository]
 
 ## Stand-alone packaged applications ##
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlab/ESL-PSC/releases/tag/v2.0.0).  With these you will not need to clone this repo or install any dependencies to use the graphical interface to run ESL-PSC. The command line interface is not included in the stand-alone packages. 
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.0.0).  With these you will not need to clone this repo or install any dependencies to use the graphical interface to run ESL-PSC. The command line interface is not included in the stand-alone packages. 
 
 ### macOS build (Apple-notarized)
 1. Download **`ESL-PSC-MacOS.zip`**.
