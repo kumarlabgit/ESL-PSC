@@ -45,7 +45,7 @@ The GUI now features an **interactive phylogenetic tree viewer** that lets you:
 
 * Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
 * Assign convergent vs. non-convergent phenotypes by right-clicking species names.
-* Assign species to contrast pairs which are then marked on the tree view.
+* **Assign species to contrast pairs** which are then marked on the tree view.
 * Automatically generate sensible convergent/control contrast pairs with a single click.
 * Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
 * Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
@@ -68,12 +68,8 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
 
 ### Additional dependencies
-The GUI requires **PyQt6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
+The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
-### Roadmap
-* **Single-file Windows build** – we are working on a packaged `.exe` that includes both the CLI and GUI so Windows and MacOS users can run ESL-PSC without installing Python dependencies.
-* **Continuous Numerical Phenotypes** – In the near future we will enable support for continuous numerical  response values so you can test phenotypes that are not binary (e.g. gene expression levels, etc.).
-  
 
 Feedback on the beta is welcome!
 
