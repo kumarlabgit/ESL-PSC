@@ -71,7 +71,7 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 
-Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
+Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/kumarlabgit/ESL-PSC/issues) if you have any questions or suggestions.
 
 ## Stand-alone packaged applications ##
 
