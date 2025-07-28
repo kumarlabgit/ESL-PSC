@@ -197,7 +197,9 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 
 ##### Options:
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
-* `--use_existing_preprocess`: Use existing preprocess folder and skip running the preprocess step.
+* `--use_existing_preprocess`: Attempt to reuse existing preprocess folders. If a
+  required folder is missing it will be generated automatically and a warning
+  will be printed.
 * `--use_default_gp`: Don't replace group penalties (automatically set to True if the group_penalty_type is "std").
 * `--output_dir`: Directory where all output will be stored. If not supplied, a folder named `<output_file_base_name>_<timestamp>` will be created one level above the ESL-PSC project directory. Intermediate folders like `preprocessed_data_and_models`, `gap-canceled_alignments` and `response_matrices` will be created inside this location as needed.
 * `--keep_raw_output`: Don't delete the raw model output files for each run. The raw models can be found in the `preprocessed_data_and_models` directory within the directory specified by `--output_dir`. You can also set a new directory by using the `--esl_inputs_outputs_dir` argument, but note that any files ending in `.txt` will be cleared from this directory before each ESL-PSC run.
