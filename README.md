@@ -71,19 +71,19 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 
-Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/kumarlabgit/ESL-PSC/issues) if you have any questions or suggestions.
+Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
 
-## Stand-alone packaged applications ##
+### Stand-alone packaged applications ###
 
 Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.0.0).  With these you will not need to clone this repo or install any dependencies to use the graphical interface to run ESL-PSC. The command line interface is not included in the stand-alone packages. 
 
-### macOS build (Apple-notarized)
+#### macOS build (Apple-notarized)
 1. Download **`ESL-PSC-MacOS.zip`**.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
 3. Drag `ESL-PSC.app` to your **Applications** folder.
 4. Open the app via Launchpad, Spotlight or Finder. Because the build is notarized, macOS should open it without additional warnings. If a confirmation dialog appears, click **Open**.
 
-### Windows build (currently unsigned)
+#### Windows build (currently unsigned)
 1. Download **`ESL-PSC-Windows.zip`**.
 2. Right-click the file and select **Extract All…** (or use your preferred unzip tool).
 3. Inside the extracted folder, double-click `ESL-PSC.exe` to launch.
