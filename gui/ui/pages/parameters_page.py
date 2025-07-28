@@ -396,7 +396,8 @@ class ParametersPage(BaseWizardPage):
         # --- Use existing preprocess option
         self.use_existing_preprocess = QCheckBox("Use existing preprocess")
         self.use_existing_preprocess.setToolTip(
-            "Use existing preprocess folder(s) with same output basename from a previous run) and skip running the preprocess step."
+            "Try to reuse preprocess folder(s) from a previous run. If a folder "
+            "is missing it will be generated automatically."
         )
         self.use_existing_preprocess.stateChanged.connect(
             lambda s: setattr(self.config, 'use_existing_preprocess', s == 2)
