@@ -236,23 +236,45 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         
         if not args.make_pair_randomized_null_models:
             # ***Do a Normal Multimatrix Integration***
-            # run preprocess if needed
-            if not args.use_existing_preprocess:
-                # if the folder is there already remove it first
-                ecf.clear_existing_folder(
-                    os.path.join(args.esl_inputs_outputs_dir,
-                                 preprocess_dir_name))
-                ecf.run_preprocess(args.esl_main_dir, response_path,
-                                   path_file_path, preprocess_dir_name,
-                                   args.esl_inputs_outputs_dir, use_is = True)
-                
-            # run esl integration
-            _, run_list = esl_int.esl_integration(args,
-                                                  combo,
-                                                  preprocess_dir_name,
-                                                  gap_canceled_alignments_path,
-                                                  gene_objects_dict,
-                                                  combo_name)
+            preprocess_dir = os.path.join(args.esl_inputs_outputs_dir,
+                                          preprocess_dir_name)
+            if args.use_existing_preprocess:
+                if not os.path.isdir(preprocess_dir):
+                    print(
+                        f"WARNING: could not find preprocess directory '{preprocess_dir}'. "
+                        "Running preprocess now."
+                    )
+                    ecf.run_preprocess(
+                        args.esl_main_dir,
+                        response_path,
+                        path_file_path,
+                        preprocess_dir_name,
+                        args.esl_inputs_outputs_dir,
+                        use_is=True,
+                    )
+                else:
+                    print(f"Using existing preprocess directory: {preprocess_dir}")
+            else:
+                ecf.clear_existing_folder(preprocess_dir)
+                ecf.run_preprocess(
+                    args.esl_main_dir,
+                    response_path,
+                    path_file_path,
+                    preprocess_dir_name,
+                    args.esl_inputs_outputs_dir,
+                    use_is=True,
+                )
+
+            print(f"--- Building models for combo {combo_num + 1} of"
+                  f" {total_combos} ({combo_name}) ---")
+
+            _, run_list = esl_int.esl_integration(
+                args,
+                combo,
+                preprocess_dir_name,
+                gap_canceled_alignments_path,
+                gene_objects_dict,
+                combo_name)
             # gene_objects_dict is an object and only a reference is passed to
             #   each run so same object persists and accumulates all the data
             master_run_list.extend(run_list)
