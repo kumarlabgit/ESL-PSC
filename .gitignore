@@ -34,3 +34,4 @@ echo_output/echo_gene_ranks.csv
 echo_output/echo_selected_sites.csv
 
 esl_trace.log
+notarize_esl_psc.sh
