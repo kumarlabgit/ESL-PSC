@@ -34,3 +34,6 @@ echo_output/echo_gene_ranks.csv
 echo_output/echo_selected_sites.csv
 
 esl_trace.log
+photo_multi_species_groups.txt
+checkpoint_test/
+orthomam_echo_small_species_groups.txt

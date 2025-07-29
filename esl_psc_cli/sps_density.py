@@ -89,8 +89,9 @@ def create_sps_plot(csv_file_path=None,
     handles, labels = axes.get_legend_handles_labels()
     axes.legend(handles=handles, labels=labels, title='True Phenotype')
     
-    # saves plot
-    plt.savefig(fig_path)
+    # Save figure only if caller did not provide custom axes and requested a path
+    if fig_path and (axes is None):
+        plt.savefig(fig_path)
 
 def create_sps_plot_violin(csv_file_path=None,
                     df=None, RMSE_rank = 0.05,
@@ -166,7 +167,9 @@ def create_sps_plot_violin(csv_file_path=None,
     sns.despine(left=True, bottom=True)
     
     # save the plot to a file. Let matplotlib infer format from file extension to ensure the required backend is available.
-    fig.savefig(fig_path)
+    # Save only if caller did not supply external axes and requested a path
+    if fig_path and axes is None:
+        fig.savefig(fig_path)
 
 
 # calculates percent accuracy directly from csv file- no longer use

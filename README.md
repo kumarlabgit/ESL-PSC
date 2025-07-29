@@ -103,6 +103,23 @@ To see all of the options available for any of the scripts in this directory, yo
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
+### Checkpointing & Resuming Interrupted Runs
+
+ESL-PSC automatically checkpoints progress **by default** for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
+
+How it works in brief:
+
+1. Command-line arguments from the current run are compared to those stored in `checkpoint/command.json`. Benign flags (e.g. `--make_sps_plot`) may differ; critical parameters must match.
+2. If they match, ESL-PSC sets `--use_existing_alignments` and `--use_existing_preprocess` automatically and starts with the next unfinished combo.
+3. If they do **not** match you will get a descriptive message and the run will stop, prompting you to either adjust your command or start fresh with `--force_from_beginning`.
+
+Flags you can use:
+
+* `--no_checkpoint` — Disable checkpointing entirely (In tests it takes minimal time so it is recommended to leave it on).
+* `--force_from_beginning` — Delete any existing `checkpoint/` folder in `--output_dir` and start from scratch.
+
+To resume after an unexpected interruption, simply rerun the original command.
+
 ## Installation and Dependencies ##
 
 ESL-PSC requires python 3.10 or higher. It has been tested on recent MacOS, Windows and Linux systems. The following Python libraries are required:
@@ -208,6 +225,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
 * `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
 * `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
+* `--no_checkpoint`: Disable checkpointing entirely. No `checkpoint/` folder will be created and the run cannot be resumed later. Use this for quick exploratory runs where resumption is unnecessary.
+* `--force_from_beginning`: When a checkpoint folder already exists in `--output_dir`, delete it and start the analysis from scratch. This is the recommended way to rerun an experiment after changing critical parameters or if the checkpoint has become corrupted.
 
 ##### Deletion Canceler Options:
 * `--nix_full_deletions`: Don't create new files for fully canceled genes, i.e. if enough species are missing the entire alignment is excluded.

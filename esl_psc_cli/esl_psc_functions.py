@@ -316,9 +316,18 @@ def get_median_var_sites(alignment_dir):
     for alignment in alignment_list:
         num_var = count_var_sites(list(SeqIO.parse(alignment, "fasta")))
         if num_var == 0:
-            continue # skip if no variable sites, it won't count toward median
+            continue  # skip alignments with no variability
         numbers_of_var_sites.append(num_var)
     os.chdir(previous_dir)
+
+    if not numbers_of_var_sites:
+        raise ValueError(
+            "No alignments with variable sites found in "
+            f"'{alignment_dir}'. The gap-canceled alignments for this combo "
+            "may be empty or missing. Re-generate them with "
+            "--force_from_beginning or inspect the directory contents."
+        )
+
     return int(median(numbers_of_var_sites))
 
 def get_pheno_dict(species_pheno_csv_path, str_phenos = False):
@@ -631,7 +640,7 @@ class ESLRunFamily():
                                          self.args.num_log_points,
                                          only_lambda1 = self.args.lambda1_only)
         else: # use normal linear grid with lambda step increment
-            self.do_esl_grid_search(self.args.initial_lambda1,
+            self.do_grid_search(self.args.initial_lambda1,
                                     self.args.initial_lambda2,
                                     self.args.final_lambda1,
                                     self.args.final_lambda2,
