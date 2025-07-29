@@ -4,7 +4,7 @@
 
 1. [Description](#description)
 2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
-3. [CLI Usage](#cli-usage)
+3. [Command Line Usage](#command-line-usage)
 4. [Installation and Dependencies](#installation-and-dependencies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 6. [Input Data](#input-data)
@@ -103,7 +103,7 @@ To see all of the options available for any of the scripts in this directory, yo
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
-### Checkpointing & Resuming Interrupted Runs
+### NEW: Checkpointing & Resuming Interrupted Runs
 
 ESL-PSC automatically checkpoints progress **by default** for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
 
