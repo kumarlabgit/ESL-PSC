@@ -1,7 +1,8 @@
 # A script to automate ESL-PSC integration experiments for multiple input
 #  matrices of species
 
-import argparse, os, time, shutil, random, itertools
+import argparse, os, time, shutil, random, itertools, sys
+from esl_psc_cli import checkpoint as cp_mod
 import faulthandler
 # Enable faulthandler so that **all Python threads** print a traceback when
 # the interpreter receives a fatal signal (SIGSEGV, SIGFPE, SIGABRT, etc.).
@@ -183,51 +184,58 @@ def randomize_alignments(original_alignments_directory, species_list):
     
 
 def run_multi_matrix_integration(args, list_of_species_combos,
-                                 response_file_list):
+                                   response_file_list, *,
+                                   checkpointer=None,
+                                   start_index=0,
+                                   gene_objects_dict=None,
+                                   master_run_list=None):
     '''Run esl_integrator for each of a list of species combos with
     existing response matrix files in response_file_list.
     species_combo_list is a list of tuples that each has one species combo
     response_file_list is a list of full paths to response matrix files in the
         same order at the corresponding species combos in species_combo_list
     '''
-    # Make a gene_objects_dict
-    # look in one of the canceled alignemnt directories
-    if len(list_of_species_combos) > 1 and not args.use_uncanceled_alignments:
-        alignment_sub_dir = os.listdir(args.canceled_alignments_dir)[0]
-        alignment_sub_dir = os.path.join(args.canceled_alignments_dir,
-                                         alignment_sub_dir)
-    else: # if its just one matrix being run with multimatrix (or uncanceled)
-        alignment_sub_dir = args.canceled_alignments_dir
-    gene_name_list = ecf.get_gene_names(alignment_sub_dir)
-    # make gene_objects_dict from name list
-    gene_objects_dict = ecf.ESLGeneDict(gene_name_list)
+    # Initialise persistent structures if not supplied (i.e. fresh run)
+    if gene_objects_dict is None or master_run_list is None:
+        # look in one of the canceled alignment directories to build gene list
+        if len(list_of_species_combos) > 1 and not args.use_uncanceled_alignments:
+            first_sub = os.listdir(args.canceled_alignments_dir)[0]
+            alignment_sub_dir = os.path.join(args.canceled_alignments_dir, first_sub)
+        else:
+            alignment_sub_dir = args.canceled_alignments_dir
+        gene_name_list = ecf.get_gene_names(alignment_sub_dir)
+        gene_objects_dict = ecf.ESLGeneDict(gene_name_list)
+        master_run_list = []
 
-    # set top_rank_threshold (rank abovewhich to count genes as top genes)
+    # set top_rank_threshold (rank above which to count genes as top genes)
     top_rank_threshold = max(1, len(gene_objects_dict) * args.top_rank_frac)
 
-    master_run_list = [] # a list of all runs from all matrices
-
     # loop through combos
-    for combo_num, response_file in enumerate(response_file_list):
-        combo = list_of_species_combos[combo_num]
+    for combo_offset, response_file in enumerate(response_file_list):
+        combo_num = start_index + combo_offset  # absolute combo index for naming/checkpointing
+        combo = list_of_species_combos[combo_offset]  # list is already sliced when resuming
         combo_name = 'combo_' + str(combo_num)
-        total_combos = len(list_of_species_combos)
+        total_combos = len(list_of_species_combos) + start_index  # original total for context
         
         # MODIFICATION: Announce combo processing in a parsable way
         print(f"\n--- Processing combo {combo_num + 1} of {total_combos} ({combo_name}) ---")
         
-        response_path = response_file_list[combo_num]
+        response_path = response_file  # enumerated earlier, aligns with combo_offset
 
-        # get name of one alignment directory in the canceled_alignments_dir
-        if (len(list_of_species_combos) > 1
-            and not args.use_uncanceled_alignments): 
-            # use combo name
-            gap_canceled_alignments_path = (
-                os.path.join(args.canceled_alignments_dir,
-                             combo_name + '-alignments'))
-        else: # if its just one matrix being run or uncanceled alignments
-            #in this case the canceled_alignments_dir has the files in itself
-            gap_canceled_alignments_path = args.canceled_alignments_dir
+        # Determine the alignment directory for this combo
+        if not args.use_uncanceled_alignments:
+            # In multimatrix mode, each combo lives in its own sub-folder named
+            # <combo_name>-alignments *regardless* of how many combos remain to
+            # run after resuming.  Previously, when only 1 combo was left the
+            # code fell back to the parent folder, breaking the path.
+            gap_canceled_alignments_path = os.path.join(
+                args.canceled_alignments_dir,
+                combo_name + '-alignments'
+            )
+        else:
+            # When the user explicitly requests uncanceled alignments we point
+            # directly to the directory they supplied.
+            gap_canceled_alignments_path = args.alignments_dir
         # generate a path file
         path_file_path = ecf.make_path_file(gap_canceled_alignments_path)
 
@@ -278,6 +286,15 @@ def run_multi_matrix_integration(args, list_of_species_combos,
             # gene_objects_dict is an object and only a reference is passed to
             #   each run so same object persists and accumulates all the data
             master_run_list.extend(run_list)
+            # --- Checkpoint save ---
+            if checkpointer:
+                checkpointer.save_checkpoint(
+                    combo_num,
+                    gene_objects_dict,
+                    master_run_list,
+                    vars(args),
+                    run_list,
+                )
         else:
             # ***Do a Randomized Alignment Null Multimatrix Integration***
             for run_num in range(args.num_randomized_alignments):
@@ -301,7 +318,13 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                                                   combo_name
                                                       + '_' + str(run_num))
                 master_run_list.extend(run_list)
-        
+                if checkpointer:
+                    checkpointer.save_checkpoint(
+                        combo_num,
+                        gene_objects_dict,
+                        master_run_list,
+                        vars(args),
+                        run_list)
 
         # update gene variables to track best scores and num combos ranked etc.
         for gene in gene_objects_dict.values():
@@ -326,9 +349,10 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         # delete path file and preprocess unless --preserve_preprocess
         os.remove(path_file_path)
         if args.delete_preprocess: # delete preprocess to keep folder clean
-            shutil.rmtree(os.path.join(args.esl_inputs_outputs_dir,
+                        shutil.rmtree(os.path.join(args.esl_inputs_outputs_dir,
                                        preprocess_dir_name))
 
+    # return accumulated data
     return gene_objects_dict, master_run_list
 
 
@@ -351,6 +375,11 @@ def main(raw_args=None):
 
     #### Get args specific to multimatrix esl ####
     group = parser.add_argument_group('Multimatrix-specific Optional Arguments')
+    # Checkpointing
+    group.add_argument('--no_checkpoint', action='store_true', default=False,
+                        help='Disable per-combo checkpointing (enabled by default for runs with >1 species combos)')
+    group.add_argument('--force_from_beginning', action='store_true', default=False,
+                        help='Ignore any existing checkpoint and start fresh, deleting it.')
     group.add_argument('--alignments_dir',
                     help = ('Full path to the original alignments directory. '
                             'if this is not provided, the '
@@ -438,16 +467,6 @@ def main(raw_args=None):
         raise ValueError("At least one of --alignments-dir or "
                          "--prediction-alignments-dir must be provided.")
 
-    validate_specific_paths(args) #verify that dir and file paths are real
-
-    # Ensure all alignments are in 2-line FASTA format
-    ecf.validate_alignment_dir_two_line(args.alignments_dir)
-    if (args.prediction_alignments_dir
-            and args.prediction_alignments_dir != args.alignments_dir):
-        ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
-    if args.use_existing_alignments and args.canceled_alignments_dir:
-        ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
-
     # ensure the output directory actually exists
     os.makedirs(args.output_dir, exist_ok=True)
     
@@ -455,6 +474,43 @@ def main(raw_args=None):
     if args.use_uncanceled_alignments:
         args.canceled_alignments_dir = args.alignments_dir
         args.use_existing_alignments = True # set this for convenience
+
+    # ------------------------------------------------------------------
+    # checkpoint detection (disabled if --no_checkpoint)
+    # ------------------------------------------------------------------
+    resume_mode = False
+    cp_obj_early = None
+    if not args.no_checkpoint:
+        cp_obj_early = cp_mod.Checkpointer(args.output_dir)
+        # If user requests start from scratch, clear any existing checkpoint *before* further checks
+        if args.force_from_beginning and cp_obj_early.has_checkpoint():
+            print("--force_from_beginning specified: clearing existing checkpoint (early stage).")
+            cp_obj_early.clear()
+        if cp_obj_early.has_checkpoint():
+            resume_mode = True
+            # Ensure we don't regenerate alignments or preprocess directories
+            args.use_existing_alignments = True
+            args.use_existing_preprocess = True
+            # Retrieve paths that may not have been provided on the command line
+            stored_cmd = cp_obj_early.load_command() or {}
+            if not args.canceled_alignments_dir:
+                args.canceled_alignments_dir = stored_cmd.get("canceled_alignments_dir")
+            if not args.alignments_dir:
+                args.alignments_dir = stored_cmd.get("alignments_dir")
+
+
+    validate_specific_paths(args)  # verify that dir and file paths are real
+
+    # Ensure all alignments are in 2-line FASTA format (skip on resume)
+    if not resume_mode:
+        ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        if (args.prediction_alignments_dir
+                and args.prediction_alignments_dir != args.alignments_dir):
+            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+        if args.use_existing_alignments and args.canceled_alignments_dir:
+            ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
+
+
         
     
     # 1) Generate a List of Response Matrix Files. this can either be from a
@@ -498,6 +554,8 @@ def main(raw_args=None):
     else: 
         raise ValueError("must give either response_dir or species_groups_file")
     # we now have a response_file_list and a response_dir with the files in it
+
+
 
     if args.make_null_models:
         # if this option is chosen, we will take all of the species combos and
@@ -552,17 +610,68 @@ def main(raw_args=None):
             os.remove(file) 
     os.chdir(previous_working_dir) # go back to original working dir
 
-    # run multimatrix integration
-    gene_objects_dict, master_run_list = run_multi_matrix_integration(
+        # ---- Checkpoint handling -------------------------------------------
+    cp_obj = None
+    resume_start_idx = 0
+    checkpoint_enabled = (not args.no_checkpoint) and len(list_of_species_combos) > 1
+    if checkpoint_enabled:
+        cp_obj = cp_mod.Checkpointer(args.output_dir)
+        if args.force_from_beginning:
+            print("--force_from_beginning specified: clearing existing checkpoint (if any).")
+            cp_obj.clear()
+        elif cp_obj.has_checkpoint() and not cp_obj.is_same_command(vars(args)):
+            print("Checkpoint exists but command-line arguments differ on critical parameters; cannot resume.")
+            for diff in cp_obj.last_diff:
+                print("  -", diff)
+            print("Use --force_from_beginning to start over.")
+            sys.exit(1)
+
+        last_done = cp_obj.get_last_combo()
+        if last_done is not None:
+            resume_start_idx = last_done + 1
+            if resume_start_idx >= len(list_of_species_combos):
+                print("All combos already completed according to checkpoint – nothing to do! Proceeding to output generation.")
+                # Load state so we can still generate outputs
+                gene_objects_dict, master_run_list = cp_obj.load_state()
+                list_of_species_combos = []
+                response_file_list = []
+            print(f"Resuming after combo {last_done}. Starting at combo index {resume_start_idx}.")
+            list_of_species_combos = list_of_species_combos[resume_start_idx:]
+            response_file_list = response_file_list[resume_start_idx:]
+
+    
+        # load prior state if resuming
+        if resume_start_idx > 0:
+            gene_objects_dict, master_run_list = cp_obj.load_state()
+        else:
+            gene_objects_dict, master_run_list = None, None
+
+        gene_objects_dict, master_run_list = run_multi_matrix_integration(
                                                     args,
                                                     list_of_species_combos,
-                                                    response_file_list)
+                                                    response_file_list,
+                                                    checkpointer=cp_obj,
+                                                    start_index=resume_start_idx,
+                                                    gene_objects_dict=gene_objects_dict,
+                                                    master_run_list=master_run_list)
+    else:
+        # No checkpointing – run all combos straight through
+        gene_objects_dict, master_run_list = run_multi_matrix_integration(
+            args,
+            list_of_species_combos,
+            response_file_list,
+            checkpointer=None,
+            start_index=0,
+            gene_objects_dict=None,
+            master_run_list=None,
+        )
+
     # 4) generate output
     # Print a clear, multi-line summary so the GUI output isn't squished
     print("\nmultimatrix integration finished!")
     print(f"A total of {len(master_run_list)} ESL models were built")
     # Show concise reproducible command instead of every argument
-    import sys, shlex
+    import shlex
     cmd = ' '.join(shlex.quote(a) for a in sys.argv)
     print(f"\nRun command: {cmd}\n")
 
