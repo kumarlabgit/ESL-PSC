@@ -224,17 +224,17 @@ def run_multi_matrix_integration(args, list_of_species_combos,
 
         # Determine the alignment directory for this combo
         if not args.use_uncanceled_alignments:
-            # In multimatrix mode, each combo lives in its own sub-folder named
-            # <combo_name>-alignments *regardless* of how many combos remain to
-            # run after resuming.  Previously, when only 1 combo was left the
-            # code fell back to the parent folder, breaking the path.
-            gap_canceled_alignments_path = os.path.join(
+            # Preferred location is a dedicated subfolder per combo
+            candidate_path = os.path.join(
                 args.canceled_alignments_dir,
                 combo_name + '-alignments'
             )
+            # Fall back to the parent directory if the subfolder does not exist
+            gap_canceled_alignments_path = (
+                candidate_path if os.path.isdir(candidate_path)
+                else args.canceled_alignments_dir
+            )
         else:
-            # When the user explicitly requests uncanceled alignments we point
-            # directly to the directory they supplied.
             gap_canceled_alignments_path = args.alignments_dir
         # generate a path file
         path_file_path = ecf.make_path_file(gap_canceled_alignments_path)
