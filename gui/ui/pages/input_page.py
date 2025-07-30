@@ -4,6 +4,10 @@ from PySide6.QtWidgets import (
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
     QSizePolicy
 )
+from PySide6.QtCore import Qt  # Needed for alignment
+
+# New helper for viewing completed runs
+from gui.ui.widgets.existing_output_viewer import select_and_show_existing_output
 import os
 
 from gui.ui.widgets.file_selectors import FileSelector
@@ -32,6 +36,13 @@ class InputPage(BaseWizardPage):
         # Create a layout for the container
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ─── Load Existing Output Button (top-left) ────────────────────
+        load_prev_btn = QPushButton("Load and View Existing Output")
+        load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
+        load_prev_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        load_prev_btn.clicked.connect(lambda *_: select_and_show_existing_output(parent=self))
+        container_layout.addWidget(load_prev_btn, alignment=Qt.AlignmentFlag.AlignRight)
         
         # Required inputs group
         req_group = QGroupBox("Required Inputs")
@@ -210,6 +221,8 @@ class InputPage(BaseWizardPage):
         
         opt_group.setLayout(opt_layout)
         container_layout.addWidget(opt_group)
+
+        
         
         # Add stretch to push everything to the top
         container_layout.addStretch()
