@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QWizard
 from gui.ui.widgets.file_selectors import FileSelector
 from dataclasses import fields
 from gui.core.config import ESLConfig
+import sys
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFormLayout, QHBoxLayout,
     QLabel, QButtonGroup, QRadioButton, QLineEdit, QDoubleSpinBox, QSpinBox,
@@ -22,6 +23,15 @@ class ParametersPage(BaseWizardPage):
     
     def __init__(self, config, parent=None):
         super().__init__("Analysis Parameters", parent)
+        # On Windows, Qt's default spin box padding can make the numeric text
+        # appear clipped.  Give spin boxes a platform-specific minimum width
+        # without affecting macOS/Linux where sizing is already ideal.
+        if sys.platform.startswith("win"):
+            # Only apply to this page so other GUI pages/styles stay intact
+            self.setStyleSheet(
+                self.styleSheet() +
+                "\nQSpinBox, QDoubleSpinBox { min-width: 80px; }"
+            )
         self.config = config
         # Add subtitle to ensure consistent header with divider
         self.setSubTitle("Configure settings and parameters for the analysis and output.")
