@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -49,7 +50,11 @@ class CommandPage(BaseWizardPage):
         font = QFont("Courier New")
         font.setPointSize(11)  # Increased font size
         self.cmd_display.setFont(font)
-        self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        # On Windows, show long single-line commands nicely by enabling wrap
+        if sys.platform.startswith("win"):
+            self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        else:
+            self.cmd_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.cmd_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.cmd_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
