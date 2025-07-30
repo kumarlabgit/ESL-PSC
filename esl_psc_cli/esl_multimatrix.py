@@ -63,24 +63,39 @@ def check_species_in_alignments(list_of_species_combos, alignments_dir):
     
     # Collect all species actually found in the alignment files
     found_species = set()
+    alignment_files = []  # keep for counting / messaging
+
     if not os.path.isdir(alignments_dir):
-        raise ValueError(f"Alignment directory '{alignments_dir}'"
-                         "does not exist or is not a directory.")
-    
+        raise ValueError(
+            f"Alignment directory '{alignments_dir}' does not exist or is not a directory."
+        )
+
+    # Iterate once through directory to gather species & count files
     for file_name in os.listdir(alignments_dir):
         if ecf.is_fasta(file_name):
+            alignment_files.append(file_name)
             file_path = os.path.join(alignments_dir, file_name)
-            for record in SeqIO.parse(file_path, 'fasta'):
-                # record.id is your species ID/header
+            for record in SeqIO.parse(file_path, "fasta"):
                 found_species.add(record.id)
-    
+
+    num_alignments = len(alignment_files)
+    print(f"Found {num_alignments} alignment file(s) in '{alignments_dir}'.")
+
+    # If there are no alignment files at all, alert early with a dedicated message
+    if num_alignments == 0:
+        raise ValueError(
+            f"No alignment files were found in '{alignments_dir}'. "
+            "Please check the directory and ensure alignment FASTA files are present before continuing."
+        )
+
     # Determine if any species are missing
     missing_species = all_species - found_species
     if missing_species:
+        # Still raise, but we have already printed the alignment count above
         raise ValueError(
-            f"The following species from the species groups file were not "
-            f"found in any alignment in '{alignments_dir}':\n"
-            f"{', '.join(sorted(missing_species))} Double check the spelling"
+            "The following species from the species groups file were not "
+            f"found in any of the {num_alignments} alignment file(s) in '{alignments_dir}':\n"
+            f"{', '.join(sorted(missing_species))}"
         )
 
 def check_species_in_existing_alignments(list_of_species_combos, canceled_alignments_dir):
@@ -95,27 +110,40 @@ def check_species_in_existing_alignments(list_of_species_combos, canceled_alignm
         all_species.update(combo)
 
     found_species = set()
+    alignment_files = []
+
     if not os.path.isdir(canceled_alignments_dir):
         raise ValueError(
-            f"Canceled alignment directory '{canceled_alignments_dir}' does not "
-            "exist or is not a directory."
+            f"Canceled alignment directory '{canceled_alignments_dir}' does not exist or is not a directory."
         )
 
+    # Walk the directory tree collecting alignment files and species ids
     for root, _, files in os.walk(canceled_alignments_dir):
         for file_name in files:
             if ecf.is_fasta(file_name):
+                alignment_files.append(os.path.join(root, file_name))
                 file_path = os.path.join(root, file_name)
                 try:
-                    for record in SeqIO.parse(file_path, 'fasta'):
+                    for record in SeqIO.parse(file_path, "fasta"):
                         found_species.add(record.id)
                 except Exception:
+                    # Skip unreadable files but continue processing others
                     continue
+
+    num_alignments = len(alignment_files)
+    print(f"Found {num_alignments} gap-canceled alignment file(s) in '{canceled_alignments_dir}'.")
+
+    if num_alignments == 0:
+        raise ValueError(
+            f"No alignment files were found in '{canceled_alignments_dir}'. "
+            "Provide the expected gap-canceled alignments or rerun without --use_existing_alignments."
+        )
 
     missing_species = all_species - found_species
     if missing_species:
         raise ValueError(
             "The following species from the species groups file were not "
-            f"found in any alignment in '{canceled_alignments_dir}':\n"
+            f"found in any of the {num_alignments} alignment file(s) in '{canceled_alignments_dir}':\n"
             f"{', '.join(sorted(missing_species))}"
         )
 
