@@ -107,7 +107,7 @@ class RunPage(BaseWizardPage):
         font = self.checkpoint_label.font()
         font.setPointSizeF(font.pointSizeF() * 0.9)
         self.checkpoint_label.setFont(font)
-        self.checkpoint_label.setStyleSheet("color: grey;")
+        #self.checkpoint_label.setStyleSheet("color: grey;")
 
         # Checkbox to force fresh run if checkpoint exists
         self.ignore_cp_checkbox = QCheckBox("Ignore checkpoint (start fresh)")

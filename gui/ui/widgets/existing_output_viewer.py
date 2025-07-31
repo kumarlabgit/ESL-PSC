@@ -155,10 +155,12 @@ class _ExistingOutputDialog(QDialog):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def select_and_show_existing_output(parent=None):
-    """Prompt user to choose an ESL-PSC output directory and launch the viewer.
+    """Prompt user to choose a finished ESL-PSC output directory and launch the viewer.
 
-    The selected folder must contain a ``checkpoint/command.json`` file, from
-    which an :class:`~gui.core.config.ESLConfig` instance is rebuilt.
+    A *valid* folder must contain either a gene-ranks CSV or an SPS plot **and**
+    a corresponding ``*_run_config.txt`` file written at run start. The
+    run-config is parsed to rebuild an :class:`~gui.core.config.ESLConfig``
+    instance for displaying metadata.
     """
     dir_path = QFileDialog.getExistingDirectory(
         parent,
@@ -168,31 +170,62 @@ def select_and_show_existing_output(parent=None):
     if not dir_path:
         return  # user cancelled
 
-    cmd_path = os.path.join(dir_path, "checkpoint", "command.json")
-    if not os.path.exists(cmd_path):
+    # Locate the *first* run-config file in the folder (pattern: *_run_config.txt)
+    run_cfg_files = [f for f in os.listdir(dir_path) if f.endswith("_run_config.txt")]
+    if not run_cfg_files:
         QMessageBox.warning(
             parent,
             "Invalid Folder",
-            "The selected directory does not contain a completed ESL-PSC run.\n"
-            "Expected to find: checkpoint/command.json",
+            "The selected directory does not contain a run-config file ( *_run_config.txt ).",
         )
         return
 
+    run_cfg_path = os.path.join(dir_path, run_cfg_files[0])
+
+
+    # ------------------------------------------------------------------
+    # Parse run-config – each line mirrors CLI args ("--flag [value]")
+    # ------------------------------------------------------------------
+    import shlex
+    arg_dict = {}
     try:
-        with open(cmd_path, "r", encoding="utf-8") as fh:
-            cmd_data = json.load(fh)
+        with open(run_cfg_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                parts = shlex.split(raw)
+                flag = parts[0]
+                name = flag.lstrip("-")
+                if len(parts) == 1:
+                    arg_dict[name] = True  # store_true flag
+                else:
+                    # Join rest back with space for paths that may contain spaces
+                    arg_dict[name] = " ".join(parts[1:])
     except Exception as exc:
-        QMessageBox.critical(parent, "Error", f"Failed to read command.json:\n{exc}")
+        QMessageBox.critical(parent, "Error", f"Failed to read run-config file:\n{exc}")
         return
 
     # Build ESLConfig from stored command args where possible
     cfg = ESLConfig()
-    for key, val in cmd_data.items():
+    for key, val in arg_dict.items():
         if hasattr(cfg, key):
             setattr(cfg, key, val)
     # Fallback defaults
     if not cfg.output_dir:
         cfg.output_dir = dir_path
+
+    # Validate presence of at least one displayable output
+    base = cfg.output_file_base_name or ""
+    has_gene = os.path.exists(os.path.join(dir_path, f"{base}_gene_ranks.csv"))
+    has_sps = os.path.exists(os.path.join(dir_path, f"{base}_pred_sps_plot.svg"))
+    if not (has_gene or has_sps):
+        QMessageBox.warning(
+            parent,
+            "No Viewable Output",
+            "The selected directory does not contain a gene-ranks CSV or SPS plot to display.",
+        )
+        return
 
     dlg = _ExistingOutputDialog(cfg, cfg.output_dir, parent=parent)
     dlg.show()
