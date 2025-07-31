@@ -38,6 +38,8 @@ class ESLWorker(QRunnable):
         # Track deletion-canceler progress counts for step progress bar
         self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
         self.del_current_combo: int = 0           # number of combos completed so far
+        # Flag indicating the global deletion-canceler phase has completed
+        self.del_cancel_done: bool = False
         # Track current combo index for prettier status messages
         self.current_combo: int | None = None
         self.total_combos: int | None = None
@@ -87,10 +89,15 @@ class ESLWorker(QRunnable):
                     completed = sum(self.worker.phase_weights[:phase-1])
                     current_span = self.worker.phase_weights[phase-1]
                     scaled = int(completed + pct * current_span / 100)
-                    # Clamp to 100
+                    # Clamp to 100 and detect combo completion
+                    end_of_combo = False
                     if pct >= 100 and phase >= self.worker.total_phases:
                         scaled = 100
+                        end_of_combo = True
                     self.signals.step_progress.emit(min(scaled, 100))
+                    # Update overall progress once the combo has fully completed
+                    if end_of_combo and self.worker.current_combo and self.worker.total_combos:
+                        self.signals.overall_progress.emit(int(self.worker.current_combo / self.worker.total_combos * 100))
 
                 # Store on self for reuse
                 self._emit_step_progress = _emit_step_progress
@@ -129,12 +136,13 @@ class ESLWorker(QRunnable):
                 m_combo = re.search(r"Processing combo (\d+) of (\d+)", line)
                 if m_combo:
                     current, total = map(int, m_combo.groups())
-                    if total > 0:
-                        self.signals.overall_progress.emit(int(current / total * 100))
+                    # Defer overall progress update until the combo finishes.
                     # Save for later status messages
                     try:
                         self.worker.current_combo = current
                         self.worker.total_combos = total
+                        # Mark deletion-canceler as completed; subsequent "Generating alignments" lines belong to combo-specific work
+                        self.worker.del_cancel_done = True
                     except Exception:
                         pass
                     # New combo → reset phase tracker
@@ -157,27 +165,32 @@ class ESLWorker(QRunnable):
                 # Deletion-canceler per-combo progress: original line lists every species,
                 # which overflows the GUI. Replace it with a concise message.
                 if "Generating alignments for" in line:
-                    # We’re in phase 1 (deletion-canceler alignments)
-                    self.worker.phase = 1
-                    # Increment completed combo counter and compute % if total known
-                    if self.worker.del_total_combos:
-                        self.worker.del_current_combo += 1
-                        pct = int(self.worker.del_current_combo / self.worker.del_total_combos * 100)
-                        self._emit_step_progress(pct)
-                    # Build a friendly short status like "Generating alignments for combo 3 of 18…"
-                    combo_msg = f"combo {self.worker.del_current_combo}"
-                    if self.worker.del_total_combos:
-                        combo_msg += f" of {self.worker.del_total_combos}"
-                    friendly = f"Generating alignments for {combo_msg}..."
-                    # Emit to status bar and to log (output). Suppress original long line.
-                    self.signals.step_status.emit(friendly)
-                    self.signals.output.emit(friendly)
+                    # Treat as deletion-canceler progress *only* before the first combo starts
+                    if not self.worker.del_cancel_done:
+                        self.worker.phase = 1
+                        # Increment completed combo counter and compute % if total known
+                        if self.worker.del_total_combos:
+                            self.worker.del_current_combo += 1
+                            pct = int(self.worker.del_current_combo / self.worker.del_total_combos * 100)
+                            # During global deletion-canceler phase use the entire bar (0–100)
+                            self.signals.step_progress.emit(pct)
+                        # Build a concise status message
+                        combo_msg = f"combo {self.worker.del_current_combo}"
+                        if self.worker.del_total_combos:
+                            combo_msg += f" of {self.worker.del_total_combos}"
+                        friendly = f"Generating alignments for {combo_msg}..."
+                        # Emit to status bar and to log (output). Suppress original long line.
+                        self.signals.step_status.emit(friendly)
+                        self.signals.output.emit(friendly)
+                        return True
+                    # After deletion-canceler finished, per-combo alignment generation is noisy – suppress in progress bars and logs
                     return True
 
                 # ESL preprocess step indicator
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
                     # We’re now in phase 2 (preprocess)
                     self.worker.phase = 2
+                    # Reset deletion-canceler counters so they don’t affect later steps
                     # Reset deletion-canceler counters so they don't affect later steps
                     self.worker.del_total_combos = None
                     self.worker.del_current_combo = 0
@@ -402,14 +415,15 @@ class ESLWorker(QRunnable):
                 if not self.was_stopped:
                     self.signals.finished.emit(exit_code)
         
-        def stop(self):
-            """Flags the worker to stop and emits the finished signal."""
-            if self.is_running:
-                self.is_running = False
-                self.was_stopped = True
-                if self.process and self.process.poll() is None:
-                    try:
-                        self.process.kill()
-                    except Exception:
-                        pass
-                self.signals.finished.emit(-1) # Emit a special code for user stop
+    def stop(self):
+        """Flags the worker to stop and emits the finished signal."""
+        if self.is_running:
+            self.is_running = False
+            self.was_stopped = True
+            if self.process and self.process.poll() is None:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+            # Emit special code for user stop
+            self.signals.finished.emit(-1)
