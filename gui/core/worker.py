@@ -136,8 +136,10 @@ class ESLWorker(QRunnable):
                 m_combo = re.search(r"Processing combo (\d+) of (\d+)", line)
                 if m_combo:
                     current, total = map(int, m_combo.groups())
-                    # Defer overall progress update until the combo finishes.
-                    # Save for later status messages
+                    # Update overall progress immediately to reflect combos already completed
+                    if total > 0 and current > 1:
+                        self.signals.overall_progress.emit(int((current - 1) / total * 100))
+                    # Save for later status messages and end-of-combo updates
                     try:
                         self.worker.current_combo = current
                         self.worker.total_combos = total
@@ -184,6 +186,11 @@ class ESLWorker(QRunnable):
                         self.signals.output.emit(friendly)
                         return True
                     # After deletion-canceler finished, per-combo alignment generation is noisy – suppress in progress bars and logs
+                    return True
+
+                # Suppress verbose argument echo from ESL preprocess binary
+                # Skip the noisy header line that precedes argument echo in preprocess output.
+                if line.startswith("You have entered"):
                     return True
 
                 # ESL preprocess step indicator

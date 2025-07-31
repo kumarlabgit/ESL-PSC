@@ -301,8 +301,7 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                     use_is=True,
                 )
 
-            print(f"--- Building models for combo {combo_num + 1} of"
-                  f" {total_combos} ({combo_name}) ---")
+            print(f"--- Building models for combo {combo_num + 1} of {total_combos} ---")
 
             _, run_list = esl_int.esl_integration(
                 args,
@@ -663,7 +662,7 @@ def main(raw_args=None):
                 gene_objects_dict, master_run_list = cp_obj.load_state()
                 list_of_species_combos = []
                 response_file_list = []
-            print(f"Resuming after combo {last_done}. Starting at combo index {resume_start_idx}.")
+            print(f"Resuming after combo {last_done + 1}. Continuing with combo {resume_start_idx + 1}.")
             list_of_species_combos = list_of_species_combos[resume_start_idx:]
             response_file_list = response_file_list[resume_start_idx:]
 

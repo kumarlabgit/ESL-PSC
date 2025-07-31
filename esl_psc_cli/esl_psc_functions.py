@@ -41,7 +41,9 @@ def parse_args_with_config(parser, raw_args=None):
             if len(remaining) > 0:
                 print("unrecognized args: ", remaining) 
     else: 
-        print("did not find an esl_psc_config.txt in this directory")
+        # Suppress noisy notice when config file is absent – it is expected in many runs.
+        # (Kept as comment for future reference)
+        # print("did not find an esl_psc_config.txt in this directory")
         args = parser.parse_args(cmdline)
 
     # Point esl_main_dir at the *project root* (one level above this package)
@@ -464,7 +466,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     print("Running ESL preprocess...")
     input_folder_path = os.path.split(path_file_path)[0] #path file folder
     preexisting_cwd = os.getcwd() # record current directory
-    print(input_folder_path)
+    # print(input_folder_path)  # noisy path echo – suppressed
     os.chdir(input_folder_path) # change to correct directory for esl
     if os.path.exists(preprocessed_input_folder):
         shutil.rmtree(preprocessed_input_folder) # this shouldn't exist here
@@ -477,7 +479,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
                         + esl_inputs_folder_name + " where the preprocess is "
                         "supposed to be moved to. So that won't work")
     #construct command to run ESL preprocess
-    print(os.getcwd())
+    # print(os.getcwd())  # omit cwd debug output
     preprocess_command_list = [
                                get_binary_path(esl_dir_path, 'preprocess'),
                                response_matrix_file_path,
@@ -486,7 +488,7 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     if use_is:
         preprocess_command_list.append("is") # add this to ignore singletons
     # make sure the input file names are right including ".txt" or get seg fault
-    print(' '.join(preprocess_command_list))
+    # print(' '.join(preprocess_command_list))  # suppress full command echo
     try:
         subprocess.run(preprocess_command_list, check=True)
     except subprocess.CalledProcessError as e:

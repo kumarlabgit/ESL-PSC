@@ -6,7 +6,7 @@ import os
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame, QCheckBox
 )
 
 from gui.core.worker import ESLWorker
@@ -101,10 +101,27 @@ class RunPage(BaseWizardPage):
         btn_layout = QHBoxLayout()
         self.run_btn = QPushButton("Run Analysis")
         self.run_btn.clicked.connect(self.run_analysis)
+
+        # Checkpoint status label & ignore-checkbox
+        self.checkpoint_label = QLabel("")
+        font = self.checkpoint_label.font()
+        font.setPointSizeF(font.pointSizeF() * 0.9)
+        self.checkpoint_label.setFont(font)
+        self.checkpoint_label.setStyleSheet("color: grey;")
+
+        # Checkbox to force fresh run if checkpoint exists
+        self.ignore_cp_checkbox = QCheckBox("Ignore checkpoint (start fresh)")
+        self.ignore_cp_checkbox.hide()
+        self.ignore_cp_checkbox.toggled.connect(self._update_run_btn_text)
+
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_analysis)
+
         btn_layout.addStretch()
+        # Order: checkpoint label, run button, stop button
+        btn_layout.addWidget(self.checkpoint_label)
+        btn_layout.addWidget(self.ignore_cp_checkbox)
         btn_layout.addWidget(self.run_btn)
         btn_layout.addWidget(self.stop_btn)
         container_layout.addLayout(btn_layout)
@@ -117,6 +134,28 @@ class RunPage(BaseWizardPage):
         self.gene_ranks_path = None
         self.selected_sites_path = None
     
+    # ------------------------------------------------------------------
+    # Checkpoint helpers
+    # ------------------------------------------------------------------
+    def _update_checkpoint_status(self):
+        """Detect checkpoint compatibility and update run button/label."""
+        from esl_psc_cli.checkpoint import Checkpointer  # local import to avoid GUI start-time cost
+        output_dir = self.config.output_dir
+        cp = Checkpointer(output_dir)
+        self.resume_available = False
+        self.checkpoint_label.clear()
+        if cp.has_checkpoint():
+            last_done = cp.get_last_combo()
+            human_combo = last_done + 1 if last_done is not None else "?"
+            self.checkpoint_label.setText(f"Checkpoint detected at combo {human_combo}")
+            self.ignore_cp_checkbox.show()
+            self.ignore_cp_checkbox.setChecked(False)
+            self._update_run_btn_text(False)
+        else:
+            self.checkpoint_label.clear()
+            self.ignore_cp_checkbox.hide()
+            self._update_run_btn_text(False)
+
     def on_enter(self):
         """Update the command display when the page is shown."""
         try:
@@ -124,8 +163,8 @@ class RunPage(BaseWizardPage):
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
             self.step_status_label.setText("Ready to run.")
-            # Set run button text based on whether analysis was completed
-            self.run_btn.setText("Run New Analysis" if self.analysis_completed else "Run Analysis")
+            # Update run button & checkpoint status
+            self._update_checkpoint_status()
 
             # Enable/disable wizard buttons
             if self.wizard():
@@ -139,18 +178,33 @@ class RunPage(BaseWizardPage):
             self.cmd_display.setPlainText(f"Error generating command: {str(e)}")
             self.run_btn.setEnabled(False)
     
+    def _update_run_btn_text(self, checked: bool):
+        """Update Run button text based on ignore checkpoint toggle."""
+        if checked:
+            self.run_btn.setText("Run Fresh Analysis")
+        else:
+            self.run_btn.setText("Run Analysis")
+
     def run_analysis(self):
         """Run the ESL-PSC analysis."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         os.chdir(project_root)
         try:
-            # Ask for confirmation if output will be overwritten
             output_dir = self.config.output_dir
             base_name = self.config.output_file_base_name
-            if os.path.isdir(output_dir):
-                # Determine if the current run will overwrite existing files by
-                # checking for *exact* filename matches of the outputs that will
-                # be produced. 
+
+
+
+            # Reset progress bars for new run
+            self.overall_progress_bar.setValue(0)
+            self.step_progress_bar.setValue(0)
+
+            # 2) Show overwrite warning only for a *fresh* run (no checkpoint or user forces fresh)
+            from esl_psc_cli.checkpoint import Checkpointer
+            cp = Checkpointer(output_dir)
+            fresh_run = self.ignore_cp_checkbox.isChecked() or not cp.has_checkpoint()
+
+            if fresh_run and os.path.isdir(output_dir):
                 expected_output_filenames = [
                     f"{base_name}_gene_ranks.csv",
                     f"{base_name}_species_predictions.csv",
@@ -175,6 +229,9 @@ class RunPage(BaseWizardPage):
                         return
 
             args = self.config.get_command_args()
+            # Append flag if user wants to ignore checkpoint
+            if self.ignore_cp_checkbox.isVisible() and self.ignore_cp_checkbox.isChecked():
+                args.append("--force_from_beginning")
 
             # Update UI for running state
             self.run_btn.setEnabled(False)
@@ -259,7 +316,8 @@ class RunPage(BaseWizardPage):
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
         self.run_btn.setEnabled(True)
-        self.run_btn.setText("Run New Analysis")
+        # Preserve checkbox state when run stops/finishes
+        self._update_run_btn_text(self.ignore_cp_checkbox.isChecked())
         self.analysis_completed = True  # Mark analysis as completed
         self.stop_btn.setEnabled(False)
 
@@ -298,7 +356,7 @@ class RunPage(BaseWizardPage):
                 self.selected_sites_path = sites_path
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
-            self.append_error("\n🛑 Analysis was stopped.")
+            self.append_output("\n🛑 Analysis was stopped.")
         else:
             self.step_status_label.setText("Analysis failed.")
-            self.append_error(f"\n❌ Analysis failed with exit code {exit_code}.")
+            self.append_error(f"\n❌ Analysis failed due to an error.")
