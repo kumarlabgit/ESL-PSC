@@ -203,10 +203,8 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
                     # this means the species is canceled so add a True
                     species_canceled.append(True)
             if any(species_canceled):
-                if not args.cancel_only_partner:
-                    fully_canceled_genes += 1
                 if args.nix_full_deletions:
-                    continue # don't make a file for this one if any canceled
+                    continue  # don't make a file for this one if any canceled
 
             # check if whole gene will be fully canceled due to missing species
             # make a list of 2-item lists, one for each contrast pair
