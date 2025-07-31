@@ -188,11 +188,6 @@ class ESLWorker(QRunnable):
                     # After deletion-canceler finished, per-combo alignment generation is noisy – suppress in progress bars and logs
                     return True
 
-                # Suppress verbose argument echo from ESL preprocess binary
-                # Skip the noisy header line that precedes argument echo in preprocess output.
-                if line.startswith("You have entered"):
-                    return True
-
                 # ESL preprocess step indicator
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
                     # We’re now in phase 2 (preprocess)
