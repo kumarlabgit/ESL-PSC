@@ -18,6 +18,7 @@ import os
 import pickle
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
 
 __all__ = ["Checkpointer"]
 
@@ -119,7 +120,22 @@ class Checkpointer:
             return None, []
         with open(self.state_file, "rb") as fh:
             state = pickle.load(fh)
-        return state.get("gene_objects_dict"), state.get("master_run_list")
+
+        gene_objects = state.get("gene_objects_dict")
+        master_runs = state.get("master_run_list")
+
+        # Restore defaultdict behavior stripped during checkpointing
+        if gene_objects:
+            for gene in gene_objects.values():
+                if hasattr(gene, "selected_sites") and isinstance(gene.selected_sites, dict):
+                    gene.selected_sites = defaultdict(lambda: 0, gene.selected_sites)
+
+        if master_runs:
+            for run in master_runs:
+                if hasattr(run, "species_scores") and isinstance(run.species_scores, dict):
+                    run.species_scores = defaultdict(lambda: 0.0, run.species_scores)
+
+        return gene_objects, master_runs
 
     # ------------------------------------------------------------------
     # Writing helpers
@@ -160,14 +176,20 @@ class Checkpointer:
         self._append_run_audit(combo_idx, runs_this_combo)
 
         # 2) atomically write pickle state
-        # Convert any un-picklable defaultdict(lambda: 0) to a plain dict in-place
+        # Convert any un-picklable defaultdict(lambda: 0) to a plain dict
+        # during pickling but restore afterwards so in-memory objects retain
+        # their convenient default behaviour.
+        modified_genes = []
         for gene in gene_objects_dict.values():
-            if hasattr(gene, "selected_sites") and isinstance(gene.selected_sites, dict):
+            if hasattr(gene, "selected_sites") and isinstance(gene.selected_sites, defaultdict):
                 gene.selected_sites = dict(gene.selected_sites)  # strip the lambda
+                modified_genes.append(gene)
         # Also sanitise any defaultdicts in ESLRun objects
+        modified_runs = []
         for run in master_run_list:
-            if hasattr(run, "species_scores") and isinstance(run.species_scores, dict):
+            if hasattr(run, "species_scores") and isinstance(run.species_scores, defaultdict):
                 run.species_scores = dict(run.species_scores)
+                modified_runs.append(run)
         tmp = NamedTemporaryFile("wb", delete=False, dir=self.cp_dir)
         pickle.dump(
             {
@@ -181,6 +203,12 @@ class Checkpointer:
         os.fsync(tmp.fileno())
         tmp.close()
         os.replace(tmp.name, self.state_file)
+
+        # Restore defaultdict wrappers now that pickling is done
+        for gene in modified_genes:
+            gene.selected_sites = defaultdict(lambda: 0, gene.selected_sites)
+        for run in modified_runs:
+            run.species_scores = defaultdict(lambda: 0.0, run.species_scores)
 
         # 3) update last combo index
         with open(self.meta_file, "w") as fh:
