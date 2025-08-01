@@ -187,9 +187,11 @@ class InputPage(BaseWizardPage):
         self.species_phenotypes = FileSelector(
             "Species Phenotypes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: comma-separated file with species phenotypes. "
-            "First column is species ID, second column is phenotype value (1 or -1).\n"
-            "This is *required* for species prediction analyses."
+            description=(
+                "Optional: comma-separated file with species phenotypes. "
+                "First column is species ID, second column is phenotype value (1 or -1).\n"
+                "If omitted, the predictions output will not include a true phenotype column."
+            ),
         )
         self.species_phenotypes.path_changed.connect(
             lambda p: setattr(self.config, 'species_phenotypes_file', p)
@@ -211,8 +213,8 @@ class InputPage(BaseWizardPage):
         self.limited_genes = FileSelector(
             "Limited Genes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: File containing list of alignment files. "
-            "The analysis will be limited to only those alignments even if more are in your alignments directory."
+            description="Optional: TEXT file with one alignment file *name* per line (no directory paths). "
+            "Each name must exactly match a `.fas` file in your alignments directory. The analysis will be limited to only those alignments even if more are present."
         )
         self.limited_genes.path_changed.connect(
             lambda p: setattr(self.config, 'limited_genes_file', p)

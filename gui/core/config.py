@@ -91,6 +91,8 @@ class ESLConfig:
             a += ["--species_groups_file", self.species_groups_file]
         if self.species_phenotypes_file:
             a += ["--species_pheno_path", self.species_phenotypes_file]
+        if self.limited_genes_file:
+            a += ["--limited_genes_list", self.limited_genes_file]
         if self.response_dir:
             a += ["--response_dir", self.response_dir]
             

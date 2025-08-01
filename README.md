@@ -105,7 +105,7 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 
-ESL-PSC automatically checkpoints progress **by default** for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
+ESL-PSC automatically checkpoints progress by default for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
 
 How it works in brief:
 
@@ -164,7 +164,7 @@ To use this feature:
 
 2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
 
-3. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, you can submit a limited genes list file, which is a text file containing one alignment file name on each line. Note that these names must exactly match the ones in the alignments directory, and must end in `.fas` like they do. Use the argument `--limited_genes_list` and give the full absolute path to the file.
+3. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, provide a limited-genes list file. This is a plain-text file with one alignment file *name* per line – no directory paths. Each name must exactly match a `.fas` file in your alignments directory (including the `.fas` extension). Use the argument `--limited_genes_list` and give the full absolute path to this list file.
 
 ## Output Data ##
 

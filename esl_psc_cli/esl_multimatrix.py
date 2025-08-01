@@ -39,6 +39,10 @@ def validate_specific_paths(args):
             continue
 
         # Check existence
+        if attr_name == 'canceled_alignments_dir' and not getattr(args, 'use_existing_alignments', False):
+            # This directory will be created during the run when not reusing alignments
+            continue
+
         if not os.path.exists(path_value):
             problem_paths.append(f"{attr_name} = '{path_value}'")
 
@@ -49,6 +53,41 @@ def validate_specific_paths(args):
             + "\nPlease check these paths for errors."
         )
         raise ValueError(error_msg)
+
+def validate_limited_genes_list(limited_list_path, alignments_dir):
+    """Ensure that at least one of the genes specified in the limited genes
+    list exists in the alignments directory and print a helpful summary.
+
+    Args:
+        limited_list_path (str): Path to the limited genes list text file.
+        alignments_dir (str): Directory containing input alignment files.
+
+    Raises:
+        ValueError: If none of the genes in the list are found in the
+            alignments directory.
+    """
+    if not limited_list_path:
+        return  # Nothing to validate
+    if not os.path.isfile(limited_list_path):
+        raise ValueError(f"Limited genes list file not found: {limited_list_path}")
+
+    # Collect requested gene file names (strip whitespace)
+    requested = set(ecf.file_lines_to_list(limited_list_path))
+    requested = {name for name in requested if name}  # drop empties
+    total_requested = len(requested)
+
+    # Collect .fas file names present in alignments directory (non-recursive)
+    present = {f for f in os.listdir(alignments_dir) if ecf.is_fasta(f)}
+
+    found = requested & present
+    print(f"Limited genes check: found {len(found)} / {total_requested} genes from the limited list in '{alignments_dir}'.")
+
+    if len(found) == 0:
+        raise ValueError(
+            "None of the genes listed in --limited_genes_list were found in the alignments directory. "
+            "Please confirm that the list contains only file names that exactly match .fas files in the directory."
+        )
+
 
 def check_species_in_alignments(list_of_species_combos, alignments_dir):
     '''
@@ -589,12 +628,34 @@ def main(raw_args=None):
     if not resume_mode:
         validate_specific_paths(args)
         ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        # --- Limited genes list sanity check --------------------------------
+        validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
         if (args.prediction_alignments_dir
                 and args.prediction_alignments_dir != args.alignments_dir):
             ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
         if args.use_existing_alignments and args.canceled_alignments_dir:
             ecf.validate_alignment_dir_two_line(
                 args.canceled_alignments_dir, recursive=True)
+
+        # --- Heuristic checks for common file mix-ups ----------------------
+        if args.species_groups_file:
+            looks_like_pheno, sample = ecf.species_groups_file_looks_like_pheno(
+                args.species_groups_file)
+            if looks_like_pheno:
+                msg = [
+                    "The file specified by --species_groups_file looks like a *species phenotype* file, not a groups file.",
+                    "Each line in a groups file should list one or more species separated by commas, *without* trailing phenotype values (1/-1).",
+                    "Here are some example lines that triggered this warning:",
+                ] + [f"    {ln}" for ln in sample]
+                raise ValueError("\n".join(msg))
+        if args.species_pheno_path:
+            bad_lines = ecf.validate_species_pheno_file(args.species_pheno_path)
+            if bad_lines:
+                msg = [
+                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<1|-1>).",
+                    "Problematic lines (up to first 5):",
+                ] + [f"    {ln}" for ln in bad_lines]
+                raise ValueError("\n".join(msg))
 
         # write the configuration snapshot now (skip when resuming)
         run_cfg_path = os.path.join(
