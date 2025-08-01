@@ -148,6 +148,7 @@ class RunPage(BaseWizardPage):
             last_done = cp.get_last_combo()
             human_combo = last_done + 1 if last_done is not None else "?"
             self.checkpoint_label.setText(f"Checkpoint detected at combo {human_combo}")
+            self.checkpoint_label.show()
             self.ignore_cp_checkbox.show()
             self.ignore_cp_checkbox.setChecked(False)
             self._update_run_btn_text(False)
@@ -364,7 +365,7 @@ class RunPage(BaseWizardPage):
             self.append_output("\n🛑 Analysis was stopped.")
         else:
             self.step_status_label.setText("Analysis failed.")
-            self.append_error(f"\n❌ Analysis failed due to an error.")
+            self.append_output("\n❌ Analysis failed due to an error (see above).")
 
         # Refresh checkpoint status and UI (label/checkbox visibility & text)
         # after the analysis terminates in any way.

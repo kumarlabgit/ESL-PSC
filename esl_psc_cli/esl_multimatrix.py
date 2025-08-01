@@ -570,7 +570,7 @@ def main(raw_args=None):
             cp_obj.clear()
 
         elif cp_obj.has_checkpoint() and not cp_obj.is_same_command(vars(args)):
-            print("Checkpoint exists but command-line arguments differ on critical parameters; "
+            print("\nCheckpoint exists but command-line arguments differ on critical parameters; "
                   "cannot resume.")
             for diff in cp_obj.last_diff:
                 print("  -", diff)
