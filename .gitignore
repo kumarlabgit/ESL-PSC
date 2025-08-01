@@ -30,8 +30,7 @@ demo_gene_ranks.csv
 demo_species_predictions.csv
 demo_output/demo_selected_sites.csv
 echo_config.json
-echo_output/echo_gene_ranks.csv
-echo_output/echo_selected_sites.csv
+echo_output/
 
 esl_trace.log
 photo_multi_species_groups.txt

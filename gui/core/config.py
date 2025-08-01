@@ -187,17 +187,15 @@ class ESLConfig:
                 parts.append(arg)
                 i += 1
         
-        # Decide the appropriate line-continuation character for the platform.
-        #   * POSIX shells (Linux/macOS): use backslash ( \\ )
-        #   * Windows CMD:               use caret ( ^ )
-        # PowerShell also accepts the backtick ( ` ), but caret works in a wider
-        # range of default Windows shells (including the packaged build that
-        # bundles python and runs via cmd.exe), so we prefer it here.
-        cont_char = "^" if os.name == "nt" else "\\"
+        # On Windows, show the entire command on a single line so it can be
+        # pasted into either PowerShell or cmd.exe without line-continuation
+        # issues.  On POSIX systems continue to use a multiline format with
+        # backslash continuations for readability.
+        if os.name == "nt":
+            return " ".join(parts)
 
-        # Join with OS-specific continuation character followed by newline and
-        # two-space indentation for readability in the GUI.
-        return f" {cont_char}\n  ".join(parts)
+        # Multiline, POSIX-friendly format
+        return " \\\n  ".join(parts)
 
     def get_command_args(self) -> List[str]:
         """

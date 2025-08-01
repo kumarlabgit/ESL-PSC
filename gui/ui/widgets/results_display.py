@@ -161,7 +161,7 @@ class GeneRanksDialog(QDialog):
         rename_map = {
             'gene_name': 'Gene',
             'highest_gss': 'Highest GSS',
-            'highest_ever_gss': 'Highest GSS',
+            'highest_ever_gss': 'Highest Ever GSS',
             'best_rank': 'Best Rank',
             'best_ever_rank': 'Best Ever Rank',
             'num_selected_sites': 'Number of Selected Sites',

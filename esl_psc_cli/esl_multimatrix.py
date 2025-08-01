@@ -63,24 +63,39 @@ def check_species_in_alignments(list_of_species_combos, alignments_dir):
     
     # Collect all species actually found in the alignment files
     found_species = set()
+    alignment_files = []  # keep for counting / messaging
+
     if not os.path.isdir(alignments_dir):
-        raise ValueError(f"Alignment directory '{alignments_dir}'"
-                         "does not exist or is not a directory.")
-    
+        raise ValueError(
+            f"Alignment directory '{alignments_dir}' does not exist or is not a directory."
+        )
+
+    # Iterate once through directory to gather species & count files
     for file_name in os.listdir(alignments_dir):
         if ecf.is_fasta(file_name):
+            alignment_files.append(file_name)
             file_path = os.path.join(alignments_dir, file_name)
-            for record in SeqIO.parse(file_path, 'fasta'):
-                # record.id is your species ID/header
+            for record in SeqIO.parse(file_path, "fasta"):
                 found_species.add(record.id)
-    
+
+    num_alignments = len(alignment_files)
+    print(f"Found {num_alignments} alignment file(s) in '{alignments_dir}'.")
+
+    # If there are no alignment files at all, alert early with a dedicated message
+    if num_alignments == 0:
+        raise ValueError(
+            f"No alignment files were found in '{alignments_dir}'. "
+            "Please check the directory and ensure alignment FASTA files are present before continuing."
+        )
+
     # Determine if any species are missing
     missing_species = all_species - found_species
     if missing_species:
+        # Still raise, but we have already printed the alignment count above
         raise ValueError(
-            f"The following species from the species groups file were not "
-            f"found in any alignment in '{alignments_dir}':\n"
-            f"{', '.join(sorted(missing_species))} Double check the spelling"
+            "The following species from the species groups file were not "
+            f"found in any of the {num_alignments} alignment file(s) in '{alignments_dir}':\n"
+            f"{', '.join(sorted(missing_species))}"
         )
 
 def check_species_in_existing_alignments(list_of_species_combos, canceled_alignments_dir):
@@ -95,27 +110,40 @@ def check_species_in_existing_alignments(list_of_species_combos, canceled_alignm
         all_species.update(combo)
 
     found_species = set()
+    alignment_files = []
+
     if not os.path.isdir(canceled_alignments_dir):
         raise ValueError(
-            f"Canceled alignment directory '{canceled_alignments_dir}' does not "
-            "exist or is not a directory."
+            f"Canceled alignment directory '{canceled_alignments_dir}' does not exist or is not a directory."
         )
 
+    # Walk the directory tree collecting alignment files and species ids
     for root, _, files in os.walk(canceled_alignments_dir):
         for file_name in files:
             if ecf.is_fasta(file_name):
+                alignment_files.append(os.path.join(root, file_name))
                 file_path = os.path.join(root, file_name)
                 try:
-                    for record in SeqIO.parse(file_path, 'fasta'):
+                    for record in SeqIO.parse(file_path, "fasta"):
                         found_species.add(record.id)
                 except Exception:
+                    # Skip unreadable files but continue processing others
                     continue
+
+    num_alignments = len(alignment_files)
+    print(f"Found {num_alignments} gap-canceled alignment file(s) in '{canceled_alignments_dir}'.")
+
+    if num_alignments == 0:
+        raise ValueError(
+            f"No alignment files were found in '{canceled_alignments_dir}'. "
+            "Provide the expected gap-canceled alignments or rerun without --use_existing_alignments."
+        )
 
     missing_species = all_species - found_species
     if missing_species:
         raise ValueError(
             "The following species from the species groups file were not "
-            f"found in any alignment in '{canceled_alignments_dir}':\n"
+            f"found in any of the {num_alignments} alignment file(s) in '{canceled_alignments_dir}':\n"
             f"{', '.join(sorted(missing_species))}"
         )
 
@@ -273,8 +301,7 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                     use_is=True,
                 )
 
-            print(f"--- Building models for combo {combo_num + 1} of"
-                  f" {total_combos} ({combo_name}) ---")
+            print(f"--- Building models for combo {combo_num + 1} of {total_combos} ---")
 
             _, run_list = esl_int.esl_integration(
                 args,
@@ -469,49 +496,23 @@ def main(raw_args=None):
 
     # ensure the output directory actually exists
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
+   
     # if use_uncanceled_alignments option is given, set canceled alignments dir
     if args.use_uncanceled_alignments:
         args.canceled_alignments_dir = args.alignments_dir
         args.use_existing_alignments = True # set this for convenience
 
-    # ------------------------------------------------------------------
-    # checkpoint detection (disabled if --no_checkpoint)
-    # ------------------------------------------------------------------
-    resume_mode = False
-    cp_obj_early = None
-    if not args.no_checkpoint:
-        cp_obj_early = cp_mod.Checkpointer(args.output_dir)
-        # If user requests start from scratch, clear any existing checkpoint *before* further checks
-        if args.force_from_beginning and cp_obj_early.has_checkpoint():
-            print("--force_from_beginning specified: clearing existing checkpoint (early stage).")
-            cp_obj_early.clear()
-        if cp_obj_early.has_checkpoint():
-            resume_mode = True
-            # Ensure we don't regenerate alignments or preprocess directories
-            args.use_existing_alignments = True
-            args.use_existing_preprocess = True
-            # Retrieve paths that may not have been provided on the command line
-            stored_cmd = cp_obj_early.load_command() or {}
-            if not args.canceled_alignments_dir:
-                args.canceled_alignments_dir = stored_cmd.get("canceled_alignments_dir")
-            if not args.alignments_dir:
-                args.alignments_dir = stored_cmd.get("alignments_dir")
+    # set canceled_alignments_dir if not given  
+    if args.canceled_alignments_dir is None:
+        if args.species_groups_file:
+            base = os.path.basename(args.species_groups_file).replace(".txt", "")
+        else:
+            base = args.output_file_base_name.replace(".txt", "")
+        args.canceled_alignments_dir = os.path.join(
+            args.output_dir, f"{base}_gap-canceled_alignments"
+        )
 
-
-    validate_specific_paths(args)  # verify that dir and file paths are real
-
-    # Ensure all alignments are in 2-line FASTA format (skip on resume)
-    if not resume_mode:
-        ecf.validate_alignment_dir_two_line(args.alignments_dir)
-        if (args.prediction_alignments_dir
-                and args.prediction_alignments_dir != args.alignments_dir):
-            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
-        if args.use_existing_alignments and args.canceled_alignments_dir:
-            ecf.validate_alignment_dir_two_line(args.canceled_alignments_dir, recursive=True)
-
-
-        
     
     # 1) Generate a List of Response Matrix Files. this can either be from a
     #   species group file or from a provided folder of response files
@@ -555,6 +556,81 @@ def main(raw_args=None):
         raise ValueError("must give either response_dir or species_groups_file")
     # we now have a response_file_list and a response_dir with the files in it
 
+    # ---- Checkpoint handling (moved up – happens *before* any heavy work) ----
+    resume_mode = False
+    cp_obj = None
+    resume_start_idx = 0
+    checkpoint_enabled = (not args.no_checkpoint) and len(list_of_species_combos) > 1
+
+    if checkpoint_enabled:
+        cp_obj = cp_mod.Checkpointer(args.output_dir)
+
+        if args.force_from_beginning:
+            print("--force_from_beginning specified: clearing existing checkpoint (if any).")
+            cp_obj.clear()
+
+        elif cp_obj.has_checkpoint() and not cp_obj.is_same_command(vars(args)):
+            print("\nCheckpoint exists but command-line arguments differ on critical parameters; "
+                  "cannot resume.")
+            for diff in cp_obj.last_diff:
+                print("  -", diff)
+            print("Use --force_from_beginning to start over.")
+            sys.exit(1)
+
+        if cp_obj.has_checkpoint():
+            # Safe to reuse outputs/alignments → avoid repeating heavy steps
+            args.use_existing_preprocess = True
+            args.use_existing_alignments = True
+            resume_mode = True
+
+    # ------------------------------------------------------------------
+    # For **fresh** runs: validate paths, FASTA format, & write run-config
+    # ------------------------------------------------------------------
+    if not resume_mode:
+        validate_specific_paths(args)
+        ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        if (args.prediction_alignments_dir
+                and args.prediction_alignments_dir != args.alignments_dir):
+            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+        if args.use_existing_alignments and args.canceled_alignments_dir:
+            ecf.validate_alignment_dir_two_line(
+                args.canceled_alignments_dir, recursive=True)
+
+        # write the configuration snapshot now (skip when resuming)
+        run_cfg_path = os.path.join(
+            args.output_dir,
+            f"{args.output_file_base_name}_run_config.txt",
+        )
+        try:
+            with open(run_cfg_path, "w", encoding="utf-8") as fh:
+                for key, val in sorted(vars(args).items()):
+                    if key.startswith("_"):
+                        continue
+                    flag = f"--{key}"
+                    if isinstance(val, bool):
+                        if val:
+                            fh.write(f"{flag}\n")
+                    elif val is not None:
+                        fh.write(f"{flag} {val}\n")
+        except Exception as exc:
+            print(f"[WARN] Failed to write run-config file: {exc}")
+    else:
+        # Resuming – figure out where to pick up and load previous state
+        last_done = cp_obj.get_last_combo()
+        if last_done is not None:
+            resume_start_idx = last_done + 1
+            if resume_start_idx >= len(list_of_species_combos):
+                print("All combos completed according to checkpoint – skipping integration.")
+                gene_objects_dict, master_run_list = cp_obj.load_state()
+                list_of_species_combos = []
+                response_file_list = []
+            else:
+                print(f"Resuming after combo {last_done + 1}. "
+                      f"Continuing with combo {resume_start_idx + 1}.")
+                list_of_species_combos = list_of_species_combos[resume_start_idx:]
+                response_file_list = response_file_list[resume_start_idx:]
+
+        gene_objects_dict, master_run_list = cp_obj.load_state()
 
 
     if args.make_null_models:
@@ -569,27 +645,7 @@ def main(raw_args=None):
 
     # 2) Generate Gap-canceled Alignments
     if not args.use_existing_alignments: # skip if using existing alignments
-        if not args.canceled_alignments_dir: # new alignments path not given
-            if args.species_groups_file: # use species groups file name
-                dir_name = os.path.basename(args.species_groups_file).replace('.txt','')
-            else: # use output base name if no groups file
-                dir_name = args.output_file_base_name.replace('.txt','')
-            dir_name += '_gap-canceled_alignments'
-            args.canceled_alignments_dir = os.path.join(args.output_dir,
-                                                    dir_name)
-        # if the folder already exists, remove it, but check with user first
-        elif os.path.exists(args.canceled_alignments_dir):
-            print('Canceled alignment directory: '
-                  + args.canceled_alignments_dir)
-            Q = input("the named gap-canceled alignments folder exists already."
-                      " Are you sure you want to delete it and generate new "
-                      "alignments? enter y to continue or anything else to "
-                      "quit")
-            if Q != 'y': # give the user a chance to quit
-                raise Exception("Canceled by user. use "
-                                "--use_existing_alignments option to use the "
-                                "existing alignments but they must have "
-                                "correct subfolder names")             
+        # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
         # generate new alignments
         dc.generate_gap_canceled_alignments(args, list_of_species_combos,
@@ -610,52 +666,22 @@ def main(raw_args=None):
             os.remove(file) 
     os.chdir(previous_working_dir) # go back to original working dir
 
-        # ---- Checkpoint handling -------------------------------------------
-    cp_obj = None
-    resume_start_idx = 0
-    checkpoint_enabled = (not args.no_checkpoint) and len(list_of_species_combos) > 1
-    if checkpoint_enabled:
-        cp_obj = cp_mod.Checkpointer(args.output_dir)
-        if args.force_from_beginning:
-            print("--force_from_beginning specified: clearing existing checkpoint (if any).")
-            cp_obj.clear()
-        elif cp_obj.has_checkpoint() and not cp_obj.is_same_command(vars(args)):
-            print("Checkpoint exists but command-line arguments differ on critical parameters; cannot resume.")
-            for diff in cp_obj.last_diff:
-                print("  -", diff)
-            print("Use --force_from_beginning to start over.")
-            sys.exit(1)
-
-        last_done = cp_obj.get_last_combo()
-        if last_done is not None:
-            resume_start_idx = last_done + 1
-            if resume_start_idx >= len(list_of_species_combos):
-                print("All combos already completed according to checkpoint – nothing to do! Proceeding to output generation.")
-                # Load state so we can still generate outputs
-                gene_objects_dict, master_run_list = cp_obj.load_state()
-                list_of_species_combos = []
-                response_file_list = []
-            print(f"Resuming after combo {last_done}. Starting at combo index {resume_start_idx}.")
-            list_of_species_combos = list_of_species_combos[resume_start_idx:]
-            response_file_list = response_file_list[resume_start_idx:]
-
     
-        # load prior state if resuming
-        if resume_start_idx > 0:
-            gene_objects_dict, master_run_list = cp_obj.load_state()
-        else:
-            gene_objects_dict, master_run_list = None, None
-
+    # ---- Checkpoint handling (dispatch) ----
+    if not resume_mode:
+        gene_objects_dict = None
+        master_run_list   = None
+    if checkpoint_enabled:
         gene_objects_dict, master_run_list = run_multi_matrix_integration(
-                                                    args,
-                                                    list_of_species_combos,
-                                                    response_file_list,
-                                                    checkpointer=cp_obj,
-                                                    start_index=resume_start_idx,
-                                                    gene_objects_dict=gene_objects_dict,
-                                                    master_run_list=master_run_list)
+            args,
+            list_of_species_combos,
+            response_file_list,
+            checkpointer=cp_obj,
+            start_index=resume_start_idx,
+            gene_objects_dict=gene_objects_dict,
+            master_run_list=master_run_list,
+        )
     else:
-        # No checkpointing – run all combos straight through
         gene_objects_dict, master_run_list = run_multi_matrix_integration(
             args,
             list_of_species_combos,
@@ -665,6 +691,8 @@ def main(raw_args=None):
             gene_objects_dict=None,
             master_run_list=None,
         )
+
+    
 
     # 4) generate output
     # Print a clear, multi-line summary so the GUI output isn't squished
