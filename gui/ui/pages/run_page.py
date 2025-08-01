@@ -234,6 +234,11 @@ class RunPage(BaseWizardPage):
                 args.append("--force_from_beginning")
 
             # Update UI for running state
+            # Hide checkpoint details while the analysis is running –
+            # they will be refreshed when the run ends (success, stop, or error)
+            self.checkpoint_label.hide()
+            self.ignore_cp_checkbox.hide()
+
             self.run_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             if self.wizard():
@@ -360,3 +365,7 @@ class RunPage(BaseWizardPage):
         else:
             self.step_status_label.setText("Analysis failed.")
             self.append_error(f"\n❌ Analysis failed due to an error.")
+
+        # Refresh checkpoint status and UI (label/checkbox visibility & text)
+        # after the analysis terminates in any way.
+        self._update_checkpoint_status()
