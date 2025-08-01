@@ -132,12 +132,12 @@ class ParametersPage(BaseWizardPage):
         genes_only_layout.addStretch()
         file_layout.addLayout(genes_only_layout)
         
-        # Option 2: Species predictions only (requires species phenotype file)
+        # Option 2: Species predictions only
         preds_only_layout = QHBoxLayout()
-        self.preds_only_btn = QRadioButton("Species predictions only (requires species phenotype file)")
+        self.preds_only_btn = QRadioButton("Species predictions only")
         self.preds_only_btn.setToolTip(
-            "Only generate species predictions output. This requires a species phenotype file "
-            "to be specified on the input page."
+            "Only generate species predictions output. If a species phenotype file is provided,"
+            " the output will include a true phenotype column."
         )
         self.preds_only_btn.toggled.connect(
             lambda checked: setattr(self.config, 'no_genes_output', checked)
@@ -152,7 +152,8 @@ class ParametersPage(BaseWizardPage):
         self.both_outputs_btn = QRadioButton("Both outputs (slowest)")
         self.both_outputs_btn.setToolTip(
             "Generate both gene ranks and species predictions outputs. "
-            "This is the most comprehensive but slowest option."
+            "If a species phenotype file is provided, the predictions file will include "
+            "a true phenotype column. This is the most comprehensive but slowest option."
         )
         self.both_outputs_btn.setChecked(True)  # Default selection
         self.output_options_group.addButton(self.both_outputs_btn)
@@ -284,19 +285,30 @@ class ParametersPage(BaseWizardPage):
         
         # Connect output type changes to enable/disable SPS plot options
         def update_sps_plot_state():
-            enable_sps = not self.genes_only_btn.isChecked()
-            # Set the entire group box and its children enabled/disabled
+            enable_sps = not self.genes_only_btn.isChecked() and self.has_species_pheno
             self.sps_plot_group.setEnabled(enable_sps)
-            # Visually indicate the disabled state
             self.sps_plot_group.setStyleSheet(
                 "QGroupBox:disabled { color: gray; }"
                 "QCheckBox:disabled { color: gray; }"
             )
+
+            if self.has_species_pheno:
+                self.make_sps_plot.setToolTip(
+                    "Create violin plots showing SPS density for each true phenotype."
+                )
+                self.make_sps_kde_plot.setToolTip(
+                    "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
+                )
+            else:
+                warn = "<font color='red'>Requires species phenotype file to generate SPS plots.</font>"
+                self.make_sps_plot.setToolTip(warn)
+                self.make_sps_kde_plot.setToolTip(warn)
         
         self.genes_only_btn.toggled.connect(update_sps_plot_state)
         self.preds_only_btn.toggled.connect(update_sps_plot_state)
         self.both_outputs_btn.toggled.connect(update_sps_plot_state)
         update_sps_plot_state()  # Initial update
+        self._update_sps_plot_state = update_sps_plot_state
 
         # Keep raw output
         self.keep_raw_output_chk = QCheckBox("Keep raw model weights files")
@@ -1013,44 +1025,40 @@ class ParametersPage(BaseWizardPage):
             # Check if widgets still exist
             if not hasattr(self, 'preds_only_btn') or not self.preds_only_btn:
                 return
-                
-            # Update UI state based on our flag
-            try:
-                # Only update if state would change
-                if self.preds_only_btn.isEnabled() != self.has_species_pheno:
-                    self.preds_only_btn.setEnabled(self.has_species_pheno)
-                    self.both_outputs_btn.setEnabled(self.has_species_pheno)
-                
-                # Update tooltips
-                if self.has_species_pheno:
-                    self.preds_only_btn.setToolTip(
-                        "Only generate species predictions output. This requires a species phenotype file "
-                        "to be specified on the input page."
-                    )
-                    self.both_outputs_btn.setToolTip(
-                        "Generate both gene ranks and species predictions outputs. "
-                        "This is the most comprehensive but slowest option."
-                    )
-                else:
-                    self.preds_only_btn.setToolTip(
-                        "<font color='red'>Requires species phenotype file to be specified on the input page.</font>"
-                    )
-                    self.both_outputs_btn.setToolTip(
-                        "<font color='red'>Requires species phenotype file to be specified on the input page.</font>"
-                    )
-                
-                # If species predictions were selected but no phenotype file, switch to gene ranks only
-                if not self.has_species_pheno and (self.preds_only_btn.isChecked() or self.both_outputs_btn.isChecked()):
-                    self.genes_only_btn.setChecked(True)
-                    
-            except RuntimeError:
-                # Widgets have been deleted, ignore
-                pass
-                
+
+            # Always enable prediction options
+            self.preds_only_btn.setEnabled(True)
+            self.both_outputs_btn.setEnabled(True)
+
+            # Update tooltips based on phenotype file availability
+            if self.has_species_pheno:
+                self.preds_only_btn.setToolTip(
+                    "Only generate species predictions output. The predictions file will include a true phenotype column."
+                )
+                self.both_outputs_btn.setToolTip(
+                    "Generate both gene ranks and species predictions outputs. The predictions file will include a true phenotype column."
+                )
+            else:
+                warn = (
+                    "Only generate species predictions output. The predictions file will not include a true phenotype column."
+                )
+                self.preds_only_btn.setToolTip(warn)
+                self.both_outputs_btn.setToolTip(
+                    "Generate both gene ranks and species predictions outputs. The predictions file will not include a true phenotype column."
+                )
+
+        except RuntimeError:
+            # Widgets have been deleted, ignore
+            pass
+
         except Exception as e:
             print(f"Error updating output options state: {e}")
             # Ignore any other errors
             pass
+
+        # Update SPS plot availability when phenotype file status changes
+        if hasattr(self, '_update_sps_plot_state'):
+            self._update_sps_plot_state()
             
 
     

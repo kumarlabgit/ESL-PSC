@@ -39,6 +39,10 @@ def validate_specific_paths(args):
             continue
 
         # Check existence
+        if attr_name == 'canceled_alignments_dir' and not getattr(args, 'use_existing_alignments', False):
+            # This directory will be created during the run when not reusing alignments
+            continue
+
         if not os.path.exists(path_value):
             problem_paths.append(f"{attr_name} = '{path_value}'")
 
