@@ -17,6 +17,70 @@ from matplotlib.backends import backend_svg  # noqa: F401
 from itertools import combinations, chain
 from statistics import median
 
+# ------------------------------------------------------------
+# Heuristic checks for misloaded input files (species groups vs phenotype)
+# ------------------------------------------------------------
+
+def _is_pheno_line(line: str) -> bool:
+    """Return True if *line* looks like a phenotype mapping –
+    exactly two comma-separated fields where the second field is 1 or -1."""
+    parts = [p.strip() for p in line.strip().split(',')]
+    return len(parts) == 2 and parts[1] in {"1", "-1"} and bool(parts[0])
+
+
+def species_groups_file_looks_like_pheno(file_path: str, *, sample_size: int = 20, threshold: float = 0.8):
+    """Inspect *file_path* (expected to be a *species groups* file) and guess if
+    it was actually a *species phenotype* file mistakenly provided.
+
+    The heuristic examines up to *sample_size* non-empty lines. If at least
+    *threshold* fraction of the inspected lines look like phenotype mappings
+    (see :func:`_is_pheno_line`), the function returns ``(True, sample_lines)``
+    where *sample_lines* is a list of up to 5 phenotype-looking lines to show
+    the user. Otherwise it returns ``(False, [])``.
+    """
+    pheno_like_lines = []
+    total_lines = 0
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                if total_lines >= sample_size:
+                    break
+                line = raw.strip()
+                if not line:
+                    continue
+                total_lines += 1
+                if _is_pheno_line(line):
+                    if len(pheno_like_lines) < 5:
+                        pheno_like_lines.append(line)
+    except Exception:
+        # On any IO error, treat as not pheno – the caller will hit regular IO checks later
+        return False, []
+
+    if total_lines == 0:
+        return False, []
+    frac = len(pheno_like_lines) / total_lines
+    return frac >= threshold, pheno_like_lines
+
+
+def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
+    """Return a list of lines (with line numbers) that violate the expected
+    ``<species>,<1|-1>`` format. If the returned list is empty, the file looks ok.
+    """
+    bad_lines = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for idx, raw in enumerate(fh, 1):
+                line = raw.strip()
+                if not line:
+                    continue  # allow blank lines
+                if not _is_pheno_line(line):
+                    bad_lines.append(f"{idx}: {line}")
+                    if len(bad_lines) >= max_errors:
+                        break
+    except Exception as exc:
+        bad_lines.append(f"[IO ERROR] {exc}")
+    return bad_lines
+
 
 def get_binary_path(esl_dir, base_name):
     """Return the absolute path to an ESL binary appropriate for this OS."""

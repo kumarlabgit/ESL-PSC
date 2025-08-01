@@ -596,6 +596,26 @@ def main(raw_args=None):
             ecf.validate_alignment_dir_two_line(
                 args.canceled_alignments_dir, recursive=True)
 
+        # --- Heuristic checks for common file mix-ups ----------------------
+        if args.species_groups_file:
+            looks_like_pheno, sample = ecf.species_groups_file_looks_like_pheno(
+                args.species_groups_file)
+            if looks_like_pheno:
+                msg = [
+                    "The file specified by --species_groups_file looks like a *species phenotype* file, not a groups file.",
+                    "Each line in a groups file should list one or more species separated by commas, *without* trailing phenotype values (1/-1).",
+                    "Here are some example lines that triggered this warning:",
+                ] + [f"    {ln}" for ln in sample]
+                raise ValueError("\n".join(msg))
+        if args.species_pheno_path:
+            bad_lines = ecf.validate_species_pheno_file(args.species_pheno_path)
+            if bad_lines:
+                msg = [
+                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<1|-1>).",
+                    "Problematic lines (up to first 5):",
+                ] + [f"    {ln}" for ln in bad_lines]
+                raise ValueError("\n".join(msg))
+
         # write the configuration snapshot now (skip when resuming)
         run_cfg_path = os.path.join(
             args.output_dir,
