@@ -54,6 +54,41 @@ def validate_specific_paths(args):
         )
         raise ValueError(error_msg)
 
+def validate_limited_genes_list(limited_list_path, alignments_dir):
+    """Ensure that at least one of the genes specified in the limited genes
+    list exists in the alignments directory and print a helpful summary.
+
+    Args:
+        limited_list_path (str): Path to the limited genes list text file.
+        alignments_dir (str): Directory containing input alignment files.
+
+    Raises:
+        ValueError: If none of the genes in the list are found in the
+            alignments directory.
+    """
+    if not limited_list_path:
+        return  # Nothing to validate
+    if not os.path.isfile(limited_list_path):
+        raise ValueError(f"Limited genes list file not found: {limited_list_path}")
+
+    # Collect requested gene file names (strip whitespace)
+    requested = set(ecf.file_lines_to_list(limited_list_path))
+    requested = {name for name in requested if name}  # drop empties
+    total_requested = len(requested)
+
+    # Collect .fas file names present in alignments directory (non-recursive)
+    present = {f for f in os.listdir(alignments_dir) if ecf.is_fasta(f)}
+
+    found = requested & present
+    print(f"Limited genes check: found {len(found)} / {total_requested} genes from the limited list in '{alignments_dir}'.")
+
+    if len(found) == 0:
+        raise ValueError(
+            "None of the genes listed in --limited_genes_list were found in the alignments directory. "
+            "Please confirm that the list contains only file names that exactly match .fas files in the directory."
+        )
+
+
 def check_species_in_alignments(list_of_species_combos, alignments_dir):
     '''
     Checks that every species in each combo from the species_groups_file
@@ -593,6 +628,8 @@ def main(raw_args=None):
     if not resume_mode:
         validate_specific_paths(args)
         ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        # --- Limited genes list sanity check --------------------------------
+        validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
         if (args.prediction_alignments_dir
                 and args.prediction_alignments_dir != args.alignments_dir):
             ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
