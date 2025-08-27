@@ -219,7 +219,7 @@ class TreeViewer(QWidget):
     def __init__(
         self,
         tree: Tree,
-        phenotypes: Optional[Dict[str, int]] = None,
+        phenotypes: Optional[Dict[str, float]] = None,
         *,
         on_pheno_changed: Optional[Callable[[str], None]] = None,
         on_groups_saved: Optional[Callable[[str], None]] = None,
@@ -264,6 +264,12 @@ class TreeViewer(QWidget):
         self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
 
+        # Continuous phenotype support
+        self._continuous_pheno: bool = False
+        self._pheno_min: float = 0.0
+        self._pheno_max: float = 1.0
+        self._update_pheno_mode_and_range()
+
         # Map explicit species name to total aligned amino acid sequence length.
         self._seq_lengths: Dict[str, int] = {}
         # If the user chose the "Longest Sequence" option during auto-selection, we
@@ -286,7 +292,7 @@ class TreeViewer(QWidget):
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         pheno_btn.setToolTip(
             "Load a CSV file that maps species names (as they appear in the tree) "
-            "to trait values: 1 for convergent and -1 for ancestral"
+            "to trait values. Supports binary (-1/1) and continuous floats for gradient coloring."
         )
         pheno_btn.clicked.connect(self._select_phenotypes)
 
@@ -402,6 +408,9 @@ class TreeViewer(QWidget):
         # Flag to control whether we should auto-fit the view (only on first draw)
         self._initial_draw = True
         self._draw_tree(tree)
+        # Ensure phenotype colors and any pre-existing pair overrides are applied
+        # on the first render for visual consistency with subsequent updates.
+        self._apply_pairs()
 
         # Initial window size
         self.resize(1200, 1200)
@@ -429,13 +438,58 @@ class TreeViewer(QWidget):
         for items in self._branch_lines.values():
             for it in items:
                 it.setPen(self._line_pen)
-        # Update text color for unassigned species and pair labels
+        # Keep pair labels readable with current palette
         default_color = pal.color(QPalette.ColorRole.WindowText)
-        for name, lbl in self._label_items.items():
-            if self._phenotypes.get(name) not in (1, -1):
-                lbl.setDefaultTextColor(default_color)
         for lbl in self._pair_labels:
             lbl.setDefaultTextColor(default_color)
+
+    # ------------------------------------------------------------------
+    def _update_pheno_mode_and_range(self) -> None:
+        """Detect continuous phenotypes and compute min/max for gradient mapping."""
+        vals = [float(v) for v in self._phenotypes.values()]
+        if not vals:
+            self._continuous_pheno = False
+            self._pheno_min, self._pheno_max = 0.0, 1.0
+            return
+        self._pheno_min = min(vals)
+        self._pheno_max = max(vals)
+        # Continuous if any value is not exactly -1 or 1
+        self._continuous_pheno = any(v not in (1.0, -1.0) for v in vals)
+        # Avoid zero range
+        if self._pheno_min == self._pheno_max:
+            # Expand slightly to avoid division by zero; mid maps to purple
+            self._pheno_min -= 0.5
+            self._pheno_max += 0.5
+
+    # ------------------------------------------------------------------
+    def _map_value_to_color(self, val: float) -> QColor:
+        """Map a phenotype value to a color.
+        - Continuous: gradient from bright red (low) to bright blue (high).
+        - Binary: 1 -> blue, -1 -> red.
+        """
+        if self._continuous_pheno:
+            # Normalize to [0,1]
+            t = (val - self._pheno_min) / (self._pheno_max - self._pheno_min) if self._pheno_max != self._pheno_min else 0.5
+            t = min(max(t, 0.0), 1.0)
+            r = int(round(255 * (1.0 - t)))
+            g = 0
+            b = int(round(255 * t))
+            return QColor(r, g, b)
+        # binary fallback
+        if val == 1 or val == 1.0:
+            return QColor("blue")
+        if val == -1 or val == -1.0:
+            return QColor("red")
+        return self.palette().color(QPalette.ColorRole.WindowText)
+
+    # ------------------------------------------------------------------
+    def _color_for_species(self, name: str) -> QColor:
+        """Base label color for a species based on phenotype and mode."""
+        if name not in self._phenotypes:
+            # Species without phenotype remain black
+            return QColor("black")
+        val = float(self._phenotypes.get(name, 0.0))
+        return self._map_value_to_color(val)
 
     # ------------------------------------------------------------------
     def _make_color_cursor(self, color: QColor) -> QCursor:
@@ -615,16 +669,19 @@ class TreeViewer(QWidget):
             self._update_save_btn()
         elif action == pheno_conv:
             self._phenotypes[name] = 1
+            self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
         elif action == pheno_ctrl:
             self._phenotypes[name] = -1
+            self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
         elif action == pheno_clear:
             self._phenotypes.pop(name, None)
+            self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
@@ -701,6 +758,7 @@ class TreeViewer(QWidget):
             self._phenotypes.pop(name, None)
         else:
             self._phenotypes[name] = val
+        self._update_pheno_mode_and_range()
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
@@ -810,16 +868,8 @@ class TreeViewer(QWidget):
             self.scene.removeItem(box)
         self._main_boxes.clear()
         for name, label in self._label_items.items():
-            pheno = self._phenotypes.get(name)
-            if pheno == 1:
-                color = QColor("blue")
-            elif pheno == -1:
-                color = QColor("red")
-            else:
-                # Show unassigned species in the default text color so they
-                # remain visible in dark mode.
-                color = self.palette().color(QPalette.ColorRole.WindowText)
-            label.setDefaultTextColor(color)
+            # Baseline label color from phenotype (gradient or binary)
+            label.setDefaultTextColor(self._color_for_species(name))
             label.setToolTip("")
         for p in self._pair_labels:
             self.scene.removeItem(p)
@@ -856,6 +906,8 @@ class TreeViewer(QWidget):
             ]:
                 label = self._label_items.get(name)
                 if label:
+                    # Ensure pair label color overrides phenotype color
+                    label.setDefaultTextColor(color)
                     rect = label.boundingRect().adjusted(-2, 0, 2, 0)
                     rect.moveTo(label.pos())
                     box = self.scene.addRect(rect, QPen(color, 2))
@@ -1096,7 +1148,8 @@ class TreeViewer(QWidget):
 
             saved_labels = {}
             for name, lbl in self._label_items.items():
-                if self._phenotypes.get(name) not in (1, -1):
+                # Only set to black if species has no phenotype; keep binary/continuous colors as-is
+                if name not in self._phenotypes:
                     saved_labels[lbl] = lbl.defaultTextColor()
                     lbl.setDefaultTextColor(QColor("black"))
             for lbl in self._pair_labels:
@@ -1130,7 +1183,7 @@ class TreeViewer(QWidget):
         )
         if not path:
             return
-        phenos: Dict[str, int] = {}
+        phenos: Dict[str, float] = {}
         try:
             import csv
 
@@ -1140,11 +1193,18 @@ class TreeViewer(QWidget):
                     if not row:
                         continue
                     if len(row) < 2:
-                        raise ValueError(f"Line {idx} must have two columns")
-                    val = int(row[1])
-                    if val not in (1, -1):
-                        raise ValueError(f"Invalid value '{row[1]}' on line {idx}")
-                    phenos[row[0].strip()] = val
+                        # Skip short or malformed rows (e.g., blank lines)
+                        continue
+                    name = (row[0] or "").strip()
+                    val_str = (row[1] or "").strip()
+                    if not name or not val_str:
+                        continue
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        # Skip non-numeric rows (e.g., header)
+                        continue
+                    phenos[name] = val
             if not phenos:
                 raise ValueError("No valid phenotype entries found")
         except Exception as exc:
@@ -1168,6 +1228,7 @@ class TreeViewer(QWidget):
             return
 
         self._phenotypes = phenos
+        self._update_pheno_mode_and_range()
         self._pairs.clear()
         self._current_role = None
         self._current_first = None
@@ -1210,23 +1271,6 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _invert_phenotypes(self) -> None:
         """Invert phenotype assignments and swap pair roles."""
-        for name, val in list(self._phenotypes.items()):
-            if val == 1:
-                self._phenotypes[name] = -1
-            elif val == -1:
-                self._phenotypes[name] = 1
-        for pair in self._pairs:
-            pair.convergent, pair.control = pair.control, pair.convergent
-            pair.conv_alts, pair.ctrl_alts = pair.ctrl_alts, pair.conv_alts
-        if self._current_role == "convergent":
-            self._current_role = "control"
-        elif self._current_role == "control":
-            self._current_role = "convergent"
-        if self._selection_rect is not None and self._current_first is not None:
-            color = QColor("blue") if self._current_role == "convergent" else QColor("red")
-            self._selection_rect.setPen(QPen(color, 2))
-        self._reset_scene()
-        self._draw_tree(self._tree)
         self._apply_pairs()
 
     # ------------------------------------------------------------------
@@ -1234,6 +1278,8 @@ class TreeViewer(QWidget):
         """Assign the non-convergent phenotype (-1) to every species in the tree."""
         for leaf in self._tree.get_terminals():
             self._phenotypes[leaf.name] = -1
+        # Update mode/range first so the redraw uses binary colors immediately
+        self._update_pheno_mode_and_range()
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
@@ -1243,6 +1289,7 @@ class TreeViewer(QWidget):
     def _clear_phenotypes(self) -> None:
         """Remove all phenotype assignments from the tree."""
         self._phenotypes.clear()
+        self._update_pheno_mode_and_range()
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
@@ -1405,21 +1452,38 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _update_seq_length_annotations(self) -> None:
-        """Refresh label text to include or remove sequence-length annotations.
+        """Refresh label text to include phenotype values (when continuous) and
+        optionally sequence-length annotations.
 
-        The underlying species name used for look-ups remains untouched via the
-        ``species_name`` attribute; we modify only the visible text.
+        Notes:
+        - We never mutate ``species_name``; only the visible text is updated.
+        - If both phenotype value (continuous) and sequence length are present,
+          we render as: ``Name (value, length)``.
+        - For binary phenotypes, we do not append the value.
         """
         for base_name, label in self._label_items.items():
-            text = base_name
+            parts: List[str] = []
+            # Append continuous phenotype value if available for this species
+            if getattr(self, "_continuous_pheno", False):
+                ph_val = self._phenotypes.get(base_name)
+                if ph_val is not None:
+                    try:
+                        fval = float(ph_val)
+                        # Show a tidy float (e.g., 0.123, 2.5); no trailing zeros
+                        sval = f"{fval:.3f}".rstrip('0').rstrip('.')
+                        parts.append(sval)
+                    except Exception:
+                        pass
+
+            # Append sequence length if enabled and available
             if getattr(self, "_show_seq_lengths", False):
                 length = self._seq_lengths.get(base_name)
                 if length:
-                    text += f" ({length})"
+                    parts.append(str(length))
+
+            text = base_name if not parts else f"{base_name} (" + ", ".join(parts) + ")"
             label.setPlainText(text)
-            # Re-align the label horizontally because its width may have changed.
-            # We keep the existing x coordinate (set during _draw_tree) and simply
-            # center vertically around the original y.
+            # Keep position stable after text change.
             pos = label.pos()
             label.setPos(pos.x(), pos.y())
 
@@ -1522,15 +1586,8 @@ class TreeViewer(QWidget):
             self._node_pos[leaf] = (x_leaf, y_leaf)
             label = _HoverLabelItem(leaf.name or "")
             label.species_name = leaf.name or ""
-            pheno = self._phenotypes.get(leaf.name)
-            if pheno == 1:
-                label.setDefaultTextColor(QColor("blue"))
-            elif pheno == -1:
-                label.setDefaultTextColor(QColor("red"))
-            else:
-                label.setDefaultTextColor(
-                    self.palette().color(QPalette.ColorRole.WindowText)
-                )
+            # Use gradient/binary color mapping; default black when missing
+            label.setDefaultTextColor(self._color_for_species(label.species_name))
             self.scene.addItem(label)
             label.setPos(x_max_scaled + 10, y_leaf - label.boundingRect().height() / 2)
             self._label_items[label.species_name] = label
@@ -1539,9 +1596,9 @@ class TreeViewer(QWidget):
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
 
-        # Include sequence length annotations if requested.
-        if getattr(self, "_show_seq_lengths", False):
-            self._update_seq_length_annotations()
+        # Always refresh label text to include phenotype values (continuous)
+        # and, if enabled, sequence-length annotations.
+        self._update_seq_length_annotations()
 
         # Only auto-fit the view on the initial draw. Afterwards preserve the
         # user's zoom level when the tree is redrawn (e.g., after phenotype
