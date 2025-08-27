@@ -189,7 +189,8 @@ class InputPage(BaseWizardPage):
             default_path=os.getcwd(),
             description=(
                 "Optional: comma-separated file with species phenotypes. "
-                "First column is species ID, second column is phenotype value (1 or -1).\n"
+                "First column is species ID, second column is phenotype value (float or -1/1 for binary).\n"
+                "Continuous values are colored with a red→blue gradient in the tree viewer; missing values render as black.\n"
                 "If omitted, the predictions output will not include a true phenotype column."
             ),
         )
@@ -275,16 +276,24 @@ class InputPage(BaseWizardPage):
                 with open(pheno_path, newline="") as f:
                     reader = csv.reader(f)
                     for row in reader:
-                        if len(row) >= 2:
-                            try:
-                                phenos[row[0].strip()] = int(row[1])
-                            except ValueError:
-                                continue
+                        # Skip empty or too-short rows
+                        if not row or len(row) < 2:
+                            continue
+                        name = row[0].strip()
+                        val_str = row[1].strip()
+                        if not name or not val_str:
+                            continue
+                        # Try to parse as float; ignore unparseable rows (e.g., header)
+                        try:
+                            val = float(val_str)
+                        except ValueError:
+                            continue
+                        phenos[name] = val
             except Exception as exc:
                 QMessageBox.warning(
                     self,
                     "Phenotypes Error",
-                    f"Failed to parse phenotypes file:\n{exc}",
+                    f"Failed to parse phenotypes file (supports -1/1 or continuous floats):\n{exc}",
                 )
 
         self._tree_window = TreeViewer(

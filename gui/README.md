@@ -9,6 +9,10 @@ A graphical user interface for running ESL-PSC analyses with an intuitive wizard
 - Parameter configuration with sensible defaults
 - Real-time progress tracking
 - Cross-platform support (Windows, macOS, Linux)
+ - Interactive tree viewer with phenotype coloring:
+   - Binary (-1/1) phenotypes color labels red/blue
+   - Continuous float phenotypes render via red→blue gradient (low→high)
+   - Pair-based coloring overrides phenotype colors; missing phenotypes appear black
 
 ## Installation
 

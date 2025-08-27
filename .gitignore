@@ -13,6 +13,7 @@ demo_output/
 demo_output_gene_ranks.csv
 demo_output_pred_sps_plot.svg
 demo_output_species_predictions.csv
+demo_response_dir_run/
 
 gui/__pycache__/__init__.cpython-39.pyc
 gui/__pycache__/main.cpython-39.pyc

@@ -45,7 +45,12 @@ The GUI now features an **interactive phylogenetic tree viewer** that lets you:
 
 * Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
 * Assign convergent vs. non-convergent phenotypes by right-clicking species names.
-* **Assign species to contrast pairs** which are then marked on the tree view.
+* Visualize phenotypes with colors:
+  - Binary values (-1/1) color species labels red/blue.
+  - Continuous float values are supported and colored by a red→blue gradient (low→high).
+  - Species without phenotype data remain black.
+  - Contrast pair coloring takes precedence over phenotype coloring to keep analysis pairs clear.
+* Assign species to contrast pairs which are then marked on the tree view.
 * Automatically generate sensible convergent/control contrast pairs with a single click.
 * Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
 * Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
@@ -160,7 +165,9 @@ To use this feature:
 
 #### Optional input files: ####
 
-1. A species phenotype file. This is a text file which has each in the full  species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the ture phenotype will not be listed for each species prediction in the species_predictions output file. Use the argument `--species_pheno_path` and give the full absolute path to the file.
+1. A species phenotype file.
+   - CLI (analysis): a text file with each full species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the true phenotype will not be listed for each species prediction in the species_predictions output file. Use the argument `--species_pheno_path` and give the full absolute path to the file.
+   - GUI Tree Viewer (visualization only): also accepts continuous float phenotype values. Species labels are colored on a red→blue gradient (low→high). Species without phenotype entries are shown in black. When contrast pairs are assigned, pair colors override phenotype colors for those species.
 
 2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
 
