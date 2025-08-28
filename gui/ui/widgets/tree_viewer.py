@@ -43,173 +43,12 @@ from Bio.Phylo.Newick import Tree, Clade
 
 from gui.core.fasta_io import read_fasta
 from bisect import bisect_left, bisect_right
-
-
-class _ZoomableGraphicsView(QGraphicsView):
-    """Graphics view that supports wheel-based zooming with limits."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._zoom_level = 0
-        self._min_zoom = -5
-        self._max_zoom = 10
-        # Prevent smearing of foreground overlays (like the legend) during
-        # interactive panning/zooming by forcing full viewport repaints.
-        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
-
-    # ------------------------------------------------------------------
-    def wheelEvent(self, event):
-        if event.angleDelta().y() > 0 and self._zoom_level < self._max_zoom:
-            factor = 1.25
-            self._zoom_level += 1
-            self.scale(factor, factor)
-        elif event.angleDelta().y() < 0 and self._zoom_level > self._min_zoom:
-            factor = 0.8
-            self._zoom_level -= 1
-            self.scale(factor, factor)
-
-    # ------------------------------------------------------------------
-    def resetTransform(self):
-        super().resetTransform()
-        self._zoom_level = 0
-
-    # ------------------------------------------------------------------
-    def contextMenuEvent(self, event):
-        parent = self.parentWidget()
-        if not isinstance(parent, TreeViewer):
-            super().contextMenuEvent(event)
-            return
-        items = self.items(event.pos())
-        label_item = None
-        pair_item = None
-        for it in items:
-            if isinstance(it, QGraphicsTextItem) and hasattr(it, "species_name"):
-                label_item = it
-                break
-            if isinstance(it, QGraphicsTextItem) and hasattr(it, "pair_index"):
-                pair_item = it
-        if label_item is not None:
-            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            label_item.setCursor(Qt.CursorShape.OpenHandCursor)
-            parent._show_label_menu(label_item, self.mapToGlobal(event.pos()))
-        elif pair_item is not None:
-            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            pair_item.setCursor(Qt.CursorShape.OpenHandCursor)
-            parent._show_pair_menu(pair_item, self.mapToGlobal(event.pos()))
-        else:
-            super().contextMenuEvent(event)
-
-    # ------------------------------------------------------------------
-    def drawForeground(self, painter: QPainter, rect):
-        """Draw a small viridis color bar legend in the view's upper-left.
-
-        Anchored in view coordinates so it remains unobtrusive regardless of
-        scene zoom/pan. Only shown when continuous phenotypes are active.
-        """
-        super().drawForeground(painter, rect)
-        parent = self.parentWidget()
-        if not isinstance(parent, TreeViewer) or not getattr(parent, "_continuous_pheno", False):
-            return
-
-        # Switch to view (pixel) coordinates
-        painter.save()
-        painter.resetTransform()
-
-        margin = 8
-        bar_w = 120
-        bar_h = 10
-
-        pal = self.palette()
-        text_color = pal.color(QPalette.ColorRole.WindowText)
-        painter.setPen(text_color)
-
-        # Title above the bar
-        title = "trait values"
-        fm = painter.fontMetrics()
-        title_x = margin
-        title_y = margin + fm.ascent()
-        painter.drawText(title_x, title_y, title)
-
-        # Color bar rectangle just below the title
-        bar_x = margin
-        bar_y = margin + fm.height() + 2
-
-        grad = QLinearGradient(bar_x, bar_y, bar_x + bar_w, bar_y)
-        for t, (r, g, b) in [
-            (0.0,  (68, 1, 84)),
-            (0.13, (72, 40, 120)),
-            (0.25, (62, 73, 137)),
-            (0.38, (49, 104, 142)),
-            (0.50, (38, 130, 142)),
-            (0.63, (31, 158, 137)),
-            (0.75, (53, 183, 121)),
-            (0.88, (143, 215, 68)),
-            (1.0,  (253, 231, 37)),
-        ]:
-            grad.setColorAt(t, QColor(r, g, b))
-
-        painter.setBrush(QBrush(grad))
-        painter.setPen(QPen(text_color, 1))
-        painter.drawRect(bar_x, bar_y, bar_w, bar_h)
-
-        # End labels under the bar
-        low_txt = "low"
-        high_txt = "high"
-        labels_y = bar_y + bar_h + 2 + fm.ascent()
-        painter.setPen(text_color)
-        painter.drawText(bar_x, labels_y, low_txt)
-        hi_w = fm.horizontalAdvance(high_txt)
-        painter.drawText(bar_x + bar_w - hi_w, labels_y, high_txt)
-
-        painter.restore()
-
-
-class _HoverLabelItem(QGraphicsTextItem):
-    """Text item that changes cursor on hover."""
-
-    def __init__(self, text: str = "", parent=None):
-        super().__init__(text, parent)
-        self.setAcceptHoverEvents(True)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-
-    # ------------------------------------------------------------------
-    def hoverEnterEvent(self, event):
-        parent = None
-        views = self.scene().views() if self.scene() else []
-        if views:
-            parent = views[0].parentWidget()
-        if isinstance(parent, TreeViewer) and parent._assign_mode in (1, -1):
-            cur = parent._assign_cursors.get(parent._assign_mode)
-            if cur is not None:
-                self.setCursor(cur)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-        else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-        super().hoverEnterEvent(event)
-
-    # ------------------------------------------------------------------
-    def hoverLeaveEvent(self, event):
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-        super().hoverLeaveEvent(event)
-
-    # ------------------------------------------------------------------
-    def mousePressEvent(self, event):
-        parent = None
-        views = self.scene().views() if self.scene() else []
-        if views:
-            parent = views[0].parentWidget()
-        if (
-            event.button() == Qt.MouseButton.LeftButton
-            and isinstance(parent, TreeViewer)
-            and hasattr(self, "species_name")
-        ):
-            mode = parent._assign_mode
-            if mode in (1, -1):
-                parent._assign_pheno(self.species_name, mode)
-                event.accept()
-                return
-        super().mousePressEvent(event)
+from gui.ui.widgets.color_utils import viridis_qcolor, viridis_stops_rgb
+from gui.ui.widgets.graphics_view import ZoomableGraphicsView
+from gui.ui.widgets.label_items import HoverLabelItem
+from gui.ui.widgets.dialogs import (
+    AutoSelectOptionsDialog as AutoSelectOptionsDialogExt,
+)
 
 
 @dataclass
@@ -230,64 +69,6 @@ class CandidatePair:
     control: str
     distance: float
     descendants: set[str] = field(default_factory=set)
-
-
-class AutoSelectOptionsDialog(QMessageBox):
-    """Simple dialog to choose auto-select behavior."""
-
-    def __init__(self, allow_longest: bool, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Auto Select Options")
-        self.setText("Choose how to resolve equally valid siblings")
-
-        # Create buttons in the desired visual order: Longest → Random → Default → Cancel.
-        # All buttons use ActionRole so Qt preserves the insertion order across platforms.
-        self.longest_btn = self.addButton(
-            "Longest Sequence", QMessageBox.ButtonRole.ActionRole
-        )
-        # Disable Longest Sequence if no alignments directory set
-        if not allow_longest:
-            self.longest_btn.setEnabled(False)
-            self.longest_btn.setToolTip("Set an alignments directory in the input page, to enable this option")
-
-        self.random_btn = self.addButton(
-            "Random", QMessageBox.ButtonRole.ActionRole
-        )
-
-        self.default_btn = self.addButton(
-            "Default", QMessageBox.ButtonRole.ActionRole
-        )
-        # Make this the default/blue-accept button even though its role is ActionRole.
-        self.setDefaultButton(self.default_btn)
-        # Cancel button comes last.
-        self.cancel_btn = self.addButton(
-            "Cancel", QMessageBox.ButtonRole.RejectRole
-        )
-
-        self.choice: str | None = None
-
-    def exec(self) -> int:
-        result = super().exec()
-        clicked = self.clickedButton()
-        if clicked == self.default_btn:
-            self.choice = "default"
-        elif clicked == self.longest_btn:
-            self.choice = "longest"
-        elif clicked == self.random_btn:
-            self.choice = "random"
-        else:
-            self.choice = None
-        return result
-
-    def reject(self) -> None:
-        """Handle programmatic rejection (e.g., Esc)."""
-        self.choice = None
-        super().reject()
-
-    def closeEvent(self, event):
-        """Treat window close as cancel."""
-        self.choice = None
-        super().closeEvent(event)
 
 
 class TreeViewer(QWidget):
@@ -454,7 +235,7 @@ class TreeViewer(QWidget):
         bottom_row.addWidget(self.save_btn)
         layout.addLayout(bottom_row)
 
-        self.view = _ZoomableGraphicsView()
+        self.view = ZoomableGraphicsView()
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.view.setTransformationAnchor(
@@ -561,44 +342,6 @@ class TreeViewer(QWidget):
         return idx / len(self._pheno_sorted)
 
     # ------------------------------------------------------------------
-    def _viridis_color(self, p: float) -> QColor:
-        """Interpolate a color from the Viridis colormap for p in [0, 1]."""
-        p = 0.0 if p < 0.0 else 1.0 if p > 1.0 else p
-        # Control points from the viridis colormap (approximate Matplotlib stops)
-        stops: List[Tuple[float, Tuple[int, int, int]]] = [
-            (0.0,  (68, 1, 84)),     # #440154
-            (0.13, (72, 40, 120)),   # #482878
-            (0.25, (62, 73, 137)),   # #3e4989
-            (0.38, (49, 104, 142)),  # #31688e
-            (0.50, (38, 130, 142)),  # #26828e
-            (0.63, (31, 158, 137)),  # #1f9e89
-            (0.75, (53, 183, 121)),  # #35b779
-            (0.88, (143, 215, 68)),  # #8fd744
-            (1.0,  (253, 231, 37)),  # #fde725
-        ]
-        if p <= stops[0][0]:
-            r, g, b = stops[0][1]
-            return QColor(r, g, b)
-        if p >= stops[-1][0]:
-            r, g, b = stops[-1][1]
-            return QColor(r, g, b)
-        for i in range(len(stops) - 1):
-            t1, c1 = stops[i]
-            t2, c2 = stops[i + 1]
-            if t1 <= p <= t2:
-                if t2 == t1:
-                    r, g, b = c2
-                    return QColor(r, g, b)
-                a = (p - t1) / (t2 - t1)
-                r = int(round(c1[0] + a * (c2[0] - c1[0])))
-                g = int(round(c1[1] + a * (c2[1] - c1[1])))
-                b = int(round(c1[2] + a * (c2[2] - c1[2])))
-                return QColor(r, g, b)
-        # Fallback (shouldn't reach)
-        r, g, b = stops[-1][1]
-        return QColor(r, g, b)
-
-    # ------------------------------------------------------------------
     def _map_value_to_color(self, val: float) -> QColor:
         """Map a phenotype value to a color.
         - Continuous: percentile-based Viridis colormap.
@@ -607,7 +350,7 @@ class TreeViewer(QWidget):
         if self._continuous_pheno:
             # Percentile rank in [0,1]
             p = self._percentile_rank(val)
-            return self._viridis_color(p)
+            return viridis_qcolor(p)
         # binary fallback
         if val == 1 or val == 1.0:
             return QColor("blue")
@@ -642,7 +385,7 @@ class TreeViewer(QWidget):
         """Apply base cursor styles when (de)activating assignment mode."""
         # We keep the view's cursor default (for panning) and reset all label
         # cursors to the open hand.  The colored dot cursor will be shown only
-        # when hovering over a label via :class:`_HoverLabelItem`.
+        # when hovering over a label via :class:`HoverLabelItem`.
         self.view.viewport().unsetCursor()
         for lbl in self._label_items.values():
             lbl.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -1130,7 +873,7 @@ class TreeViewer(QWidget):
             # label the pair
             x = self._node_pos.get(ancestor, (0, 0))[0]
             y = self._node_pos.get(ancestor, (0, 0))[1]
-            label = _HoverLabelItem(f"Pair {idx}")
+            label = HoverLabelItem(f"Pair {idx}")
             label.pair_index = idx
             label.setDefaultTextColor(
                 self.palette().color(QPalette.ColorRole.WindowText)
@@ -1314,17 +1057,7 @@ class TreeViewer(QWidget):
 
                 # Horizontal Viridis gradient bar (low -> high)
                 grad = QLinearGradient(bar_x, bar_y, bar_x + bar_w, bar_y)
-                for t, (r, g, b) in [
-                    (0.0,  (68, 1, 84)),
-                    (0.13, (72, 40, 120)),
-                    (0.25, (62, 73, 137)),
-                    (0.38, (49, 104, 142)),
-                    (0.50, (38, 130, 142)),
-                    (0.63, (31, 158, 137)),
-                    (0.75, (53, 183, 121)),
-                    (0.88, (143, 215, 68)),
-                    (1.0,  (253, 231, 37)),
-                ]:
+                for t, (r, g, b) in viridis_stops_rgb():
                     grad.setColorAt(t, QColor(r, g, b))
 
                 painter.setBrush(QBrush(grad))
@@ -1475,25 +1208,28 @@ class TreeViewer(QWidget):
         self._update_pheno_mode_and_range()
         self._reset_scene()
         self._draw_tree(self._tree)
-        self._apply_pairs()
-        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
-        dlg = AutoSelectOptionsDialog(True, parent=self)
+        # Ask user how to resolve ambiguous choices
+        dlg = AutoSelectOptionsDialogExt(bool(self._alignments_dir), parent=self)
         dlg.exec()
         if not dlg.choice:
             return
-        method = dlg.choice
-        # Toggle display of sequence-length annotations depending on user choice.
-        self._show_seq_lengths = method == "longest"
+        method = dlg.choice  # "default", "longest", or "random"
 
+        # If longest is requested, ensure we have an alignments directory and
+        # collect sequence length info for relevant species.
         if method == "longest":
             if not self._alignments_dir and not self._prompt_alignment_dir():
                 return
             self._ensure_sequence_lengths()
+            # Optionally show sequence-length annotations next to labels
+            self._show_seq_lengths = True
+            self._update_seq_length_annotations()
 
+        # Avoid overlapping with existing pairs: exclude current descendants
         existing_desc: set[str] = set()
         for pair in self._pairs:
             conv_leaf = next(self._tree.find_clades(name=pair.convergent))
@@ -1502,8 +1238,9 @@ class TreeViewer(QWidget):
             for leaf in anc.get_terminals():
                 existing_desc.add(leaf.name or "")
 
+        # Build candidates from adjacent phenotype transitions across tips
         candidates: List[CandidatePair] = []
-        prev_name = None
+        prev_name: str | None = None
         prev_pheno = None
         for leaf in self._tree.get_terminals():
             name = leaf.name or ""
@@ -1771,7 +1508,7 @@ class TreeViewer(QWidget):
             line = self.scene.addLine(x_leaf, y_leaf, x_max_scaled, y_leaf, pen)
             self._branch_lines[(leaf, None)] = [line]
             self._node_pos[leaf] = (x_leaf, y_leaf)
-            label = _HoverLabelItem(leaf.name or "")
+            label = HoverLabelItem(leaf.name or "")
             label.species_name = leaf.name or ""
             # Use gradient/binary color mapping; default black when missing
             label.setDefaultTextColor(self._color_for_species(label.species_name))
@@ -1801,4 +1538,3 @@ class TreeViewer(QWidget):
         # Ensure label colors reflect the current palette
         self._update_line_pen()
         self._update_assign_cursor()
-
