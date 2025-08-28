@@ -227,6 +227,10 @@ class CommandPage(BaseWizardPage):
         if hasattr(self.config, 'top_rank_frac'):
             self.add_summary_item(layout, "Top Rank Fraction:", str(self.config.top_rank_frac))
         
+        # Max iterations (only show when above default)
+        if hasattr(self.config, 'maxiter') and isinstance(self.config.maxiter, int) and self.config.maxiter > 100:
+            self.add_summary_item(layout, "Max Iterations:", str(self.config.maxiter))
+        
         # Phenotype names
         if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
             self.add_summary_item(layout, "Phenotype Comparison:", 

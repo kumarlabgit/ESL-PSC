@@ -32,6 +32,9 @@ class ESLConfig:
     grid_type: str = 'log'  # 'log' or 'linear'
     num_points: int = 20  # Number of points for log grid, or step size for linear grid
 
+    # Maximum number of iterations for the optimizer (CLI: --maxiter). Default is 100.
+    maxiter: int = 100
+
     # ─── Phenotype names ────────────────────────────────────────────────────────
     pheno_name1: str = "Convergent"
     pheno_name2: str = "Control"
@@ -111,6 +114,10 @@ class ESLConfig:
             a += ["--use_logspace", "--num_log_points", str(self.num_points)]
         else:  # linear
             a += ["--lambda_step", str(self.num_points)]  # Using num_points as step size for linear grid
+        
+        # Optimizer iterations (only include if not default)
+        if hasattr(self, 'maxiter') and self.maxiter != 100:
+            a += ["--maxiter", str(self.maxiter)]
             
         # Group penalty - only include values if not using 'median' or 'std' type
         a += ["--group_penalty_type", self.group_penalty_type]

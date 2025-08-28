@@ -682,6 +682,19 @@ class ParametersPage(BaseWizardPage):
         )
         hyper_layout.addRow("Top rank fraction:", self.top_rank_frac)
         
+        # Max Iterations for optimizer
+        self.maxiter_combo = QComboBox()
+        self.maxiter_combo.addItems(["100", "200", "500", "1000"])
+        self.maxiter_combo.setCurrentText(str(getattr(self.config, 'maxiter', 100)))
+        self.maxiter_combo.setMaximumWidth(120)
+        self.maxiter_combo.currentTextChanged.connect(
+            lambda t: setattr(self.config, 'maxiter', int(t))
+        )
+        self.maxiter_combo.setToolTip(
+            "Maximum number of iterations for the sg_lasso optimizer. Default is 100. Increase to allow more gradient descent steps."
+        )
+        hyper_layout.addRow("Max Iterations:", self.maxiter_combo)
+        
         hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
         self.container_layout.addWidget(hyper_group)
@@ -828,6 +841,10 @@ class ParametersPage(BaseWizardPage):
 
         # Top-rank frac
         self.top_rank_frac.setValue(self.config.top_rank_frac)
+        
+        # Max iterations
+        if hasattr(self, 'maxiter_combo'):
+            self.maxiter_combo.setCurrentText(str(self.config.maxiter))
 
         # Output options
         self.genes_only_btn.setChecked(False)
@@ -895,6 +912,9 @@ class ParametersPage(BaseWizardPage):
         self.gp_step.setValue(cfg.gp_step)
         # Top rank frac
         self.top_rank_frac.setValue(cfg.top_rank_frac)
+        # Max iterations
+        if hasattr(self, 'maxiter_combo'):
+            self.maxiter_combo.setCurrentText(str(cfg.maxiter))
         # Output basics
         self.output_file_base_name.setText(cfg.output_file_base_name)
         self.pheno_name1.setText(cfg.pheno_name1)
