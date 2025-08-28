@@ -828,45 +828,67 @@ class ESLRun():
         preprocessed_dir_name = self.run_family.preprocessed_input_folder
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
-        # Build command list for ESL logistic lasso.
-        # Use an argument list (shell=False) so paths that contain spaces are
-        # passed intact to the executable.
-        esl_command_list = [
-            get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
-            "-f",
-            os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
-            "-z",
-            str(self.lambda1),
-            "-y",
-            str(self.lambda2),
-            "-n",
-            os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
-            "-r",
-            os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
-            "-w",
-            f"{output_name}_out_feature_weights",
-        ]
+        # Optional SLEP options file for non-default max iterations
+        maxiter = int(getattr(self.run_family.args, "maxiter", 100))
+        slep_opts_path = None
+        try:
+            if maxiter != 100:
+                # Create a per-run opts file to avoid clashes across runs
+                slep_opts_path = os.path.join(
+                    os.getcwd(), f"{output_name}_slep_opts.txt"
+                )
+                with open(slep_opts_path, "w") as sf:
+                    sf.write(f"maxIter\t{maxiter}\n")
 
-        # Run ESL and silence noisy output from sg_lasso. We still capture
-        # stdout/stderr so that errors can be surfaced if the command fails.
-        proc = subprocess.run(
-            esl_command_list,
-            shell=False,
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
-            # If the lasso run failed, show captured output for debugging.
-            print(proc.stdout)
-            print(proc.stderr, file=sys.stderr)
-            proc.check_returncode()
-        
-        # Extract feature weights directly from the generated XML. 
-        xml_path = (
-            f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
-        )
-        with open(xml_path, "r") as xf:
-            xml_txt = xf.read()
+            # Build command list for ESL logistic lasso.
+            # Use an argument list (shell=False) so paths that contain spaces are
+            # passed intact to the executable.
+            esl_command_list = [
+                get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
+                "-f",
+                os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
+                "-z",
+                str(self.lambda1),
+                "-y",
+                str(self.lambda2),
+                "-n",
+                os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
+                "-r",
+                os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
+                "-w",
+                f"{output_name}_out_feature_weights",
+            ]
+            if slep_opts_path:
+                esl_command_list.extend(["-s", slep_opts_path])
+
+            # Run ESL and silence noisy output from sg_lasso. We still capture
+            # stdout/stderr so that errors can be surfaced if the command fails.
+            proc = subprocess.run(
+                esl_command_list,
+                shell=False,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode != 0:
+                # If the lasso run failed, show captured output for debugging.
+                print(proc.stdout)
+                print(proc.stderr, file=sys.stderr)
+                proc.check_returncode()
+            
+            # Extract feature weights directly from the generated XML. 
+            xml_path = (
+                f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
+            )
+            with open(xml_path, "r") as xf:
+                xml_txt = xf.read()
+        finally:
+            # Clean up temporary slep options file, if created
+            if slep_opts_path and os.path.exists(slep_opts_path):
+                try:
+                    os.remove(slep_opts_path)
+                except Exception:
+                    # Non-fatal; continue without raising
+                    pass
 
         temp_lines = [w + "\n" for w in re.findall(r"<item>(.*?)</item>", xml_txt)]
         with open(

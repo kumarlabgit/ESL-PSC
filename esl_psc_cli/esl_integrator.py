@@ -114,6 +114,10 @@ def get_esl_args(parser = None):
     model to be included in the prediction scores plots. default = 0'''
     group.add_argument('--min_genes', help = help_txt,
                         type = int, default = 0)
+    help_txt = '''maximum number of iterations for the sg_lasso optimizer.
+    Default is 100. Increase to allow more gradient descent steps.'''
+    group.add_argument('--maxiter', help = help_txt, type = int, default = 100)
+
    
 
     ######### Options #########

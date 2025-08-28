@@ -218,6 +218,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--num_log_points`: The number of values per sparsity hyperparameter (lambda1 and lambda2) in a logspace of values to test. Include the `--use_logspace` flag (see options below).
 * `--pheno_names`: The names of the two phenotypes separated by a space, with the convergent phenotype coming first. by default "1" and "-1" will be used
 * `--min_genes`: Minimum number of genes a model must have in order for that model to be included in the prediction scores plots. Default = 0.
+* `--maxiter`: Maximum number of gradient-descent iterations performed by the optimizer for each model fit. Default = 100. 
 
 ##### Options:
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
