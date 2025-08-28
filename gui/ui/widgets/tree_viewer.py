@@ -519,6 +519,10 @@ class TreeViewer(QWidget):
         default_color = pal.color(QPalette.ColorRole.WindowText)
         for lbl in self._pair_labels:
             lbl.setDefaultTextColor(default_color)
+        # Refresh species label colors: unlabeled -> palette text (white in dark mode),
+        # labeled -> phenotype-mapped color (viridis/binary), which should remain stable.
+        for name, lbl in self._label_items.items():
+            lbl.setDefaultTextColor(self._color_for_species(name))
 
     # ------------------------------------------------------------------
     def _update_pheno_mode_and_range(self) -> None:
@@ -615,8 +619,8 @@ class TreeViewer(QWidget):
     def _color_for_species(self, name: str) -> QColor:
         """Base label color for a species based on phenotype and mode."""
         if name not in self._phenotypes:
-            # Species without phenotype remain black
-            return QColor("black")
+            # Species without phenotype use the palette text color (white in dark mode)
+            return self.palette().color(QPalette.ColorRole.WindowText)
         val = float(self._phenotypes.get(name, 0.0))
         return self._map_value_to_color(val)
 
