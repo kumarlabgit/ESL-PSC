@@ -300,7 +300,7 @@ class ParametersPage(BaseWizardPage):
                     "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
                 )
             else:
-                warn = "<font color='red'>Requires species phenotype file to generate SPS plots.</font>"
+                warn = "<font color='red'>Requires a binary species phenotype file (-1/1) to generate SPS plots.</font>"
                 self.make_sps_plot.setToolTip(warn)
                 self.make_sps_kde_plot.setToolTip(warn)
         
@@ -974,7 +974,8 @@ class ParametersPage(BaseWizardPage):
 
         # Update UI that depends on input page
         if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
-            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
+            path = self.wizard().input_page.species_phenotypes.get_path()
+            self.has_species_pheno = bool(path) and bool(getattr(self.config, 'species_pheno_is_binary', False))
         self.update_output_options_state()
         return
 
@@ -1031,12 +1032,13 @@ class ParametersPage(BaseWizardPage):
         try:
             wiz = self.wizard()
             if wiz and hasattr(wiz, 'input_page'):
-                self.has_species_pheno = bool(wiz.input_page.species_phenotypes.get_path())
+                path = wiz.input_page.species_phenotypes.get_path()
+                self.has_species_pheno = bool(path) and bool(getattr(self.config, 'species_pheno_is_binary', False))
             else:
                 # Fallback to the value already stored in the config
-                self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+                self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', '')) and bool(getattr(self.config, 'species_pheno_is_binary', False))
         except Exception:
-            self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+            self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', '')) and bool(getattr(self.config, 'species_pheno_is_binary', False))
 
         if not getattr(self, 'widgets_initialized', False):
             return

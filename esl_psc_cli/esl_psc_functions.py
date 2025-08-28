@@ -22,8 +22,12 @@ from statistics import median
 # ------------------------------------------------------------
 
 def _is_pheno_line(line: str) -> bool:
-    """Return True if *line* looks like a phenotype mapping –
-    exactly two comma-separated fields where the second field is 1 or -1."""
+    """Return True if *line* looks like a phenotype mapping for the purposes
+    of the species-groups misload heuristic: exactly two comma-separated fields
+    where the second field is 1 or -1. Note: this is intentionally strict to
+    avoid false positives when inspecting groups files. Validation for actual
+    phenotype files is handled separately and permits continuous values.
+    """
     parts = [p.strip() for p in line.strip().split(',')]
     return len(parts) == 2 and parts[1] in {"1", "-1"} and bool(parts[0])
 
@@ -63,8 +67,12 @@ def species_groups_file_looks_like_pheno(file_path: str, *, sample_size: int = 2
 
 
 def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
-    """Return a list of lines (with line numbers) that violate the expected
-    ``<species>,<1|-1>`` format. If the returned list is empty, the file looks ok.
+    """Validate a species phenotype file allowing binary or continuous values.
+
+    Expected format per non-empty line: ``<species>,<numeric>`` where the value
+    can be an integer (e.g., 1/-1) or a float (e.g., 0.37). Returns a list of
+    problematic lines (with line numbers). If the list is empty, the file looks
+    acceptable.
     """
     bad_lines = []
     try:
@@ -73,13 +81,49 @@ def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
                 line = raw.strip()
                 if not line:
                     continue  # allow blank lines
-                if not _is_pheno_line(line):
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2 or not parts[0]:
+                    bad_lines.append(f"{idx}: {line}")
+                    if len(bad_lines) >= max_errors:
+                        break
+                    continue
+                # numeric check for phenotype value
+                try:
+                    float(parts[1])
+                except ValueError:
                     bad_lines.append(f"{idx}: {line}")
                     if len(bad_lines) >= max_errors:
                         break
     except Exception as exc:
         bad_lines.append(f"[IO ERROR] {exc}")
     return bad_lines
+
+def detect_pheno_file_type(file_path: str) -> str:
+    """Return 'binary' if all numeric values are exactly -1 or 1, otherwise
+    return 'continuous'. Blank lines are ignored. Raises on IO errors.
+    """
+    has_values = False
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2 or not parts[0]:
+                    # treat malformed as continuous so downstream disables binary-only features
+                    return "continuous"
+                try:
+                    val = float(parts[1])
+                except ValueError:
+                    return "continuous"
+                has_values = True
+                if val not in (-1.0, 1.0):
+                    return "continuous"
+    except Exception:
+        # If unreadable, default to continuous
+        return "continuous"
+    return "binary" if has_values else "continuous"
 
 
 def get_binary_path(esl_dir, base_name):
@@ -164,6 +208,15 @@ def parse_args_with_config(parser, raw_args=None):
 
     if plot_requested and species_pheno_path_missing:
         raise ValueError("Error: A species phenotype file is required to make species plots or KDE plots.")
+
+    # If a phenotype file is provided, detect whether it is binary or continuous
+    if getattr(args, 'species_pheno_path', None):
+        ph_type = detect_pheno_file_type(args.species_pheno_path)
+        setattr(args, 'species_pheno_is_binary', ph_type == 'binary')
+        setattr(args, 'species_pheno_is_continuous', ph_type != 'binary')
+    else:
+        setattr(args, 'species_pheno_is_binary', False)
+        setattr(args, 'species_pheno_is_continuous', False)
 
     # Check for relative paths and adjust them to be absolute
     path_args = [
@@ -397,17 +450,30 @@ def get_median_var_sites(alignment_dir):
     return int(median(numbers_of_var_sites))
 
 def get_pheno_dict(species_pheno_csv_path, str_phenos = False):
-    '''takes a full path to a csv file that has lines like: "species, 1"
-    and returns a dictionary with keys: species, values: phenotype values. If
-    str_phenos = True, the pheno type values will be returned as strings.
+    '''takes a full path to a csv file that has lines like: "species, 1" or
+    "species, 0.37" and returns a dictionary with keys: species, values:
+    phenotype values. If str_phenos = True, the pheno values will be returned
+    as strings. Otherwise, values are returned as floats.
     '''
     pheno_dict = {}
     pheno_lines = file_lines_to_list(species_pheno_csv_path)
     for line in pheno_lines:
+        line = line.strip()
+        if not line:
+            continue
         # split each line and assign values
-        species, pheno_value = [item.strip() for item in line.split(',')]
-        pheno_dict[species] = (int(pheno_value) if not str_phenos
-                               else pheno_value) # give int pheno by default
+        parts = [item.strip() for item in line.split(',')]
+        if len(parts) != 2 or not parts[0]:
+            continue
+        species, pheno_value = parts
+        if str_phenos:
+            pheno_dict[species] = pheno_value
+        else:
+            try:
+                pheno_dict[species] = float(pheno_value)
+            except ValueError:
+                # skip malformed values silently
+                continue
     return pheno_dict
 
 def report_elapsed_time(start_time):

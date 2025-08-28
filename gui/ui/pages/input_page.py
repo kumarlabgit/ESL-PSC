@@ -194,9 +194,7 @@ class InputPage(BaseWizardPage):
                 "If omitted, the predictions output will not include a true phenotype column."
             ),
         )
-        self.species_phenotypes.path_changed.connect(
-            lambda p: setattr(self.config, 'species_phenotypes_file', p)
-        )
+        self.species_phenotypes.path_changed.connect(self._on_pheno_path_changed)
         opt_layout.addRow(self.species_phenotypes)
         
         # Prediction alignments directory
@@ -305,6 +303,48 @@ class InputPage(BaseWizardPage):
             alignments_dir=getattr(self.config, 'alignments_dir', ''),
         )
         self._tree_window.show()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Internal helpers
+    # ──────────────────────────────────────────────────────────────────────────
+    def _on_pheno_path_changed(self, path: str) -> None:
+        """Set config path and detect phenotype type (binary vs continuous)."""
+        setattr(self.config, 'species_phenotypes_file', path)
+        # Default flags when no file
+        self.config.species_pheno_is_binary = False
+        self.config.species_pheno_is_continuous = False
+        if not path or not os.path.exists(path):
+            return
+        try:
+            import csv
+            has_value = False
+            is_binary = True
+            with open(path, newline="", errors="ignore") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row or len(row) < 2:
+                        continue
+                    val_str = row[1].strip()
+                    if not val_str:
+                        continue
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        # ignore header or malformed rows
+                        continue
+                    has_value = True
+                    if val not in (-1.0, 1.0):
+                        is_binary = False
+                        break
+            if has_value and is_binary:
+                self.config.species_pheno_is_binary = True
+                self.config.species_pheno_is_continuous = False
+            elif has_value:
+                self.config.species_pheno_is_binary = False
+                self.config.species_pheno_is_continuous = True
+        except Exception:
+            # On error, leave flags False so downstream treats as absent for plots
+            pass
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""

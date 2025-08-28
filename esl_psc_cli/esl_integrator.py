@@ -29,12 +29,12 @@ def get_esl_args(parser = None):
     is typically auto-detected, but packaged builds may need to override it.'''
     group.add_argument('--esl_main_dir', help = help_txt, type = str,
                        required = False)
-    help_txt = '''The full path to the species phenotypes file which has the 
-    species name then a comma and then a 1 or -1 for the phenotype class.
-    Any species that is not in the phenotype file will not be included in the
-    predictions output even if it was in the prediction alignments. If the
-    phenotype file is not included, all species in the alignments will get
-    SPSs but no true phenotypes will be listed.
+    help_txt = '''The full path to the species phenotypes file with lines of
+    the form <species>,<value>. The value may be binary (-1 or 1) or a
+    continuous numeric value. Any species that is not in the phenotype file
+    will not be included in the predictions output even if it was in the
+    prediction alignments. If the phenotype file is not included, all species
+    in the alignments will get SPSs but no true phenotypes will be listed.
     '''
     group.add_argument('--species_pheno_path', help = help_txt,
                            type = str, default = None)
@@ -543,12 +543,16 @@ if __name__ == '__main__':
     ecf.report_elapsed_time(start_time) # print time before making plot
 
     if args.make_sps_plot or args.make_sps_kde_plot:
-        plot_type = 'violin' if args.make_sps_plot else 'kde'
-        # generate and show density plots of predictions
-        # call sps_density.create_sps_plots for various rmse cutoffs
-        ecf.rmse_range_pred_plots(preds_output_path,
-                                  args.output_file_base_name,
-                                  args.pheno_names,
-                                  args.min_genes,
-                                  plot_type)
+        # Auto-disable if phenotype file is continuous
+        if getattr(args, 'species_pheno_is_continuous', False):
+            print("Skipping SPS plots: phenotype file appears to contain continuous values. Plots require binary classes (-1/1).")
+        else:
+            plot_type = 'violin' if args.make_sps_plot else 'kde'
+            # generate and show density plots of predictions
+            # call sps_density.create_sps_plots for various rmse cutoffs
+            ecf.rmse_range_pred_plots(preds_output_path,
+                                      args.output_file_base_name,
+                                      args.pheno_names,
+                                      args.min_genes,
+                                      plot_type)
 

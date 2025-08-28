@@ -11,6 +11,9 @@ class ESLConfig:
     alignments_dir: str = ""
     species_groups_file: str = ""
     species_phenotypes_file: str = ""
+    # Phenotype type detection (set by GUI when a phenotype file is chosen)
+    species_pheno_is_binary: bool = False
+    species_pheno_is_continuous: bool = False
     prediction_alignments_dir: str = ""
     limited_genes_file: str = ""
     response_dir: str = ""
@@ -157,8 +160,8 @@ class ESLConfig:
         no_pred = getattr(self, 'no_pred_output', False)
         a += self._flag(no_pred, "--no_pred_output")
         
-        # Only include plot flags if we're generating prediction output
-        if not no_pred:
+        # Only include plot flags if we're generating prediction output AND phenotypes are binary
+        if not no_pred and getattr(self, 'species_pheno_is_binary', False):
             a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
             a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
         

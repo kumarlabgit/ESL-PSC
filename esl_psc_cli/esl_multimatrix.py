@@ -652,7 +652,7 @@ def main(raw_args=None):
             bad_lines = ecf.validate_species_pheno_file(args.species_pheno_path)
             if bad_lines:
                 msg = [
-                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<1|-1>).",
+                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<numeric>).",
                     "Problematic lines (up to first 5):",
                 ] + [f"    {ln}" for ln in bad_lines]
                 raise ValueError("\n".join(msg))
