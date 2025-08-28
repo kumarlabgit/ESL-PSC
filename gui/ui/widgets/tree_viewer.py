@@ -33,6 +33,7 @@ from PySide6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
 
 from gui.core.fasta_io import read_fasta
+from bisect import bisect_left, bisect_right
 
 
 class _ZoomableGraphicsView(QGraphicsView):
@@ -445,36 +446,88 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _update_pheno_mode_and_range(self) -> None:
-        """Detect continuous phenotypes and compute min/max for gradient mapping."""
+        """Detect continuous phenotypes and prepare stats for color mapping.
+
+        For continuous values, we compute:
+        - min/max (kept for compatibility elsewhere)
+        - a sorted list of phenotype values for percentile-rank mapping
+        """
         vals = [float(v) for v in self._phenotypes.values()]
         if not vals:
             self._continuous_pheno = False
             self._pheno_min, self._pheno_max = 0.0, 1.0
+            self._pheno_sorted = []
             return
         self._pheno_min = min(vals)
         self._pheno_max = max(vals)
         # Continuous if any value is not exactly -1 or 1
         self._continuous_pheno = any(v not in (1.0, -1.0) for v in vals)
-        # Avoid zero range
-        if self._pheno_min == self._pheno_max:
-            # Expand slightly to avoid division by zero; mid maps to purple
-            self._pheno_min -= 0.5
-            self._pheno_max += 0.5
+        # Maintain a sorted list for percentile-based coloring when continuous
+        if self._continuous_pheno:
+            self._pheno_sorted = sorted(vals)
+        else:
+            self._pheno_sorted = []
+        # Percentile-based coloring does not use min/max; avoid arbitrary padding.
+
+    # ------------------------------------------------------------------
+    def _percentile_rank(self, val: float) -> float:
+        """Compute the percentile rank of a value in the sorted phenotype list."""
+        if not self._pheno_sorted:
+            return 0.5
+        # Center ties: average of left and right insertion points for smoother mapping
+        left = bisect_left(self._pheno_sorted, val)
+        right = bisect_right(self._pheno_sorted, val)
+        idx = 0.5 * (left + right)
+        return idx / len(self._pheno_sorted)
+
+    # ------------------------------------------------------------------
+    def _viridis_color(self, p: float) -> QColor:
+        """Interpolate a color from the Viridis colormap for p in [0, 1]."""
+        p = 0.0 if p < 0.0 else 1.0 if p > 1.0 else p
+        # Control points from the viridis colormap (approximate Matplotlib stops)
+        stops: List[Tuple[float, Tuple[int, int, int]]] = [
+            (0.0,  (68, 1, 84)),     # #440154
+            (0.13, (72, 40, 120)),   # #482878
+            (0.25, (62, 73, 137)),   # #3e4989
+            (0.38, (49, 104, 142)),  # #31688e
+            (0.50, (38, 130, 142)),  # #26828e
+            (0.63, (31, 158, 137)),  # #1f9e89
+            (0.75, (53, 183, 121)),  # #35b779
+            (0.88, (143, 215, 68)),  # #8fd744
+            (1.0,  (253, 231, 37)),  # #fde725
+        ]
+        if p <= stops[0][0]:
+            r, g, b = stops[0][1]
+            return QColor(r, g, b)
+        if p >= stops[-1][0]:
+            r, g, b = stops[-1][1]
+            return QColor(r, g, b)
+        for i in range(len(stops) - 1):
+            t1, c1 = stops[i]
+            t2, c2 = stops[i + 1]
+            if t1 <= p <= t2:
+                if t2 == t1:
+                    r, g, b = c2
+                    return QColor(r, g, b)
+                a = (p - t1) / (t2 - t1)
+                r = int(round(c1[0] + a * (c2[0] - c1[0])))
+                g = int(round(c1[1] + a * (c2[1] - c1[1])))
+                b = int(round(c1[2] + a * (c2[2] - c1[2])))
+                return QColor(r, g, b)
+        # Fallback (shouldn't reach)
+        r, g, b = stops[-1][1]
+        return QColor(r, g, b)
 
     # ------------------------------------------------------------------
     def _map_value_to_color(self, val: float) -> QColor:
         """Map a phenotype value to a color.
-        - Continuous: gradient from bright red (low) to bright blue (high).
+        - Continuous: percentile-based Viridis colormap.
         - Binary: 1 -> blue, -1 -> red.
         """
         if self._continuous_pheno:
-            # Normalize to [0,1]
-            t = (val - self._pheno_min) / (self._pheno_max - self._pheno_min) if self._pheno_max != self._pheno_min else 0.5
-            t = min(max(t, 0.0), 1.0)
-            r = int(round(255 * (1.0 - t)))
-            g = 0
-            b = int(round(255 * t))
-            return QColor(r, g, b)
+            # Percentile rank in [0,1]
+            p = self._percentile_rank(val)
+            return self._viridis_color(p)
         # binary fallback
         if val == 1 or val == 1.0:
             return QColor("blue")
@@ -1487,6 +1540,10 @@ class TreeViewer(QWidget):
             pos = label.pos()
             label.setPos(pos.x(), pos.y())
 
+        # After text updates, expand the scene rect so zoom/pan includes appended values
+        bounds = self.scene.itemsBoundingRect()
+        self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+
     # ------------------------------------------------------------------
     def _pick_longest(self, names: List[str]) -> str:
         lengths = {n: self._seq_lengths.get(n, 0) for n in names}
@@ -1592,13 +1649,12 @@ class TreeViewer(QWidget):
             label.setPos(x_max_scaled + 10, y_leaf - label.boundingRect().height() / 2)
             self._label_items[label.species_name] = label
 
-        # Set scene rect based on all items so panning works when zoomed
+        # Always refresh label text to include phenotype values (continuous)
+        # and, if enabled, sequence-length annotations. Then set scene rect
+        # so it includes the full width of the updated labels.
+        self._update_seq_length_annotations()
         bounds = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
-
-        # Always refresh label text to include phenotype values (continuous)
-        # and, if enabled, sequence-length annotations.
-        self._update_seq_length_annotations()
 
         # Only auto-fit the view on the initial draw. Afterwards preserve the
         # user's zoom level when the tree is redrawn (e.g., after phenotype
