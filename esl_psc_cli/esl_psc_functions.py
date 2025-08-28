@@ -75,6 +75,7 @@ def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
     acceptable.
     """
     bad_lines = []
+    header_skipped = False
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             for idx, raw in enumerate(fh, 1):
@@ -91,6 +92,10 @@ def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
                 try:
                     float(parts[1])
                 except ValueError:
+                    # Allow a single apparent header line (commonly the first non-empty line)
+                    if not header_skipped and idx == 1:
+                        header_skipped = True
+                        continue
                     bad_lines.append(f"{idx}: {line}")
                     if len(bad_lines) >= max_errors:
                         break
@@ -103,6 +108,7 @@ def detect_pheno_file_type(file_path: str) -> str:
     return 'continuous'. Blank lines are ignored. Raises on IO errors.
     """
     has_values = False
+    header_skipped = False
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             for raw in fh:
@@ -116,6 +122,10 @@ def detect_pheno_file_type(file_path: str) -> str:
                 try:
                     val = float(parts[1])
                 except ValueError:
+                    # Allow one header-like line with non-numeric second column
+                    if not header_skipped:
+                        header_skipped = True
+                        continue
                     return "continuous"
                 has_values = True
                 if val not in (-1.0, 1.0):
