@@ -27,7 +27,16 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QProgressDialog,
 )
-from PySide6.QtGui import QPainter, QPen, QColor, QPalette, QPixmap, QCursor
+from PySide6.QtGui import (
+    QPainter,
+    QPen,
+    QColor,
+    QPalette,
+    QPixmap,
+    QCursor,
+    QLinearGradient,
+    QBrush,
+)
 from PySide6.QtSvg import QSvgGenerator
 from PySide6.QtCore import Qt, QEvent
 from Bio.Phylo.Newick import Tree, Clade
@@ -44,6 +53,9 @@ class _ZoomableGraphicsView(QGraphicsView):
         self._zoom_level = 0
         self._min_zoom = -5
         self._max_zoom = 10
+        # Prevent smearing of foreground overlays (like the legend) during
+        # interactive panning/zooming by forcing full viewport repaints.
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
     # ------------------------------------------------------------------
     def wheelEvent(self, event):
@@ -86,6 +98,70 @@ class _ZoomableGraphicsView(QGraphicsView):
             parent._show_pair_menu(pair_item, self.mapToGlobal(event.pos()))
         else:
             super().contextMenuEvent(event)
+
+    # ------------------------------------------------------------------
+    def drawForeground(self, painter: QPainter, rect):
+        """Draw a small viridis color bar legend in the view's upper-left.
+
+        Anchored in view coordinates so it remains unobtrusive regardless of
+        scene zoom/pan. Only shown when continuous phenotypes are active.
+        """
+        super().drawForeground(painter, rect)
+        parent = self.parentWidget()
+        if not isinstance(parent, TreeViewer) or not getattr(parent, "_continuous_pheno", False):
+            return
+
+        # Switch to view (pixel) coordinates
+        painter.save()
+        painter.resetTransform()
+
+        margin = 8
+        bar_w = 120
+        bar_h = 10
+
+        pal = self.palette()
+        text_color = pal.color(QPalette.ColorRole.WindowText)
+        painter.setPen(text_color)
+
+        # Title above the bar
+        title = "trait values"
+        fm = painter.fontMetrics()
+        title_x = margin
+        title_y = margin + fm.ascent()
+        painter.drawText(title_x, title_y, title)
+
+        # Color bar rectangle just below the title
+        bar_x = margin
+        bar_y = margin + fm.height() + 2
+
+        grad = QLinearGradient(bar_x, bar_y, bar_x + bar_w, bar_y)
+        for t, (r, g, b) in [
+            (0.0,  (68, 1, 84)),
+            (0.13, (72, 40, 120)),
+            (0.25, (62, 73, 137)),
+            (0.38, (49, 104, 142)),
+            (0.50, (38, 130, 142)),
+            (0.63, (31, 158, 137)),
+            (0.75, (53, 183, 121)),
+            (0.88, (143, 215, 68)),
+            (1.0,  (253, 231, 37)),
+        ]:
+            grad.setColorAt(t, QColor(r, g, b))
+
+        painter.setBrush(QBrush(grad))
+        painter.setPen(QPen(text_color, 1))
+        painter.drawRect(bar_x, bar_y, bar_w, bar_h)
+
+        # End labels under the bar
+        low_txt = "low"
+        high_txt = "high"
+        labels_y = bar_y + bar_h + 2 + fm.ascent()
+        painter.setPen(text_color)
+        painter.drawText(bar_x, labels_y, low_txt)
+        hi_w = fm.horizontalAdvance(high_txt)
+        painter.drawText(bar_x + bar_w - hi_w, labels_y, high_txt)
+
+        painter.restore()
 
 
 class _HoverLabelItem(QGraphicsTextItem):
@@ -1211,6 +1287,56 @@ class TreeViewer(QWidget):
 
             painter = QPainter(generator)
             self.scene.render(painter)
+            # Draw Viridis legend directly onto the SVG using scene coordinates
+            # so it is included in the export. Only when continuous phenotypes
+            # are active.
+            if getattr(self, "_continuous_pheno", False):
+                painter.save()
+                margin = 8
+                bar_w = 120
+                bar_h = 10
+
+                # Place legend at top-left of the scene bounds with a small margin
+                bar_x = bounds.left() + margin
+                # Title on top, then bar below
+                fm = painter.fontMetrics()
+                title = "Phenotype"
+                title_y = bounds.top() + margin + fm.ascent()
+                bar_y = title_y + 2
+
+                text_color = QColor("black")
+                painter.setPen(QPen(text_color, 1))
+                painter.drawText(bar_x, title_y, title)
+
+                # Horizontal Viridis gradient bar (low -> high)
+                grad = QLinearGradient(bar_x, bar_y, bar_x + bar_w, bar_y)
+                for t, (r, g, b) in [
+                    (0.0,  (68, 1, 84)),
+                    (0.13, (72, 40, 120)),
+                    (0.25, (62, 73, 137)),
+                    (0.38, (49, 104, 142)),
+                    (0.50, (38, 130, 142)),
+                    (0.63, (31, 158, 137)),
+                    (0.75, (53, 183, 121)),
+                    (0.88, (143, 215, 68)),
+                    (1.0,  (253, 231, 37)),
+                ]:
+                    grad.setColorAt(t, QColor(r, g, b))
+
+                painter.setBrush(QBrush(grad))
+                painter.setPen(QPen(text_color, 1))
+                painter.drawRect(bar_x, bar_y, bar_w, bar_h)
+
+                # End labels under the bar
+                low_txt = "low"
+                high_txt = "high"
+                labels_y = bar_y + bar_h + 2 + fm.ascent()
+                painter.setPen(text_color)
+                painter.drawText(bar_x, labels_y, low_txt)
+                hi_w = fm.horizontalAdvance(high_txt)
+                painter.drawText(bar_x + bar_w - hi_w, labels_y, high_txt)
+
+                painter.restore()
             painter.end()
 
             for item, pen in saved_lines.items():
