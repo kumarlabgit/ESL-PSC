@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Dict
+from typing import Dict
 
 from PySide6.QtWidgets import QGraphicsTextItem
 from PySide6.QtCore import Qt
