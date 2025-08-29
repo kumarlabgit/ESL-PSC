@@ -41,24 +41,24 @@ class ProteinMapWidget(QWidget):
         # Draw site lines extending above and below the protein bar
         extension = 3  # Pixels to extend lines above and below
         for idx, site in enumerate(self.sites):
-            # Determine brightness factor based on relative score
             if self.scores and idx < len(self.scores):
                 rel = (self.scores[idx] - min_score) / (max_score - min_score)
-                # Keep brightness in [0.2, 1.0] so extremely low scores are still visible faintly
-                brightness = 0.2 + 0.8 * rel
             else:
-                brightness = 1.0  # default full brightness when scores missing
+                rel = 1.0  # default full visibility when scores missing
 
             # Base color (same hue as original #4CAF50)
             base_color = QColor("#4CAF50")
-            r = int(base_color.red() * brightness)
-            g = int(base_color.green() * brightness)
-            b = int(base_color.blue() * brightness)
-            pen = QPen(QColor(r, g, b))
+            # Blend toward background color as scores decrease
+            r = int(base_color.red() * rel + bg_color.red() * (1 - rel))
+            g = int(base_color.green() * rel + bg_color.green() * (1 - rel))
+            b = int(base_color.blue() * rel + bg_color.blue() * (1 - rel))
+            alpha = int(255 * rel)
+            pen_color = QColor(r, g, b, alpha)
+            pen = QPen(pen_color)
             pen.setWidth(2)
             painter.setPen(pen)
 
             x = int(site / self.length * self.width())
             painter.drawLine(x, y - extension, x, y + bar_height + extension)
-            
+
         painter.end()
