@@ -830,6 +830,19 @@ class TreeViewer(QWidget):
                         line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                         overlay_lines.append(line)
                     self._alt_lines.append((overlay_lines, bases))
+                # Also overlay the terminal (leaf) segment so dashes reach the tip
+                term_bases = self._branch_lines.get((alt_leaf, None), [])
+                if term_bases:
+                    term_overlays = []
+                    for base in term_bases:
+                        base.setVisible(False)
+                        line = self.scene.addLine(
+                            base.line(),
+                            QPen(QColor("#87CEFA"), 2, Qt.PenStyle.DashLine),
+                        )
+                        line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                        term_overlays.append(line)
+                    self._alt_lines.append((term_overlays, term_bases))
                 label = self._label_items.get(alt_name)
                 if label:
                     rect = label.boundingRect().adjusted(-2, 0, 2, 0)
@@ -860,6 +873,19 @@ class TreeViewer(QWidget):
                         line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                         overlay_lines.append(line)
                     self._alt_lines.append((overlay_lines, bases))
+                # Also overlay the terminal (leaf) segment so dashes reach the tip
+                term_bases = self._branch_lines.get((alt_leaf, None), [])
+                if term_bases:
+                    term_overlays = []
+                    for base in term_bases:
+                        base.setVisible(False)
+                        line = self.scene.addLine(
+                            base.line(),
+                            QPen(QColor("#f4aaaa"), 2, Qt.PenStyle.DashLine),
+                        )
+                        line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                        term_overlays.append(line)
+                    self._alt_lines.append((term_overlays, term_bases))
                 label = self._label_items.get(alt_name)
                 if label:
                     rect = label.boundingRect().adjusted(-2, 0, 2, 0)

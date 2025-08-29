@@ -41,7 +41,7 @@ Now compatible with Windows, Mac, and Linux.
 
 #### July  2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
 
-The GUI now features an **interactive phylogenetic tree viewer** that lets you:
+The GUI now features an interactive phylogenetic tree viewer that lets you:
 
 * Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
 * Assign convergent vs. non-convergent phenotypes by right-clicking species names.
