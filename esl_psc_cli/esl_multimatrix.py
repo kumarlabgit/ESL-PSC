@@ -428,7 +428,8 @@ def main(raw_args=None):
     desc_text = '''This will run ESL integrations for many species combinations.
                 All necessary args for esl_integrator.py must be included to
                 specify how each integration run will be performed. Alignments
-                must be in 2-line fasta format and file names end in ".fas".
+                should be in 2-line FASTA format and file names end in ".fas".
+                Multi-line FASTA files are accepted but may be slower.
                 If no species groups file is given, existing response matrices
                 must be given.  An * indicates required arguments. args can be
                 given in a config file called esl_ct_config.txt with 1 per line.
@@ -627,12 +628,12 @@ def main(raw_args=None):
     # ------------------------------------------------------------------
     if not resume_mode:
         validate_specific_paths(args)
-        ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        ecf.validate_alignment_dir_two_line(args.alignments_dir, allow_multi_line=True)
         # --- Limited genes list sanity check --------------------------------
         validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
         if (args.prediction_alignments_dir
                 and args.prediction_alignments_dir != args.alignments_dir):
-            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir, allow_multi_line=True)
         if args.use_existing_alignments and args.canceled_alignments_dir:
             ecf.validate_alignment_dir_two_line(
                 args.canceled_alignments_dir, recursive=True)

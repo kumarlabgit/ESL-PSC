@@ -252,8 +252,13 @@ def file_lines_to_list(file_path):
     line_list = [line.strip() for line in lines]
     return line_list
 
-def assert_two_line_fasta(fasta_path):
-    """Raise ValueError if *fasta_path* is not in 2-line FASTA format."""
+def is_two_line_fasta(fasta_path):
+    """Return ``True`` if *fasta_path* is 2-line FASTA.
+
+    Returns ``False`` when sequence records span multiple lines but raises
+    :class:`ValueError` if the file is not valid FASTA (e.g. missing headers or
+    sequences)."""
+
     header = None
     seen_seq = False
     with open(fasta_path, 'r') as fh:
@@ -272,37 +277,54 @@ def assert_two_line_fasta(fasta_path):
                         f"Sequence data found before first header at line {lineno}"
                     )
                 if seen_seq:
-                    raise ValueError(
-                        f"Sequence for '{header}' spans multiple lines (starting at line {lineno})"
-                    )
+                    # Multi-line sequence detected
+                    return False
                 seen_seq = True
         if header is None:
             raise ValueError("File contains no FASTA records")
         if not seen_seq:
             raise ValueError(f"Header '{header}' has no sequence line at end of file")
+    return True
 
 
-def validate_alignment_dir_two_line(directory, recursive=False):
-    """Ensure all FASTA files in *directory* are 2-line format."""
+def validate_alignment_dir_two_line(directory, recursive=False, allow_multi_line=False):
+    """Ensure all FASTA files in *directory* are 2-line format.
+
+    If *allow_multi_line* is ``True``, files with multi-line sequences will
+    trigger a warning instead of a :class:`ValueError`."""
+
     if not directory or not os.path.isdir(directory):
         return
-        
+
     print("Verifying alignment format...")
 
     walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
+    found_multiline = False
     for root, _dirs, files in walker:
         for fname in files:
             if is_fasta(fname):
                 fpath = os.path.join(root, fname)
                 try:
-                    assert_two_line_fasta(fpath)
+                    if not is_two_line_fasta(fpath):
+                        if allow_multi_line:
+                            found_multiline = True
+                        else:
+                            msg = (
+                                f"Alignment file '{fpath}' is not in 2-line FASTA format.\n"
+                                "Each sequence must appear on a single line. "
+                                "You can reformat the file with a tool like 'seqtk seq -l0'."
+                            )
+                            raise ValueError(msg) from None
                 except ValueError as e:
-                    msg = (
-                        f"Alignment file '{fpath}' is not in 2-line FASTA format: {e}.\n"
-                        "Each sequence must appear on a single line. "
-                        "You can reformat the file with a tool like 'seqtk seq -l0'."
-                    )
-                    raise ValueError(msg) from None
+                    raise ValueError(
+                        f"Alignment file '{fpath}' is not valid FASTA: {e}"
+                    ) from None
+
+    if found_multiline:
+        print(
+            "WARNING: Detected FASTA files with sequences spanning multiple lines. "
+            "Processing will continue, but this may be slower."
+        )
 
 def get_species_to_check(response_matrix_path, check_order = False):
     '''takes a full path to a response matrix and returns a list of species
