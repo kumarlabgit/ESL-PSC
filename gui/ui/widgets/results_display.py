@@ -273,6 +273,24 @@ class GeneRanksDialog(QDialog):
 
         align_dir = getattr(self.config, 'alignments_dir', '')
 
+        # Compute a global maximum score across the displayed genes (up to 200)
+        global_max_score = None
+        try:
+            display_genes = set(df['Gene']) if 'Gene' in df.columns else set()
+            if display_genes:
+                sub = sites_df[sites_df['gene_name'].isin(display_genes)]
+                score_col = None
+                if 'pss' in sub.columns and not sub['pss'].isnull().all():
+                    score_col = 'pss'
+                elif 'score' in sub.columns:
+                    score_col = 'score'
+                if score_col is not None and not sub.empty:
+                    mx = sub[score_col].max()
+                    if pd.notna(mx) and float(mx) > 0:
+                        global_max_score = float(mx)
+        except Exception:
+            global_max_score = None
+
         for _, row in df.iterrows():
             gene = row['Gene']
             gene_sites = sites_df[sites_df['gene_name'] == gene]
@@ -293,7 +311,7 @@ class GeneRanksDialog(QDialog):
             gene_values = [gene, str(length), '', '', ''] + [str(row[col]) for col in rank_columns]
             parent_item = QTreeWidgetItem(gene_values)
             self.tree.addTopLevelItem(parent_item)
-            self.tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores))
+            self.tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores, score_scale_max=global_max_score))
             parent_item.setExpanded(False)
 
             for _, srow in gene_sites.iterrows():
@@ -355,6 +373,22 @@ class SelectedSitesDialog(QDialog):
         tree.setHeaderLabels(["Gene", "Length", "Map", "Position", "Position Sparsity Score"])
         tree.setUniformRowHeights(True)
 
+        # Compute a global maximum score across the displayed genes
+        global_max_score = None
+        try:
+            sub = df[df["gene_name"].isin(gene_order)] if "gene_name" in df.columns else df
+            score_col = None
+            if "pss" in sub.columns and not sub["pss"].isnull().all():
+                score_col = "pss"
+            elif "score" in sub.columns:
+                score_col = "score"
+            if score_col is not None and not sub.empty:
+                mx = sub[score_col].max()
+                if pd.notna(mx) and float(mx) > 0:
+                    global_max_score = float(mx)
+        except Exception:
+            global_max_score = None
+
         for gene in gene_order:
             gene_data = df[df["gene_name"] == gene]
             # Filter out rows with zero PSS
@@ -372,7 +406,7 @@ class SelectedSitesDialog(QDialog):
 
             parent_item = QTreeWidgetItem([gene, str(length), "", "", ""])
             tree.addTopLevelItem(parent_item)
-            tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores))
+            tree.setItemWidget(parent_item, 2, ProteinMapWidget(length, positions, scores, score_scale_max=global_max_score))
             parent_item.setExpanded(False)
 
             for _, row in gene_data.iterrows():

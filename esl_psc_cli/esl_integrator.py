@@ -403,7 +403,11 @@ def generate_predictions_output(esl_run_list, output_path, phenofile = None):
     if phenofile: 
         column_names.append('true_phenotype')
         # read the file
+        ph_type = ecf.detect_pheno_file_type(phenofile)
         all_species_pheno_dict = ecf.get_pheno_dict(phenofile)
+        # If the phenotype file is binary, emit integer labels -1/1; otherwise, preserve continuous values
+        if ph_type == 'binary':
+            all_species_pheno_dict = {sp: int(v) for sp, v in all_species_pheno_dict.items()}
     else:
         # this will just let it add nothing to each line if no pheno file 
         all_species_pheno_dict = defaultdict(lambda:'') 
