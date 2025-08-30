@@ -95,9 +95,10 @@ class InputPage(BaseWizardPage):
             "Alignment Directory:", 'directory',
             default_path=os.getcwd(),
             description=(
-                "Directory containing alignment files in 2-line FASTA format. Each file must have the .fas extension. "
-                "Each sequence must be entirely on a single line below its identifier. "
-                "All sequences in a file must be aligned. Only standard amino acid and gap characters are allowed."
+                "Directory containing alignment files in FASTA format. Each file must have the .fas extension. "
+                "Sequences should be in 2-line FASTA format for best performance, but multi-line files are accepted and "
+                "will be converted, which may be slower. All sequences in a file must be aligned and contain only standard "
+                "amino acid and gap characters."
             )
         )
         self.alignment_dir.path_changed.connect(

@@ -290,7 +290,7 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
             # write new file
             with open(file_name, "w") as output_handle:
                 SeqIO.write(records, output_handle, "fasta-2line")
-                # note that ESL preprocess requires 2-line fasta alignment files
+                # Downstream ESL steps expect 2-line FASTA files
 
         if file_count > 0 and not combo_has_at_least_one_valid_gene:
             raise ValueError(
@@ -321,8 +321,8 @@ def main(raw_args=None):
 
     args = ecf.parse_args_with_config(parser, raw_args) # checks for args in config file
 
-    # Ensure input alignments are in 2-line FASTA format
-    ecf.validate_alignment_dir_two_line(args.alignments_dir)
+    # Allow multi-line FASTA input but warn the user
+    ecf.validate_alignment_dir_two_line(args.alignments_dir, allow_multi_line=True)
     
     # get species lists 
     if args.response_file: 
