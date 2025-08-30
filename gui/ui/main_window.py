@@ -64,23 +64,32 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         """Handle the show event to ensure proper window centering and visibility."""
         super().showEvent(event)
-        
-        # Center the window on screen
-        screen = QApplication.primaryScreen().availableGeometry()
-        size = self.size()
-        if size.width() > screen.width() or size.height() > screen.height():
-            self.resize(screen.size() * 0.8)  # 80% of screen size if too large
+        try:
+            # In headless/offscreen environments, there may be no primary screen.
+            screen_obj = QApplication.primaryScreen()
+            if screen_obj is None:
+                print("MainWindow: No primary screen (likely offscreen); skipping centering/activation")
+                return
+
+            # Center the window on screen
+            screen = screen_obj.availableGeometry()
+            size = self.size()
+            if size.width() > screen.width() or size.height() > screen.height():
+                self.resize(screen.size() * 0.8)  # 80% of screen size if too large
             
-        # Center the window
-        frame_geometry = self.frameGeometry()
-        center_point = screen.center()
-        frame_geometry.moveCenter(center_point)
-        self.move(frame_geometry.topLeft())
-        
-        # Ensure the window is raised and activated
-        self.raise_()
-        self.activateWindow()
-        print("MainWindow: Window shown and activated")
+            # Center the window
+            frame_geometry = self.frameGeometry()
+            center_point = screen.center()
+            frame_geometry.moveCenter(center_point)
+            self.move(frame_geometry.topLeft())
+            
+            # Ensure the window is raised and activated
+            self.raise_()
+            self.activateWindow()
+            print("MainWindow: Window shown and activated")
+        except Exception as e:
+            # Be defensive: never allow test environments to hang due to GUI specifics
+            print(f"MainWindow: showEvent skipping centering due to environment error: {e}")
 
 
 class ESLWizard(QWizard):

@@ -683,17 +683,17 @@ class ParametersPage(BaseWizardPage):
         hyper_layout.addRow("Top rank fraction:", self.top_rank_frac)
         
         # Max Iterations for optimizer
-        self.maxiter_combo = QComboBox()
-        self.maxiter_combo.addItems(["100", "200", "500", "1000"])
-        self.maxiter_combo.setCurrentText(str(getattr(self.config, 'maxiter', 100)))
-        self.maxiter_combo.setMaximumWidth(120)
-        self.maxiter_combo.currentTextChanged.connect(
-            lambda t: setattr(self.config, 'maxiter', int(t))
+        self.maxiter_spin = QSpinBox()
+        self.maxiter_spin.setRange(100, 1000)
+        self.maxiter_spin.setValue(int(getattr(self.config, 'maxiter', 100)))
+        self.maxiter_spin.setMaximumWidth(120)
+        self.maxiter_spin.valueChanged.connect(
+            lambda v: setattr(self.config, 'maxiter', int(v))
         )
-        self.maxiter_combo.setToolTip(
+        self.maxiter_spin.setToolTip(
             "Maximum number of iterations for the sg_lasso optimizer. Default is 100. Increase to allow more gradient descent steps."
         )
-        hyper_layout.addRow("Max Iterations:", self.maxiter_combo)
+        hyper_layout.addRow("Max Iterations:", self.maxiter_spin)
         
         hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
