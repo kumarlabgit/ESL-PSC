@@ -348,7 +348,8 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                 preprocess_dir_name,
                 gap_canceled_alignments_path,
                 gene_objects_dict,
-                combo_name)
+                combo_name,
+                response_matrix_path=response_path)
             # gene_objects_dict is an object and only a reference is passed to
             #   each run so same object persists and accumulates all the data
             master_run_list.extend(run_list)
@@ -382,7 +383,8 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                                                   rand_aligns,
                                                   gene_objects_dict,
                                                   combo_name
-                                                      + '_' + str(run_num))
+                                                      + '_' + str(run_num),
+                                                  response_matrix_path=response_path)
                 master_run_list.extend(run_list)
                 if checkpointer:
                     checkpointer.save_checkpoint(
@@ -563,12 +565,23 @@ def main(raw_args=None):
     #   The index of the file name in the list can be the combo code to
     #   link to the correct preprocess folder and gap-canceled alignments folder
 
+    pheno_dict = None
     if args.response_dir: # this means there is a directory of response matrices
         # sort them to get deterministic ordering
         response_file_list = sorted(os.listdir(args.response_dir))
         response_file_list = [os.path.join(args.response_dir, file) for
                               file in response_file_list] # full paths
         response_dir = args.response_dir # for use later
+        if any(ecf.response_matrix_is_continuous(f) for f in response_file_list):
+            args.species_pheno_is_continuous = True
+            print("Detected continuous phenotype values: running ESL-PSC with continuous response variables.")
+            if getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False):
+                print("SPS plots are disabled for continuous phenotype files.")
+                args.make_sps_plot = False
+                args.make_sps_kde_plot = False
+            if getattr(args, 'make_continuous_plot', False) and not getattr(args, 'species_pheno_path', None):
+                print("Continuous phenotype plots require a species phenotype file; skipping plot.")
+                args.make_continuous_plot = False
         # generate list_of_species_combos
         list_of_species_combos = []
         for response_file in response_file_list:
@@ -589,9 +602,13 @@ def main(raw_args=None):
                                     os.path.split(args.species_groups_file)[1]
                                     + '_response_matrices')
         response_dir = response_dir.replace('.txt', '') #delete group file ext
+        pheno_dict = None
+        if getattr(args, 'species_pheno_is_continuous', False):
+            pheno_dict = ecf.get_pheno_dict(args.species_pheno_path)
         if not args.make_null_models: # this will be done later if doing nulls
             response_file_list = ecf.make_response_files(response_dir,
-                                                         list_of_species_combos)
+                                                         list_of_species_combos,
+                                                         pheno_dict)
     else: 
         raise ValueError("must give either response_dir or species_groups_file")
     # we now have a response_file_list and a response_dir with the files in it
@@ -702,7 +719,8 @@ def main(raw_args=None):
         list_of_species_combos = ecf.make_null_combos(list_of_species_combos)
         # now fix the response directory
         response_file_list = ecf.make_response_files(response_dir,
-                                                     list_of_species_combos)
+                                                     list_of_species_combos,
+                                                     pheno_dict)
         
 
     # 2) Generate Gap-canceled Alignments
@@ -802,6 +820,10 @@ def main(raw_args=None):
                                   args.pheno_names,
                                   args.min_genes,
                                   plot_type)
+    elif getattr(args, 'make_continuous_plot', False):
+        ecf.continuous_pred_plot(preds_output_path,
+                                 args.output_file_base_name,
+                                 args.min_genes)
 
 if __name__ == '__main__':
     main()

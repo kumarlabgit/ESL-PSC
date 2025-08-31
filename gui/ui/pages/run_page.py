@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
-    SpsPlotDialog, GeneRanksDialog
+    SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog
 )
 
 class RunPage(BaseWizardPage):
@@ -64,11 +64,15 @@ class RunPage(BaseWizardPage):
         self.sps_btn = QPushButton("Show SPS Plot")
         self.sps_btn.hide()
         self.sps_btn.clicked.connect(self.show_sps_plot)
+        self.cont_btn = QPushButton("Show Phenotype Plot")
+        self.cont_btn.hide()
+        self.cont_btn.clicked.connect(self.show_cont_plot)
         self.gene_btn = QPushButton("Show Top Gene Ranks")
         self.gene_btn.hide()
         self.gene_btn.clicked.connect(self.show_gene_ranks)
         self.results_layout.addStretch()
         self.results_layout.addWidget(self.sps_btn)
+        self.results_layout.addWidget(self.cont_btn)
         self.results_layout.addWidget(self.gene_btn)
         container_layout.addLayout(self.results_layout)
 
@@ -249,8 +253,10 @@ class RunPage(BaseWizardPage):
             self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis (may take 10 seconds)...")
             self.sps_btn.hide()
+            self.cont_btn.hide()
             self.gene_btn.hide()
             self.sps_plot_path = None
+            self.cont_plot_path = None
             self.gene_ranks_path = None
             self.selected_sites_path = None
 
@@ -306,6 +312,13 @@ class RunPage(BaseWizardPage):
         else:
             QMessageBox.warning(self, "File Not Found", "The SPS plot file could not be found.")
 
+    def show_cont_plot(self):
+        """Slot to show the continuous phenotype plot if available."""
+        if self.cont_plot_path and os.path.exists(self.cont_plot_path):
+            ContinuousPlotDialog.show_dialog(self.cont_plot_path, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The phenotype plot file could not be found.")
+
     def show_gene_ranks(self):
         """Slot to show the gene ranks table if available."""
         if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
@@ -350,6 +363,14 @@ class RunPage(BaseWizardPage):
                 if os.path.exists(path):
                     self.sps_plot_path = path
                     self.sps_btn.show()
+
+            self.cont_plot_path = None
+            if getattr(self.config, "make_continuous_plot", False) and not getattr(self.config, "no_pred_output", False):
+                cont_name = f"{base}_continuous_plot.svg"
+                path = os.path.abspath(os.path.join(out_dir, cont_name))
+                if os.path.exists(path):
+                    self.cont_plot_path = path
+                    self.cont_btn.show()
 
             ranks_path = os.path.abspath(os.path.join(out_dir, f"{base}_gene_ranks.csv"))
             # Only show the button if gene output was requested in this run

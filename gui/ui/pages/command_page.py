@@ -182,6 +182,8 @@ class CommandPage(BaseWizardPage):
             self.add_summary_item(layout, "Limited Genes:", self.config.limited_genes_file)
         if hasattr(self.config, 'response_dir') and self.config.response_dir:
             self.add_summary_item(layout, "Response Directory:", self.config.response_dir)
+        if getattr(self.config, 'use_continuous_phenotypes', False):
+            self.add_summary_item(layout, "Response Type:", "Continuous phenotypes")
         
         # Add a header for analysis parameters
         params_header = QLabel("Analysis Parameters")
@@ -275,8 +277,11 @@ class CommandPage(BaseWizardPage):
         # SPS plot settings – show SPS, KDE, or both depending on selections
         make_sps_plot = getattr(self.config, 'make_sps_plot', False)
         make_kde_plot = getattr(self.config, 'make_sps_kde_plot', False)
+        make_cont_plot = getattr(self.config, 'make_continuous_plot', False)
 
-        if make_sps_plot and make_kde_plot:
+        if make_cont_plot:
+            output_settings.append("Generate phenotype density plot")
+        elif make_sps_plot and make_kde_plot:
             output_settings.append("Generate SPS and KDE plots")
         elif make_sps_plot:
             output_settings.append("Generate SPS plots")

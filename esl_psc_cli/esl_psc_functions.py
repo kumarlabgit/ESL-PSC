@@ -213,7 +213,11 @@ def parse_args_with_config(parser, raw_args=None):
 
 
     # Conditional error for missing species_pheno_path when plot generation is requested
-    plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)
+    plot_requested = (
+        getattr(args, 'make_sps_plot', False)
+        or getattr(args, 'make_sps_kde_plot', False)
+        or getattr(args, 'make_continuous_plot', False)
+    )
     species_pheno_path_missing = not getattr(args, 'species_pheno_path', None)
 
     if plot_requested and species_pheno_path_missing:
@@ -223,7 +227,23 @@ def parse_args_with_config(parser, raw_args=None):
     if getattr(args, 'species_pheno_path', None):
         ph_type = detect_pheno_file_type(args.species_pheno_path)
         setattr(args, 'species_pheno_is_binary', ph_type == 'binary')
-        setattr(args, 'species_pheno_is_continuous', ph_type != 'binary')
+        use_cont = getattr(args, 'use_continuous_phenotypes', False) and ph_type != 'binary'
+        setattr(args, 'species_pheno_is_continuous', use_cont)
+
+        if ph_type != 'binary' and use_cont:
+            print("Detected continuous phenotype values: running ESL-PSC with continuous response variables.")
+            if getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False):
+                print("SPS plots are disabled for continuous phenotype files.")
+                args.make_sps_plot = False
+                args.make_sps_kde_plot = False
+        elif ph_type != 'binary' and not use_cont:
+            print("Continuous phenotype file detected but --use_continuous_phenotypes was not set; treating values as binary.")
+            if getattr(args, 'make_continuous_plot', False):
+                print("Continuous phenotype plots require --use_continuous_phenotypes; skipping plot.")
+                args.make_continuous_plot = False
+        elif ph_type == 'binary' and getattr(args, 'make_continuous_plot', False):
+            print("Phenotype file appears to be binary; continuous phenotype plot will be skipped.")
+            args.make_continuous_plot = False
     else:
         setattr(args, 'species_pheno_is_binary', False)
         setattr(args, 'species_pheno_is_continuous', False)
@@ -340,13 +360,42 @@ def get_species_to_check(response_matrix_path, check_order = False):
         if check_order:
             if line_index % 2 == 0:
                 # even indices are 0, 2, 4, i.e. 1st, 3rd, 5th
-                assert int(response_number) == 1 or int(response_number) == 0
+                assert float(response_number) == 1 or float(response_number) == 0
             else:
-                assert int(response_number) == -1 or int(response_number) == 0
+                assert float(response_number) == -1 or float(response_number) == 0
         #this shouldn't happen unless it's a pair
-        if int(response_number) != 0: 
+        if float(response_number) != 0:
             species_list.append(species_name)
     return species_list
+
+def response_matrix_is_continuous(response_matrix_path):
+    """Return True if *response_matrix_path* contains any response values other
+    than -1, 0, or 1."""
+    for line in file_lines_to_list(response_matrix_path):
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        try:
+            value = float(parts[1])
+        except ValueError:
+            continue
+        if value not in (-1.0, 0.0, 1.0):
+            return True
+    return False
+
+def get_response_dict(response_matrix_path):
+    """Return a dict mapping species to numeric phenotype values from a
+    response matrix file."""
+    resp = {}
+    for line in file_lines_to_list(response_matrix_path):
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        try:
+            resp[parts[0]] = float(parts[1])
+        except ValueError:
+            continue
+    return resp
 
 def make_taxa_list(alignments_dir_path):
     """Return a sorted list of all species IDs found in FASTA files."""
@@ -557,21 +606,30 @@ def clear_existing_folder(directory_path):
         raise Exception("trying to check if this directory exists "
                         + directory_path + " but this is not a directory")
 
-def make_response_files(response_dir, list_of_species_combos):
+def make_response_files(response_dir, list_of_species_combos, pheno_dict=None):
     '''takes a directory path, either existing or not, and a list of species
-    combos in 1, -1, 1, -1 order and generates an ESL response file for each
-    combo. returns a list of response file paths
+    combos and generates an ESL response file for each combo. When ``pheno_dict``
+    is ``None`` the combos are assumed to be in ``+1, -1, +1, -1`` order and the
+    responses are assigned accordingly. If ``pheno_dict`` is provided, the
+    numeric phenotype value for each species is looked up instead of using the
+    default binary pattern. returns a list of response file paths
     '''
     response_file_list = []
     clear_existing_folder(response_dir)
     os.mkdir(response_dir)
     # combinations are given sequential codes: 0, 1, 2...
     #   the same codes will be used in gap-canceled alignments & preprocess
-    for index1, combo in enumerate(list_of_species_combos): 
+    for index1, combo in enumerate(list_of_species_combos):
         response_lines = []
         for index2, species in enumerate(combo):
-            # assumes species greoups are listed in "+1, -1, +1, -1" order
-            response = 1 if index2 % 2 == 0 else -1
+            if pheno_dict is not None:
+                if species not in pheno_dict:
+                    raise ValueError(
+                        f"Species '{species}' missing from phenotype file")
+                response = pheno_dict[species]
+            else:
+                # assumes species groups are listed in "+1, -1, +1, -1" order
+                response = 1 if index2 % 2 == 0 else -1
             response_lines.append(species + '\t' + str(response))
         # response file names are combo_1.txt, combo_2.txt etc.
         file_path = (os.path.join(response_dir,
@@ -749,7 +807,39 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     report_elapsed_time(start_time)
     print("\npredictions density plot figure saved at: " + fig_path)
 
-    
+
+def continuous_pred_plot(pred_csv_path, title, min_genes=0):
+    """Generate a 2D density plot of true phenotype vs SPS."""
+    start_time = time.time()
+    print("making continuous phenotype plot...")
+
+    if threading.current_thread().name != "MainThread":
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+
+    df = pd.read_csv(pred_csv_path, dtype={'species': str,
+                                           'SPS': float,
+                                           'num_genes': float,
+                                           'true_phenotype': float})
+    df = df[['species', 'SPS', 'num_genes', 'true_phenotype']]
+
+    fig_path = os.path.join(os.path.split(pred_csv_path)[0],
+                            title + '_continuous_plot.svg')
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    sps_density.create_continuous_plot(df=df, axes=ax,
+                                       title=title,
+                                       min_genes=min_genes)
+    fig.savefig(fig_path)
+
+    if sys.stdout.isatty():
+        plt.show()
+    else:
+        plt.close(fig)
+
+    report_elapsed_time(start_time)
+    print("\ncontinuous phenotype plot saved at: " + fig_path)
+
 
 class ESLRunFamily():
     '''a class to contain a family of runs with the same inputs.
@@ -938,11 +1028,17 @@ class ESLRun():
                 with open(slep_opts_path, "w") as sf:
                     sf.write(f"maxIter\t{maxiter}\n")
 
-            # Build command list for ESL logistic lasso.
-            # Use an argument list (shell=False) so paths that contain spaces are
-            # passed intact to the executable.
+            # Build command list for ESL lasso, selecting logistic or linear
+            # regression depending on whether the phenotype file is binary or
+            # continuous.  Use an argument list (shell=False) so paths that
+            # contain spaces are passed intact to the executable.
+            lasso_binary = (
+                "sg_lasso_leastr"
+                if getattr(self.run_family.args, "species_pheno_is_continuous", False)
+                else "sg_lasso"
+            )
             esl_command_list = [
-                get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
+                get_binary_path(self.run_family.args.esl_main_dir, lasso_binary),
                 "-f",
                 os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
                 "-z",

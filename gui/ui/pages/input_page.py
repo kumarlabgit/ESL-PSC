@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt  # Needed for alignment
 from gui.ui.widgets.existing_output_viewer import select_and_show_existing_output
 import os
 
+from esl_psc_cli import esl_psc_functions as ecf
+
 from gui.ui.widgets.file_selectors import FileSelector
 from gui.ui.widgets.tree_viewer import TreeViewer
 from Bio import Phylo
@@ -149,9 +151,7 @@ class InputPage(BaseWizardPage):
                 "Typically used for advanced analyses or when reusing previously computed matrices."
             )
         )
-        self.response_dir.path_changed.connect(
-            lambda p: setattr(self.config, 'response_dir', p)
-        )
+        self.response_dir.path_changed.connect(self._on_response_dir_changed)
         self.response_dir.setVisible(False)  # Start hidden
         self.input_files_layout.addWidget(self.response_dir)
         
@@ -173,6 +173,8 @@ class InputPage(BaseWizardPage):
             else:
                 # Clear response dir path when switching to species groups
                 self.config.response_dir = ""
+                self.config.response_matrices_are_continuous = False
+                self.config.use_continuous_phenotypes = False
         
         self.use_species_groups.toggled.connect(update_input_visibility)
         self.use_response_dir.toggled.connect(update_input_visibility)
@@ -346,6 +348,31 @@ class InputPage(BaseWizardPage):
         except Exception:
             # On error, leave flags False so downstream treats as absent for plots
             pass
+
+    def _on_response_dir_changed(self, path: str) -> None:
+        """Set response directory and detect continuous response matrices."""
+        setattr(self.config, 'response_dir', path)
+        self.config.response_matrices_are_continuous = False
+        if not path or not os.path.isdir(path):
+            self.config.use_continuous_phenotypes = False
+            return
+        try:
+            for fname in os.listdir(path):
+                if not fname.endswith('.txt'):
+                    continue
+                full = os.path.join(path, fname)
+                if ecf.response_matrix_is_continuous(full):
+                    self.config.response_matrices_are_continuous = True
+                    self.config.use_continuous_phenotypes = True
+                    self.config.species_pheno_is_continuous = True
+                    break
+            else:
+                self.config.use_continuous_phenotypes = False
+                self.config.species_pheno_is_continuous = False
+        except Exception:
+            # Ignore detection errors; treat as binary
+            self.config.use_continuous_phenotypes = False
+            self.config.species_pheno_is_continuous = False
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""

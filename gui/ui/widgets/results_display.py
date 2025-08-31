@@ -144,6 +144,25 @@ class SpsPlotDialog(QDialog):
         _open_dialogs.append(dialog)
 
 
+class ContinuousPlotDialog(QDialog):
+    """Dialog to display the continuous phenotype plot."""
+
+    def __init__(self, svg_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Phenotype vs SPS Plot")
+        layout = QVBoxLayout(self)
+        svg_widget = QSvgWidget(svg_path)
+        svg_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(svg_widget)
+        self.resize(680, 600)
+
+    @staticmethod
+    def show_dialog(svg_path, parent=None):
+        dialog = ContinuousPlotDialog(svg_path, parent)
+        dialog.show()
+        _open_dialogs.append(dialog)
+
+
 class GeneRanksDialog(QDialog):
     """Dialog to display top gene ranks and optional selected sites."""
 
