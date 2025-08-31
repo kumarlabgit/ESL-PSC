@@ -2,8 +2,12 @@
 
 Allows `import gui` and other top-level packages during test discovery.
 """
+import os
 import sys
 from pathlib import Path
+
+# Force Qt to use an offscreen platform so GUI smoke tests run in headless CI
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
