@@ -2,7 +2,7 @@
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
-    QSizePolicy
+    QSizePolicy, QCheckBox
 )
 from PySide6.QtCore import Qt  # Needed for alignment
 
@@ -83,6 +83,23 @@ class InputPage(BaseWizardPage):
         
         input_type_layout.addWidget(self.use_species_groups)
         input_type_layout.addWidget(self.use_response_dir)
+        # Continuous phenotypes toggle (appears when continuous inputs are detected)
+        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
+        self.use_continuous_chk.setToolTip(
+            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
+        )
+        self.use_continuous_chk.setVisible(False)
+        def _on_cont_toggled(checked: bool):
+            setattr(self.config, 'use_continuous_phenotypes', checked)
+            # If Parameters page exists, update its dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+        self.use_continuous_chk.toggled.connect(_on_cont_toggled)
+        input_type_layout.addWidget(self.use_continuous_chk)
         input_type_group.setLayout(input_type_layout)
         
         req_layout.addWidget(input_type_group)
@@ -168,13 +185,26 @@ class InputPage(BaseWizardPage):
             
             # Update config to reflect the active input type
             if use_response_dir:
-                # Clear species groups path when switching to response dir
+                # Persist currently shown response dir in config
+                if hasattr(self, 'response_dir'):
+                    try:
+                        self.config.response_dir = self.response_dir.get_path()
+                    except Exception:
+                        pass
+                # Clear species groups path in config to avoid ambiguity for downstream code
                 self.config.species_groups_file = ""
             else:
+                # Persist currently shown species groups path in config
+                if hasattr(self, 'species_groups'):
+                    try:
+                        self.config.species_groups_file = self.species_groups.get_path()
+                    except Exception:
+                        pass
                 # Clear response dir path when switching to species groups
                 self.config.response_dir = ""
                 self.config.response_matrices_are_continuous = False
                 self.config.use_continuous_phenotypes = False
+            self._update_continuous_checkbox_visibility()
         
         self.use_species_groups.toggled.connect(update_input_visibility)
         self.use_response_dir.toggled.connect(update_input_visibility)
@@ -192,8 +222,7 @@ class InputPage(BaseWizardPage):
             default_path=os.getcwd(),
             description=(
                 "Optional: comma-separated file with species phenotypes. "
-                "First column is species ID, second column is phenotype value (float or -1/1 for binary).\n"
-                "Continuous values are colored with a red→blue gradient in the tree viewer; missing values render as black.\n"
+                "First column is species ID, second column is phenotype value (-1/1 binary or float for continuous). "
                 "If omitted, the predictions output will not include a true phenotype column."
             ),
         )
@@ -317,6 +346,15 @@ class InputPage(BaseWizardPage):
         self.config.species_pheno_is_binary = False
         self.config.species_pheno_is_continuous = False
         if not path or not os.path.exists(path):
+            # Update visibility in case file was removed
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
             return
         try:
             import csv
@@ -348,6 +386,15 @@ class InputPage(BaseWizardPage):
         except Exception:
             # On error, leave flags False so downstream treats as absent for plots
             pass
+        finally:
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
 
     def _on_response_dir_changed(self, path: str) -> None:
         """Set response directory and detect continuous response matrices."""
@@ -355,6 +402,14 @@ class InputPage(BaseWizardPage):
         self.config.response_matrices_are_continuous = False
         if not path or not os.path.isdir(path):
             self.config.use_continuous_phenotypes = False
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
             return
         try:
             for fname in os.listdir(path):
@@ -373,6 +428,35 @@ class InputPage(BaseWizardPage):
             # Ignore detection errors; treat as binary
             self.config.use_continuous_phenotypes = False
             self.config.species_pheno_is_continuous = False
+        finally:
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+
+    def _update_continuous_checkbox_visibility(self) -> None:
+        """Show/Hide and sync the continuous phenotypes checkbox based on detected inputs."""
+        cont_detected = bool(
+            getattr(self.config, 'species_pheno_is_continuous', False) or
+            getattr(self.config, 'response_matrices_are_continuous', False)
+        )
+        # Only show within the Input Type group when something continuous is detected
+        self.use_continuous_chk.setVisible(cont_detected)
+        if not cont_detected:
+            # Ensure config is off when not applicable
+            self.use_continuous_chk.blockSignals(True)
+            self.use_continuous_chk.setChecked(False)
+            self.use_continuous_chk.blockSignals(False)
+            self.config.use_continuous_phenotypes = False
+        else:
+            # Reflect current config state
+            self.use_continuous_chk.blockSignals(True)
+            self.use_continuous_chk.setChecked(bool(getattr(self.config, 'use_continuous_phenotypes', False)))
+            self.use_continuous_chk.blockSignals(False)
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""
@@ -410,3 +494,5 @@ class InputPage(BaseWizardPage):
         use_resp = bool(self.config.response_dir)
         self.use_response_dir.setChecked(use_resp)
         self.use_species_groups.setChecked(not use_resp)
+        # Sync the continuous toggle visibility and state
+        self._update_continuous_checkbox_visibility()

@@ -126,7 +126,7 @@ class ParametersPage(BaseWizardPage):
             "Only generate gene ranks output. This is the fastest option and is "
             "recommended for finding genes that might be related to a convergent phenotype."
         )
-        self.genes_only_btn.setChecked(True)  # Set as default
+        self.genes_only_btn.setChecked(False)
         self.output_options_group.addButton(self.genes_only_btn)
         genes_only_layout.addWidget(self.genes_only_btn)
         genes_only_layout.addStretch()
@@ -156,6 +156,8 @@ class ParametersPage(BaseWizardPage):
             "a true phenotype column. This is the most comprehensive but slowest option."
         )
         self.both_outputs_btn.setChecked(True)  # Default selection
+        # Ensure mutually exclusive default favors 'Both outputs'
+        self.genes_only_btn.setChecked(False)
         self.output_options_group.addButton(self.both_outputs_btn)
         both_outputs_layout.addWidget(self.both_outputs_btn)
         both_outputs_layout.addStretch()
@@ -235,21 +237,6 @@ class ParametersPage(BaseWizardPage):
         # Add vertical spacer for better separation before output directory
         output_layout.addSpacing(5)  # Reduced spacing before output directory
 
-        # Option to use continuous response values
-        def _on_continuous_toggled(checked):
-            self.config.use_continuous_phenotypes = checked
-            if hasattr(self, '_update_sps_plot_state'):
-                self._update_sps_plot_state()
-            self.update_output_options_state()
-
-        self.use_continuous_chk = QCheckBox("Use continuous phenotype values")
-        self.use_continuous_chk.toggled.connect(_on_continuous_toggled)
-        self.use_continuous_chk.setToolTip(
-            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
-        )
-        self.use_continuous_chk.setVisible(False)
-        output_layout.addWidget(self.use_continuous_chk)
-        
         # SPS plot options (always visible but may be disabled)
         self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
         sps_plot_layout = QVBoxLayout()
@@ -315,21 +302,23 @@ class ParametersPage(BaseWizardPage):
                 getattr(self.config, 'use_continuous_phenotypes', False)
                 or getattr(self.config, 'response_matrices_are_continuous', False)
             )
-            show_sps = (
+            # Keep the SPS group visible at all times; enable only when applicable
+            enable_sps = (
                 not self.genes_only_btn.isChecked()
                 and self.has_species_pheno
                 and not cont_active
             )
-            self.sps_plot_group.setVisible(show_sps)
-            self.sps_plot_group.setEnabled(show_sps)
+            self.sps_plot_group.setVisible(True)
+            self.sps_plot_group.setEnabled(enable_sps)
             self.sps_plot_group.setStyleSheet(
                 "QGroupBox:disabled { color: gray; }"
-                "QCheckBox:disabled { color: gray; }"
+                "QRadioButton:disabled { color: gray; }"
             )
 
+            # Show continuous plot option whenever continuous mode is active
+            # and we are not in 'Gene ranks only', regardless of phenotype file presence.
             cont_visible = (
                 not self.genes_only_btn.isChecked()
-                and self.has_species_pheno
                 and cont_active
             )
             self.continuous_plot_chk.setVisible(cont_visible)
@@ -337,10 +326,13 @@ class ParametersPage(BaseWizardPage):
                 self.continuous_plot_chk.setChecked(False)
 
             if not self.has_species_pheno:
-                warn = "<font color='red'>Requires a binary species phenotype file (-1/1) to generate SPS plots.</font>"
+                warn = "<font color='red'>Requires a species phenotype file to generate SPS plots.</font>"
                 self.make_sps_plot.setToolTip(warn)
                 self.make_sps_kde_plot.setToolTip(warn)
-                self.continuous_plot_chk.setToolTip("Requires a species phenotype file to generate plots.")
+                # Continuous mode without phenotype: still show control but clarify requirement
+                self.continuous_plot_chk.setToolTip(
+                    "Create a 2D density plot (requires a species phenotype file)."
+                )
             elif cont_active:
                 warn = "<font color='red'>SPS plots are disabled for continuous phenotypes.</font>"
                 self.make_sps_plot.setToolTip(warn)
@@ -988,21 +980,6 @@ class ParametersPage(BaseWizardPage):
             self.make_sps_kde_plot.setChecked(cfg.make_sps_kde_plot)
         if hasattr(self, 'continuous_plot_chk'):
             self.continuous_plot_chk.setChecked(getattr(cfg, 'make_continuous_plot', False))
-        # Deletion canceler
-        self.nix_full_deletions.setChecked(cfg.nix_full_deletions)
-        self.cancel_only_partner.setChecked(cfg.cancel_only_partner)
-        self.min_pairs.setValue(cfg.min_pairs)
-        self.use_existing_alignments.setChecked(getattr(cfg, 'use_existing_alignments', False))
-        self.canceled_alignments_selector.set_path(getattr(cfg, 'canceled_alignments_dir', ''))
-        self.canceled_alignments_selector.setVisible(getattr(cfg, 'use_existing_alignments', False))
-
-        if hasattr(self, 'use_continuous_chk'):
-            self.use_continuous_chk.setChecked(cfg.use_continuous_phenotypes)
-
-        self.update_output_options_state()
-        # Update Output Files radios from config (block signals so we don’t write back immediately)
-        for btn in (self.genes_only_btn, self.preds_only_btn, self.both_outputs_btn):
-            btn.blockSignals(True)
 
         if cfg.no_genes_output and not cfg.no_pred_output:
             # only species predictions
@@ -1037,7 +1014,10 @@ class ParametersPage(BaseWizardPage):
         # Update UI that depends on input page
         if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
             path = self.wizard().input_page.species_phenotypes.get_path()
-            self.has_species_pheno = bool(path) and bool(getattr(self.config, 'species_pheno_is_binary', False))
+            self.has_species_pheno = bool(path) and (
+                bool(getattr(self.config, 'species_pheno_is_binary', False)) or
+                bool(getattr(self.config, 'species_pheno_is_continuous', False))
+            )
         self.update_output_options_state()
         return
 
@@ -1140,29 +1120,9 @@ class ParametersPage(BaseWizardPage):
                     "Generate both gene ranks and species predictions outputs. The predictions file will not include a true phenotype column."
                 )
 
-            # Continuous phenotype handling
-            has_cont = (
-                getattr(self.config, 'species_pheno_is_continuous', False)
-                or getattr(self.config, 'response_matrices_are_continuous', False)
-            )
-            self.use_continuous_chk.setVisible(has_cont)
-            if getattr(self.config, 'response_matrices_are_continuous', False):
-                self.use_continuous_chk.setChecked(True)
-                self.use_continuous_chk.setEnabled(False)
-                self.use_continuous_chk.setToolTip(
-                    "Continuous response matrices detected; continuous phenotypes required."
-                )
-                self.config.use_continuous_phenotypes = True
-            elif has_cont:
-                self.use_continuous_chk.setEnabled(True)
-                self.use_continuous_chk.setChecked(self.config.use_continuous_phenotypes)
-                self.use_continuous_chk.setToolTip(
-                    "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
-                )
-            else:
-                self.use_continuous_chk.setChecked(False)
-                self.config.use_continuous_phenotypes = False
-
+            # Continuous phenotype handling is derived from InputPage/config.
+            # InputPage will turn off use_continuous_phenotypes when nothing continuous is detected,
+            # so do not override it here. Just refresh the SPS plot/density UI.
             if hasattr(self, '_update_sps_plot_state'):
                 self._update_sps_plot_state()
 
@@ -1175,9 +1135,7 @@ class ParametersPage(BaseWizardPage):
             # Ignore any other errors
             pass
 
-        # Update SPS plot availability when phenotype file status changes
-        if hasattr(self, '_update_sps_plot_state'):
-            self._update_sps_plot_state()
+        # (UI already refreshed above)
             
 
     
