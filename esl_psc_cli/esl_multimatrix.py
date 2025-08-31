@@ -1,7 +1,7 @@
 # A script to automate ESL-PSC integration experiments for multiple input
 #  matrices of species
 
-import argparse, os, time, shutil, random, itertools, sys
+import argparse, os, time, shutil, random, itertools, sys, subprocess
 from esl_psc_cli import checkpoint as cp_mod
 import faulthandler
 # Enable faulthandler so that **all Python threads** print a traceback when
@@ -728,10 +728,54 @@ def main(raw_args=None):
         # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
         # generate new alignments
-        dc.generate_gap_canceled_alignments(args, list_of_species_combos,
-                                            enumerate_combos = True,
-                                            limited_genes_list =
-                                            args.limited_genes_list)
+        # Prefer the Rust deletion canceler when running from source on Linux,
+        # only when we have a species_groups_file (so we can enumerate combos).
+        can_use_rust = (
+            sys.platform.startswith("linux")
+            and not getattr(sys, "frozen", False)
+            and __file__.endswith(".py")
+            and bool(getattr(args, "species_groups_file", None))
+        )
+        rust_bin = ecf.get_binary_path(args.esl_main_dir, "deletion_canceler")
+        rust_bin_ok = os.path.exists(rust_bin) and os.access(rust_bin, os.X_OK)
+
+        if can_use_rust and rust_bin_ok:
+            print("Using Rust deletion_canceler for gap-canceling alignments…")
+            cmd = [
+                rust_bin,
+                "--alignments-dir", args.alignments_dir,
+                "--species-groups-file", args.species_groups_file,
+                "--canceled-alignments-dir", args.canceled_alignments_dir,
+                "--min-pairs", str(args.min_pairs),
+            ]
+            if getattr(args, "cancel_tri_allelic", False):
+                cmd.append("--cancel-tri-allelic")
+            if getattr(args, "nix_full_deletions", False):
+                cmd.append("--nix-full-deletions")
+            if getattr(args, "cancel_only_partner", False):
+                cmd.append("--cancel-only-partner")
+            if getattr(args, "outgroup_species", None):
+                cmd += ["--outgroup-species", args.outgroup_species]
+            if getattr(args, "limited_genes_list", None):
+                cmd += ["--limited-genes-list", args.limited_genes_list]
+
+            try:
+                subprocess.run(cmd, check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError, PermissionError) as e:
+                print(f"[WARN] Rust deletion_canceler failed ({e!r}); falling back to Python implementation.")
+                dc.generate_gap_canceled_alignments(
+                    args,
+                    list_of_species_combos,
+                    enumerate_combos=True,
+                    limited_genes_list=args.limited_genes_list,
+                )
+        else:
+            if can_use_rust and not rust_bin_ok:
+                print(f"[INFO] Rust deletion_canceler not found or not executable at '{rust_bin}'. Falling back to Python.")
+            dc.generate_gap_canceled_alignments(args, list_of_species_combos,
+                                                enumerate_combos = True,
+                                                limited_genes_list =
+                                                args.limited_genes_list)
     else: # if using existing alignments check to make sure a folder is there
         if not args.canceled_alignments_dir: 
             raise Exception("When the use_existing_alignments option is in "
