@@ -229,6 +229,23 @@ class ESLWorker(QRunnable):
                     # This is a progress update, but we still want to see it in the log
                     return False
 
+                # Group penalties adjustment status (CLI prints this right before replacement)
+                if "adjusting group penalties" in line.lower():
+                    # Treat as entering the model-building phase soon; reset phase progress if advancing
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("adjusting group penalties...")
+                    return False
+
+                # Median penalty calculation status (printed before computing median GP)
+                if "calculating median group penalty" in line.lower():
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("calculating median group penalty...")
+                    return False
+
                 # Step status for major phases
                 # Capture paths.txt to know file count
                 m_paths = re.search(r"paths\.txt", line) and "preprocess" in line

@@ -278,6 +278,8 @@ def esl_integration(args,
 
     # if using the median penalty, modify args for penalty term accordingly
     if args.group_penalty_type == 'median':
+        # Inform both CLI and GUI that we are computing the median group penalty
+        print('calculating median group penalty...')
         median_gp = ecf.get_median_var_sites(input_alignments_dir)
         initial_penalty = median_gp
         final_penalty = median_gp
@@ -302,6 +304,8 @@ def esl_integration(args,
             # make penalty function which will take num var sites as its arg
             penalty_function = ecf.penalty_function_maker(penalty_term,
                                                           penalty_type)
+            # Inform both CLI and GUI that we are beginning the group penalty adjustment step
+            print("adjusting group penalties...")
             replace_group_penalties(args.esl_inputs_outputs_dir,
                                     gene_objects_dict,
                                     penalty_function,
