@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.config import ESLConfig
-from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog
+from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog
 
 __all__ = [
     "select_and_show_existing_output",
@@ -73,6 +73,7 @@ class _ExistingOutputDialog(QDialog):
         btn_layout.addStretch()
 
         self._sps_path: Optional[str] = self._find_sps_plot()
+        self._cont_path: Optional[str] = self._find_cont_plot()
         self._gene_ranks_path: Optional[str] = self._find_gene_ranks()
         self._sites_path: Optional[str] = self._find_selected_sites()
 
@@ -88,6 +89,19 @@ class _ExistingOutputDialog(QDialog):
             self._sps_btn.setGraphicsEffect(eff)
         self._sps_btn.clicked.connect(self._show_sps)
         btn_layout.addWidget(self._sps_btn)
+
+        self._cont_btn = QPushButton("Show Phenotype Plot")
+        if self._cont_path:
+            self._cont_btn.setToolTip("Open the phenotype density plot from this run")
+        else:
+            self._cont_btn.setEnabled(False)
+            self._cont_btn.setToolTip("No phenotype plot found in this output folder")
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(self._cont_btn)
+            eff.setOpacity(0.4)
+            self._cont_btn.setGraphicsEffect(eff)
+        self._cont_btn.clicked.connect(self._show_cont)
+        btn_layout.addWidget(self._cont_btn)
 
         self._gene_btn = QPushButton("Show Gene Ranks")
         if self._gene_ranks_path:
@@ -116,6 +130,13 @@ class _ExistingOutputDialog(QDialog):
         cand = os.path.join(self._output_dir, f"{base}_pred_sps_plot.svg")
         return cand if os.path.exists(cand) else None
 
+    def _find_cont_plot(self) -> Optional[str]:
+        base = self._cfg.output_file_base_name
+        if not base or getattr(self._cfg, "no_pred_output", False):
+            return None
+        cand = os.path.join(self._output_dir, f"{base}_continuous_plot.svg")
+        return cand if os.path.exists(cand) else None
+
     def _find_gene_ranks(self) -> Optional[str]:
         base = self._cfg.output_file_base_name
         if not base or getattr(self._cfg, "no_genes_output", False):
@@ -136,6 +157,12 @@ class _ExistingOutputDialog(QDialog):
             SpsPlotDialog.show_dialog(self._sps_path, parent=self)
         else:
             QMessageBox.information(self, "Unavailable", "No SPS plot found for this run.")
+
+    def _show_cont(self):  # pragma: no cover – UI slot
+        if self._cont_path:
+            ContinuousPlotDialog.show_dialog(self._cont_path, parent=self)
+        else:
+            QMessageBox.information(self, "Unavailable", "No phenotype plot found for this run.")
 
     def _show_gene_ranks(self):  # pragma: no cover – UI slot
         if self._gene_ranks_path:

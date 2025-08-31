@@ -14,6 +14,13 @@ class ESLConfig:
     # Phenotype type detection (set by GUI when a phenotype file is chosen)
     species_pheno_is_binary: bool = False
     species_pheno_is_continuous: bool = False
+    # Whether ESL-PSC should treat phenotypes as continuous and use
+    # sg_lasso_leastr. Set via Parameters page or automatically when a
+    # response-matrix directory with continuous values is supplied.
+    use_continuous_phenotypes: bool = False
+    # Track if the provided response matrices already contain continuous values.
+    # When True, the GUI checkbox is locked in the "on" state.
+    response_matrices_are_continuous: bool = False
     prediction_alignments_dir: str = ""
     limited_genes_file: str = ""
     response_dir: str = ""
@@ -67,6 +74,7 @@ class ESLConfig:
     no_sps_plot: bool = True
     make_sps_plot: bool = False
     make_sps_kde_plot: bool = False
+    make_continuous_plot: bool = False
 
     # ─── Multi-matrix / null models ─────────────────────────────────────────────
     top_rank_frac: float = 0.01
@@ -101,6 +109,8 @@ class ESLConfig:
             a += ["--limited_genes_list", self.limited_genes_file]
         if self.response_dir:
             a += ["--response_dir", self.response_dir]
+        if getattr(self, 'use_continuous_phenotypes', False):
+            a.append("--use_continuous_phenotypes")
             
         # Output configuration
         a += ["--output_file_base_name", self.output_file_base_name]
@@ -160,10 +170,13 @@ class ESLConfig:
         no_pred = getattr(self, 'no_pred_output', False)
         a += self._flag(no_pred, "--no_pred_output")
         
-        # Only include plot flags if we're generating prediction output AND phenotypes are binary
-        if not no_pred and getattr(self, 'species_pheno_is_binary', False):
-            a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
-            a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
+        # Only include plot flags if we're generating prediction output
+        if not no_pred:
+            if getattr(self, 'species_pheno_is_binary', False):
+                a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
+                a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
+            if getattr(self, 'use_continuous_phenotypes', False) or getattr(self, 'response_matrices_are_continuous', False):
+                a += self._flag(getattr(self, 'make_continuous_plot', False), "--make_continuous_plot")
         
         # Null model options
         if hasattr(self, 'make_null_models') and self.make_null_models:

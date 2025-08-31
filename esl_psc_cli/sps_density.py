@@ -172,6 +172,50 @@ def create_sps_plot_violin(csv_file_path=None,
         fig.savefig(fig_path)
 
 
+def create_continuous_plot(csv_file_path=None,
+                          df=None,
+                          fig_path='plot.png',
+                          title='Phenotype vs SPS',
+                          axes=None,
+                          min_genes=0):
+    """Create a 2D density plot of true phenotype vs SPS.
+
+    Args:
+        csv_file_path: Optional path to the predictions CSV file.
+        df: Optional dataframe containing predictions. If provided it will
+            be copied to avoid mutation.
+        fig_path: Where to save the resulting figure (format inferred from
+            extension).
+        title: Plot title.
+        axes: Optional matplotlib axes to draw on.
+        min_genes: Minimum number of genes a model must have to be included.
+    """
+    if df is None:
+        df = pd.read_csv(csv_file_path)
+    else:
+        df = df.copy()
+
+    df = df[df['num_genes'] > min_genes]
+
+    if axes is None:
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(6, 5))
+    else:
+        fig = axes.get_figure()
+
+    sns.kdeplot(data=df, x='true_phenotype', y='SPS', fill=True,
+                cmap='viridis', thresh=0, levels=100, ax=axes)
+
+    axes.set_xlabel('True phenotype')
+    axes.set_ylabel('SPS')
+    axes.set_title(title, wrap=True)
+    axes.grid(color='white', linestyle='-', linewidth=0.5)
+    axes.set_facecolor('#ececec')
+    sns.despine(left=True, bottom=True)
+
+    if fig_path and axes is None:
+        fig.savefig(fig_path)
+
+
 # calculates percent accuracy directly from csv file- no longer use
 def calc_percent_accuracy_from_csv(csv_file_path):
     csv_file = open(csv_file_path, 'r')

@@ -138,6 +138,12 @@ def get_esl_args(parser = None):
     True if the group_penalty_type is "std"'''
     group.add_argument('--use_default_gp', help = help_txt,
                         action = 'store_true', default = False)
+    help_txt = '''interpret provided phenotype values as continuous and use
+    linear regression (sg_lasso_leastr). By default, even if a phenotype file
+    contains non-binary values they will be treated as 1/-1 unless this flag
+    is supplied.'''
+    group.add_argument('--use_continuous_phenotypes', help = help_txt,
+                        action = 'store_true', default = False)
     help_txt = '''don't delete the raw model output files for each run'''
     group.add_argument('--keep_raw_output', help = help_txt,
                         action = 'store_true', default = False)
@@ -160,6 +166,9 @@ def get_esl_args(parser = None):
     help_txt = '''make a kde plot showing sps density for each true
     phenotype.'''
     group2.add_argument('--make_sps_kde_plot', help = help_txt,
+                        action = 'store_true', default = False)
+    help_txt = '''make a 2D density plot of true phenotype vs SPS values. Requires continuous phenotypes.'''
+    group2.add_argument('--make_continuous_plot', help = help_txt,
                         action = 'store_true', default = False)
     
     
@@ -232,7 +241,8 @@ def esl_integration(args,
                     preprocessed_dir_name,
                     input_alignments_dir,
                     gene_objects_dict,
-                    label = ''):
+                    label = '',
+                    response_matrix_path=None):
     """runs ESL for given inputs across lambda parameters and group penalties
     and returns dictionaries of objects for runs and genes. gene_objects_dict is
     a dictionary of ESLGeneObject as values and gene names as keys. label is
@@ -248,8 +258,16 @@ def esl_integration(args,
     # prepare variables for this integrated set of runs
     
     # dictionary of input species phenotypes
-    input_pheno_dict = ecf.make_input_pheno_dict(input_species_list)
-    print('species being checked:\n', ", ".join(input_species_list))
+    if getattr(args, 'species_pheno_is_continuous', False):
+        if response_matrix_path is None:
+            # Fall back to args.response_matrix_path for single-run executions
+            response_matrix_path = getattr(args, 'response_matrix_path', None)
+        if response_matrix_path is None:
+            raise ValueError('Continuous phenotypes requested but no response matrix path provided.')
+        input_pheno_dict = ecf.get_response_dict(response_matrix_path)
+    else:
+        input_pheno_dict = ecf.make_input_pheno_dict(input_species_list)
+    print('species being checked:\n', ", ".join(input_pheno_dict.keys()))
 
     # create a list of esl_run objects for the whole integration
     esl_run_list = []
@@ -515,7 +533,8 @@ if __name__ == '__main__':
                                                     input_species_list,
                                                     args.preprocessed_dir_name,
                                                     args.input_alignments_dir,
-                                                    gene_objects_dict)
+                                                    gene_objects_dict,
+                                                    response_matrix_path=args.response_matrix_path)
     
     
     # Print a clear, multi-line summary so the GUI output isn't squished
@@ -559,4 +578,8 @@ if __name__ == '__main__':
                                       args.pheno_names,
                                       args.min_genes,
                                       plot_type)
+    elif getattr(args, 'make_continuous_plot', False):
+        ecf.continuous_pred_plot(preds_output_path,
+                                 args.output_file_base_name,
+                                 args.min_genes)
 
