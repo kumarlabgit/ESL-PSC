@@ -39,3 +39,5 @@ checkpoint_test/
 orthomam_echo_small_species_groups.txt
 notarize_esl_psc.sh
 
+
+deletion_canceler_rs/target/
