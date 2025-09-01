@@ -244,7 +244,7 @@ class InputPage(BaseWizardPage):
         self.limited_genes = FileSelector(
             "Limited Genes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: TEXT file with one alignment file *name* per line (no directory paths). "
+            description="Optional: Text file with one alignment file *name* per line (no directory paths). "
             "Each name must exactly match a `.fas` file in your alignments directory. The analysis will be limited to only those alignments even if more are present."
         )
         self.limited_genes.path_changed.connect(

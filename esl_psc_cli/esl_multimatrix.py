@@ -728,10 +728,10 @@ def main(raw_args=None):
         # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
         # generate new alignments
-        # Prefer the Rust deletion canceler when running from source on Linux,
+        # Prefer the Rust deletion canceler when running from source on Linux or macOS,
         # only when we have a species_groups_file (so we can enumerate combos).
         can_use_rust = (
-            sys.platform.startswith("linux")
+            (sys.platform.startswith("linux") or sys.platform == "darwin")
             and not getattr(sys, "frozen", False)
             and __file__.endswith(".py")
             and bool(getattr(args, "species_groups_file", None))
