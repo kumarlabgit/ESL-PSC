@@ -323,11 +323,13 @@ class ESLWorker(QRunnable):
 
                 return False # Not a progress line
 
-        # For Windows packaged builds, Nuitka may not always set sys.frozen.
-        # Detect a packaged run either by sys.frozen *or* by the launcher not ending in '.py'.
-        if os.name == 'nt' and (getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"):
+        # Detect a packaged run either by sys.frozen or by the launcher not ending in '.py'
+        packaged = getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"
+
+        if packaged:
+            # Always run CLI in-process for packaged builds (macOS/Windows) to avoid
+            # shipping a separate CLI binary and onefile decompression delays.
             try:
-                # --- NEW PATH: Direct function call for packaged Windows ---
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
 
@@ -337,7 +339,7 @@ class ESLWorker(QRunnable):
                 # Flush any remaining output
                 out_stream.flush_buffer()
                 err_stream.flush_buffer()
-                exit_code = 0 # Assume success if no exceptions
+                exit_code = 0
 
             except Exception as e:
                 import traceback
@@ -347,50 +349,23 @@ class ESLWorker(QRunnable):
                 exit_code = 1
             finally:
                 self.is_running = False
-                os.chdir(original_cwd)
+                try:
+                    os.chdir(original_cwd)
+                except Exception:
+                    pass
                 if not self.was_stopped:
                     self.signals.finished.emit(exit_code)
         else:
-            # --- ORIGINAL PATH: Subprocess for macOS and source runs ---
+            # --- Source run: use python -m to launch the CLI in a subprocess ---
             try:
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
 
-                def _build_command() -> list[str]:
-                    """
-                    • If we’re running from source (argv[0] ends with .py), use
-                        the current Python to launch the module with -m.
-                    • Otherwise we’re inside the packaged bundle: call the helper
-                    binary `esl_multimatrix(.exe)` that lives next to the GUI
-                    launcher (`main` on macOS, `ESL-PSC.exe` on Windows).
-                    """
-                    launcher_path = Path(os.path.realpath(sys.argv[0]))
-                    running_from_source = launcher_path.suffix.lower() == ".py"
-
-                    if running_from_source:
-                        return [
-                            sys.executable, "-u", "-m",
-                            "esl_psc_cli.esl_multimatrix",
-                            *self.command_args,
-                        ]
-
-                    # -------- packaged path --------
-                    # On macOS the helper binary is just "esl_multimatrix" with no extension.
-                    # Windows bundles no separate helper; Windows-specific logic is handled elsewhere.
-                    exe_name = "esl_multimatrix"
-                    cli_helper = launcher_path.with_name(exe_name)
-
-                    # Pass the bundle’s MacOS/ (or Windows dir) so the helper
-                    # can find bin/preprocess and bin/sg_lasso
-                    bundle_dir = launcher_path.parent  # Contents/MacOS or the exe dir
-
-                    return [
-                        str(cli_helper),
-                        "--esl_main_dir", str(bundle_dir),
-                        *self.command_args,
-                    ]
-
-                command = _build_command()
+                command = [
+                    sys.executable, "-u", "-m",
+                    "esl_psc_cli.esl_multimatrix",
+                    *self.command_args,
+                ]
                 self.process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,

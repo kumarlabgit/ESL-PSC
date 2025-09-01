@@ -166,16 +166,22 @@ def parse_args_with_config(parser, raw_args=None):
 
     # Point esl_main_dir at the *project root* (one level above this package)
     if not getattr(args, "esl_main_dir", None):
-        # Determine esl_main_dir; use executable dir only for Windows frozen bundle
-        if os.name == "nt" and getattr(sys, "frozen", False):
-            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
-            print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
+        if getattr(sys, "frozen", False):
+            # For macOS app bundles, helpers live next to the executable (Contents/MacOS)
+            if sys.platform == "darwin":
+                bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            else:
+                # For Windows onefile, included data (e.g., include-raw-dir) are extracted
+                # into a temporary directory that also contains the compiled package dirs.
+                # The staged "bin/" is at the extraction root, which is the parent of this package.
+                bundle_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+
+            print(f"[DEBUG] Frozen executable: {sys.executable}")
             print(f"[DEBUG] Bundle directory: {bundle_dir}")
             try:
                 print("[DEBUG] Contents of bundle_dir:")
                 for entry in os.listdir(bundle_dir):
                     print(f"    {entry}")
-                # check for bin subdirectory
                 bin_dir = os.path.join(bundle_dir, "bin")
                 if os.path.isdir(bin_dir):
                     print(f"[DEBUG] Contents of bin_dir ({bin_dir}):")
