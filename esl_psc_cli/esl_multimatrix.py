@@ -567,10 +567,13 @@ def main(raw_args=None):
 
     pheno_dict = None
     if args.response_dir: # this means there is a directory of response matrices
-        # sort them to get deterministic ordering
-        response_file_list = sorted(os.listdir(args.response_dir))
-        response_file_list = [os.path.join(args.response_dir, file) for
-                              file in response_file_list] # full paths
+        # Deterministic ordering; include only .txt files and only regular files
+        entries = [os.path.join(args.response_dir, name) for name in os.listdir(args.response_dir)]
+        response_file_list = sorted(
+            [p for p in entries if os.path.isfile(p) and p.lower().endswith(".txt")]
+        )
+        if not response_file_list:
+            raise ValueError(f"No .txt response matrix files found in '{args.response_dir}'.")
         response_dir = args.response_dir # for use later
         if any(ecf.response_matrix_is_continuous(f) for f in response_file_list):
             args.species_pheno_is_continuous = True
@@ -728,13 +731,11 @@ def main(raw_args=None):
         # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
         # generate new alignments
-        # Prefer the Rust deletion canceler when running from source on Linux, macOS, or Windows,
-        # only when we have a species_groups_file (so we can enumerate combos).
+        # Prefer the Rust deletion canceler on Linux, macOS, or Windows.
+        # Use it when either a species_groups_file or a response_dir is provided.
         can_use_rust = (
             (sys.platform.startswith("linux") or sys.platform == "darwin" or sys.platform.startswith("win"))
-            and not getattr(sys, "frozen", False)
-            and __file__.endswith(".py")
-            and bool(getattr(args, "species_groups_file", None))
+            and (bool(getattr(args, "species_groups_file", None)) or bool(getattr(args, "response_dir", None)))
         )
         rust_bin = ecf.get_binary_path(args.esl_main_dir, "deletion_canceler")
         rust_bin_ok = os.path.exists(rust_bin) and os.access(rust_bin, os.X_OK)
@@ -744,10 +745,14 @@ def main(raw_args=None):
             cmd = [
                 rust_bin,
                 "--alignments-dir", args.alignments_dir,
-                "--species-groups-file", args.species_groups_file,
                 "--canceled-alignments-dir", args.canceled_alignments_dir,
                 "--min-pairs", str(args.min_pairs),
             ]
+            if getattr(args, "species_groups_file", None):
+                cmd += ["--species-groups-file", args.species_groups_file]
+            else:
+                # Deterministic ordering handled inside Rust; pass the directory
+                cmd += ["--response-dir", response_dir]
             if getattr(args, "cancel_tri_allelic", False):
                 cmd.append("--cancel-tri-allelic")
             if getattr(args, "nix_full_deletions", False):

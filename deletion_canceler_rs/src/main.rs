@@ -17,6 +17,8 @@ struct Args {
     response_file: Option<PathBuf>,
     #[arg(long, conflicts_with = "response_file")]
     species_groups_file: Option<PathBuf>,
+    #[arg(long, conflicts_with_all = &["species_groups_file", "response_file"])]
+    response_dir: Option<PathBuf>,
     #[arg(long, default_value_t = false)]
     cancel_tri_allelic: bool,
     #[arg(long, default_value_t = false)]
@@ -112,30 +114,55 @@ fn read_genes_list(path: &Path) -> Result<HashSet<String>, Box<dyn Error>> {
 }
 
 fn read_fasta(path: &Path) -> Result<(HashMap<String, String>, usize), Box<dyn Error>> {
+    // Support both 2-line and multi-line FASTA by concatenating sequence lines
     let content = fs::read_to_string(path)?;
-    let mut lines = content.lines();
-    let mut map = HashMap::new();
+    let mut map: HashMap<String, String> = HashMap::new();
     let mut seq_len: Option<usize> = None;
-    while let Some(header) = lines.next() {
-        if !header.starts_with('>') {
-            continue;
-        }
-        if let Some(seq) = lines.next() {
-            let cur_len = seq.len();
-            if let Some(expected) = seq_len {
-                if cur_len != expected {
-                    return Err(format!(
-                        "Inconsistent sequence length in {}",
-                        path.display()
-                    )
-                    .into());
+    let mut current_name: Option<String> = None;
+    let mut current_seq = String::new();
+
+    for line in content.lines() {
+        if line.starts_with('>') {
+            // Flush previous record if any
+            if let Some(name) = current_name.take() {
+                let cur_len = current_seq.len();
+                if let Some(expected) = seq_len {
+                    if cur_len != expected {
+                        return Err(format!(
+                            "Inconsistent sequence length in {}",
+                            path.display()
+                        )
+                        .into());
+                    }
+                } else {
+                    seq_len = Some(cur_len);
                 }
-            } else {
-                seq_len = Some(cur_len);
+                map.insert(name, current_seq.clone());
+                current_seq.clear();
             }
-            map.insert(header[1..].to_string(), seq.to_string());
+            current_name = Some(line[1..].trim().to_string());
+        } else {
+            current_seq.push_str(line.trim());
         }
     }
+
+    // Flush the last record
+    if let Some(name) = current_name.take() {
+        let cur_len = current_seq.len();
+        if let Some(expected) = seq_len {
+            if cur_len != expected {
+                return Err(format!(
+                    "Inconsistent sequence length in {}",
+                    path.display()
+                )
+                .into());
+            }
+        } else {
+            seq_len = Some(cur_len);
+        }
+        map.insert(name, current_seq.clone());
+    }
+
     let len = seq_len.unwrap_or(0);
     Ok((map, len))
 }
@@ -262,8 +289,13 @@ fn process_alignment(
 }
 
 fn run(args: Args) -> Result<(), Box<dyn Error>> {
-    if args.response_file.is_none() && args.species_groups_file.is_none() {
-        return Err("must provide --response-file or --species-groups-file".into());
+    if args.response_file.is_none()
+        && args.species_groups_file.is_none()
+        && args.response_dir.is_none()
+    {
+        return Err(
+            "must provide --response-file, --species-groups-file, or --response-dir".into(),
+        );
     }
 
     let canceled_dir = if let Some(dir) = &args.canceled_alignments_dir {
@@ -276,6 +308,8 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
             .unwrap_or_else(|| PathBuf::from("."));
         let base = if let Some(rf) = &args.response_file {
             rf.file_stem().unwrap().to_string_lossy().to_string()
+        } else if let Some(rd) = &args.response_dir {
+            rd.file_name().unwrap().to_string_lossy().to_string()
         } else {
             args.species_groups_file
                 .as_ref()
@@ -299,6 +333,20 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
     let species_combos = if let Some(rf) = &args.response_file {
         vec![read_response(rf)?]
+    } else if let Some(dir) = &args.response_dir {
+        // Deterministic ordering: sort by filename
+        let mut entries: Vec<_> = fs::read_dir(dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        let mut combos = Vec::new();
+        for entry in entries {
+            let path = entry.path();
+            combos.push(read_response(&path)?);
+        }
+        combos
     } else {
         parse_species_groups(args.species_groups_file.as_ref().unwrap())?
     };
