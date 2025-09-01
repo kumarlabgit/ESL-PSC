@@ -1,0 +1,44 @@
+name: Build Windows deletion_canceler (Rust)
+
+on:
+  # Allow manual triggering from the GitHub UI
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build (Windows x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build deletion_canceler (release)
+        working-directory: deletion_canceler_rs
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Verify built binary
+        run: |
+          ls -la deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deletion_canceler-windows-x86_64
+          path: |
+            deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/deletion_canceler.exe
+          if-no-files-found: error
