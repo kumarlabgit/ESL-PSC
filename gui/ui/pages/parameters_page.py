@@ -295,6 +295,22 @@ class ParametersPage(BaseWizardPage):
         )
         self.continuous_plot_chk.setVisible(False)
         output_layout.addWidget(self.continuous_plot_chk)
+
+        # Toggle for using continuous phenotypes (mirrors InputPage control)
+        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
+        self.use_continuous_chk.setToolTip(
+            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
+        )
+
+        def _on_use_cont_toggled(checked: bool) -> None:
+            setattr(self.config, 'use_continuous_phenotypes', checked)
+            if hasattr(self, '_update_sps_plot_state'):
+                self._update_sps_plot_state()
+            # Also refresh visibility/enabled state of dependent widgets
+            self.update_output_options_state()
+
+        self.use_continuous_chk.toggled.connect(_on_use_cont_toggled)
+        output_layout.addWidget(self.use_continuous_chk)
         
         # Connect output type changes to enable/disable SPS plot options
         def update_sps_plot_state():
@@ -320,6 +336,7 @@ class ParametersPage(BaseWizardPage):
             cont_visible = (
                 not self.genes_only_btn.isChecked()
                 and cont_active
+                and not getattr(self.config, 'response_matrices_are_continuous', False)
             )
             self.continuous_plot_chk.setVisible(cont_visible)
             if not cont_visible:
@@ -1125,6 +1142,22 @@ class ParametersPage(BaseWizardPage):
             # so do not override it here. Just refresh the SPS plot/density UI.
             if hasattr(self, '_update_sps_plot_state'):
                 self._update_sps_plot_state()
+
+            # Show/enable continuous phenotype toggle based on config
+            if hasattr(self, 'use_continuous_chk'):
+                if getattr(self.config, 'response_matrices_are_continuous', False):
+                    # When response matrices are already continuous, lock checkbox on
+                    self.use_continuous_chk.setVisible(True)
+                    self.use_continuous_chk.setChecked(True)
+                    self.use_continuous_chk.setEnabled(False)
+                else:
+                    cont_detected = bool(getattr(self.config, 'species_pheno_is_continuous', False))
+                    self.use_continuous_chk.setVisible(cont_detected)
+                    self.use_continuous_chk.setEnabled(cont_detected)
+                    if cont_detected:
+                        self.use_continuous_chk.setChecked(
+                            bool(getattr(self.config, 'use_continuous_phenotypes', False))
+                        )
 
         except RuntimeError:
             # Widgets have been deleted, ignore

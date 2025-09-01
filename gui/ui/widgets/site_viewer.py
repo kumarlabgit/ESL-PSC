@@ -44,8 +44,8 @@ class SiteViewer(QWidget):
         pss_scores: Dict[int, float] | None = None,
         parent=None,
         # Optional phenotype information
-        species_pheno_map: Dict[str, int] | None = None,
-        pheno_name_map: Dict[int, str] | None = None,
+        species_pheno_map: Dict[str, float] | None = None,
+        pheno_name_map: Dict[float, str] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -88,16 +88,16 @@ class SiteViewer(QWidget):
 
         # ─── Phenotype maps ───────────────────────────────────────────────
         # Mapping of species → phenotype value (1/-1)
-        self.species_pheno_map: Dict[str, int] = species_pheno_map or {}
+        self.species_pheno_map: Dict[str, float] = species_pheno_map or {}
         # Mapping of phenotype value (1/-1) → display name (e.g. "C4", "C3")
-        default_pheno_map = {1: "1", -1: "-1"}
+        default_pheno_map = {1.0: "1", -1.0: "-1"}
         # Build phenotype display names mapping avoiding Python 3.9+ dict union
-        self.pheno_name_map: Dict[int, str] = default_pheno_map.copy()
+        self.pheno_name_map: Dict[float, str] = default_pheno_map.copy()
         if pheno_name_map:
             self.pheno_name_map.update(pheno_name_map)
 
         # Cache the phenotype value considered "convergent" (defaults to +1)
-        self.convergent_pheno_value: int = 1
+        self.convergent_pheno_value: float = 1.0
 
         if all_sites_info is None:
             all_sites_info = [
