@@ -35,31 +35,50 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
     # Load alignment records using shared FASTA reader for reliability/consistency
     records = read_fasta(align_path)
 
-    # Determine species groups from first response matrix
-    response_dir = config.response_dir
-    if not response_dir:
-        base = os.path.basename(config.species_groups_file).replace(".txt", "")
-        response_dir = os.path.join(config.output_dir, f"{base}_response_matrices")
-    if not os.path.isdir(response_dir):
-        raise FileNotFoundError(f"Response directory not found: {response_dir}")
-    files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
-    if not files:
-        raise FileNotFoundError("No response matrices found")
-    first_matrix = os.path.join(response_dir, files[0])
+    # Determine species groups from species groups file if available
+    conv: list[str] = []
+    ctrl: list[str] = []
+    groups_path = getattr(config, "species_groups_file", "")
+    if groups_path and os.path.exists(groups_path):
+        try:
+            with open(groups_path) as fp:
+                lines = [ln.strip() for ln in fp if ln.strip()]
+            for idx in range(0, len(lines), 2):
+                conv_line = lines[idx]
+                conv.extend([sp.strip() for sp in conv_line.split(',') if sp.strip()])
+                if idx + 1 < len(lines):
+                    ctrl_line = lines[idx + 1]
+                    ctrl.extend([sp.strip() for sp in ctrl_line.split(',') if sp.strip()])
+        except Exception:
+            conv = []
+            ctrl = []
 
-    conv = []
-    ctrl = []
-    with open(first_matrix) as f:
-        for line in f:
-            sp, val = line.strip().split()[:2]
-            if val == '1':
-                conv.append(sp)
-            else:
-                ctrl.append(sp)
+    # Fallback to response matrices when species groups file is absent
+    if not conv and not ctrl:
+        response_dir = config.response_dir
+        if not response_dir:
+            base = os.path.basename(getattr(config, "species_groups_file", "")).replace(".txt", "")
+            response_dir = os.path.join(config.output_dir, f"{base}_response_matrices")
+        if not os.path.isdir(response_dir):
+            raise FileNotFoundError(f"Response directory not found: {response_dir}")
+        files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
+        if not files:
+            raise FileNotFoundError("No response matrices found")
+        first_matrix = os.path.join(response_dir, files[0])
+        with open(first_matrix) as f:
+            for line in f:
+                sp, val = line.strip().split()[:2]
+                if val == '1':
+                    conv.append(sp)
+                else:
+                    ctrl.append(sp)
+
+    conv = sorted(dict.fromkeys(conv))
+    ctrl = sorted(dict.fromkeys(ctrl))
 
     # ─── Phenotype data ───────────────────────────────────────────────
-    species_pheno_map: dict[str, int] | None = None
-    pheno_name_map: dict[int, str] | None = None
+    species_pheno_map: dict[str, float] | None = None
+    pheno_name_map: dict[float, str] | None = None
     pheno_path = getattr(config, "species_phenotypes_file", "")
     if pheno_path and os.path.exists(pheno_path):
         try:
@@ -70,16 +89,15 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
                     if len(parts) >= 2:
                         sp, val = parts[0], parts[1]
                         try:
-                            species_pheno_map[sp] = int(val)
+                            species_pheno_map[sp] = float(val)
                         except ValueError:
-                            # Skip malformed phenotype value
                             continue
         except Exception:
             species_pheno_map = None
 
     # Phenotype display names from config
     if hasattr(config, "pheno_name1") and hasattr(config, "pheno_name2"):
-        pheno_name_map = {1: str(config.pheno_name1), -1: str(config.pheno_name2)}
+        pheno_name_map = {1.0: str(config.pheno_name1), -1.0: str(config.pheno_name2)}
 
     all_sites_info = None
     pss_map = {}
