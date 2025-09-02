@@ -824,7 +824,8 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     # make sure the input file names are right including ".txt" or get seg fault
     # print(' '.join(preprocess_command_list))  # suppress full command echo
     try:
-        run_subprocess_streamed(preprocess_command_list)
+        # In packaged builds, preprocess can emit many CR-only updates; squash blanks.
+        run_subprocess_streamed(preprocess_command_list, squash_blank_lines=True)
     except subprocess.CalledProcessError as e:
         if e.returncode == 126:
             executable_name = e.cmd.split()[0].split('/')[-1] if isinstance(e.cmd, str) else str(e.cmd).split()[0]
