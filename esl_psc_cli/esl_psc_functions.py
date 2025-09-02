@@ -203,23 +203,20 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
                         pending = pending.replace(b"\r", b"\n")
                         *complete, pending = pending.split(b"\n") if b"\n" in pending else ([], pending)
                         for chunk in complete:
-                            try:
-                                s = chunk.decode(errors="replace")
-                            except Exception:
-                                s = ""
+                            s = chunk.decode(errors="replace")
                             if s.strip():
                                 sys.stdout.write(s + "\n")
                         sys.stdout.flush()
                     else:
-                        try:
-                            sys.stdout.buffer.write(data)
-                        except Exception:
-                            # Fallback for environments without .buffer
-                            sys.stdout.write(data.decode(errors="replace"))
+                        # Always decode to text and write via sys.stdout (may be a text wrapper)
+                        sys.stdout.write(data.decode(errors="replace"))
                         sys.stdout.flush()
-                if proc.poll() is not None and not rlist:
-                    # Child exited and no more data to read
-                    break
+            # Flush any trailing partial line when squashing at EOF
+            if squash_blank_lines and pending:
+                tail = pending.decode(errors="replace")
+                if tail.strip():
+                    sys.stdout.write(tail + "\n")
+                sys.stdout.flush()
         finally:
             try:
                 os.close(master_fd)

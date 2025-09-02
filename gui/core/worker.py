@@ -112,8 +112,9 @@ class ESLWorker(QRunnable):
                         # Only parse stdout for progress updates
                         is_progress = self._parse_progress(line)
                         if not is_progress:
-                            # Emit the line even if it's empty to preserve original spacing
-                            self.signals.output.emit(line)
+                            # Drop whitespace-only lines during preprocess to reduce noise
+                            if not (self.worker.phase == 2 and not line.strip()):
+                                self.signals.output.emit(line)
                     else:  # stderr
                         # Always forward stderr lines to preserve spacing
                         self.signals.error.emit(line)
@@ -192,7 +193,6 @@ class ESLWorker(QRunnable):
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
                     # We’re now in phase 2 (preprocess)
                     self.worker.phase = 2
-                    # Reset deletion-canceler counters so they don’t affect later steps
                     # Reset deletion-canceler counters so they don't affect later steps
                     self.worker.del_total_combos = None
                     self.worker.del_current_combo = 0
@@ -202,7 +202,7 @@ class ESLWorker(QRunnable):
                         combo_msg = f" for combo {self.worker.current_combo} of {self.worker.total_combos}"
                     friendly = f"Running ESL preprocess{combo_msg}..."
                     # Reset counters for per-file progress
-                    self.pre_total_files: int | None = None
+                    self.pre_total_files: int | None = 0
                     self.pre_current_file: int = 0
                     if self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
@@ -273,7 +273,7 @@ class ESLWorker(QRunnable):
 
                 # Preprocess per-file progress
                 if line.startswith("Processing FASTA file"):
-                    if self.pre_total_files is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                    if getattr(self, "pre_total_files", None) is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
@@ -288,10 +288,6 @@ class ESLWorker(QRunnable):
                         if self.pre_total_files >= 5 and self.pre_current_file % max(1, self.pre_total_files // 10) == 0:
                             self.signals.step_status.emit(f"Preprocessing alignments ({self.pre_current_file}/{self.pre_total_files})")
                     return True  # hide individual file lines
-
-                # Filter noisy full path lines produced by preprocess
-                if "-alignments" in line and "/combo_" in line:
-                    return True
 
                 status_keywords = [
                     "Building models...",
