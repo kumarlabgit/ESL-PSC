@@ -741,7 +741,7 @@ def main(raw_args=None):
         rust_bin_ok = os.path.exists(rust_bin) and os.access(rust_bin, os.X_OK)
 
         if can_use_rust and rust_bin_ok:
-            print("Using Rust deletion_canceler for gap-canceling alignments…")
+            print("Gap-canceling alignments…")
             cmd = [
                 rust_bin,
                 "--alignments-dir", args.alignments_dir,
@@ -765,7 +765,7 @@ def main(raw_args=None):
                 cmd += ["--limited-genes-list", args.limited_genes_list]
 
             try:
-                subprocess.run(cmd, check=True)
+                ecf.run_subprocess_streamed(cmd)
             except (subprocess.CalledProcessError, FileNotFoundError, PermissionError) as e:
                 print(f"[WARN] Rust deletion_canceler failed ({e!r}); falling back to Python implementation.")
                 dc.generate_gap_canceled_alignments(
@@ -776,7 +776,7 @@ def main(raw_args=None):
                 )
         else:
             if can_use_rust and not rust_bin_ok:
-                print(f"[INFO] Rust deletion_canceler not found or not executable at '{rust_bin}'. Falling back to Python.")
+                print(f"[INFO] Deletion_canceler binary not found or not executable at '{rust_bin}'. Falling back to Python.")
             dc.generate_gap_canceled_alignments(args, list_of_species_combos,
                                                 enumerate_combos = True,
                                                 limited_genes_list =

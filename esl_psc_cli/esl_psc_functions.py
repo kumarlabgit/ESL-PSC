@@ -1,6 +1,8 @@
 # ESL-PSC functions
 
-import os, subprocess, math, re, time, datetime, shutil, sys
+import os, subprocess, math, re, time, datetime, shutil, sys, shlex
+if os.name == "posix":
+    import pty, select  # PTY for live streaming on macOS/Linux
 import threading
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -145,6 +147,92 @@ def get_binary_path(esl_dir, base_name):
     else:
         exe = base_name
     return os.path.join(esl_dir, "bin", exe)
+
+
+def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_pty_on_posix=True):
+    """Run a subprocess while streaming its output live to our stdout.
+
+    On POSIX (Linux/macOS), this attaches the child to a pseudo-terminal (PTY)
+    so many native binaries will line-buffer their output as if connected to a
+    terminal. This makes progress logs appear in packaged builds where stdout
+    might otherwise be block-buffered.
+
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    # Ensure we keep a string version in the exception for downstream handlers
+    display_cmd = " ".join(shlex.quote(str(x)) for x in (cmd if isinstance(cmd, (list, tuple)) else [cmd]))
+
+    if os.name == "posix" and use_pty_on_posix:
+        master_fd, slave_fd = pty.openpty()
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=cwd,
+                env=env,
+                stdin=None,
+                stdout=slave_fd,
+                stderr=slave_fd if merge_stderr else None,
+                close_fds=True,
+                text=False,
+            )
+        finally:
+            try:
+                os.close(slave_fd)
+            except Exception:
+                pass
+
+        try:
+            # Read from the PTY master until the child exits and output drains
+            while True:
+                rlist, _, _ = select.select([master_fd], [], [], 0.1)
+                if master_fd in rlist:
+                    try:
+                        data = os.read(master_fd, 4096)
+                    except OSError:
+                        data = b""
+                    if not data:
+                        # EOF
+                        break
+                    try:
+                        sys.stdout.buffer.write(data)
+                    except Exception:
+                        # Fallback for environments without .buffer
+                        sys.stdout.write(data.decode(errors="replace"))
+                    sys.stdout.flush()
+                if proc.poll() is not None and not rlist:
+                    # Child exited and no more data to read
+                    break
+        finally:
+            try:
+                os.close(master_fd)
+            except Exception:
+                pass
+        ret = proc.wait()
+        if ret != 0:
+            raise subprocess.CalledProcessError(ret, display_cmd)
+        return ret
+    else:
+        # Fallback path – stream via PIPE (child may still buffer if not a TTY)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if merge_stderr else None,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                print(line, end="")
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        ret = proc.wait()
+        if ret != 0:
+            raise subprocess.CalledProcessError(ret, display_cmd)
+        return ret
 
 
 def parse_args_with_config(parser, raw_args=None):
@@ -716,10 +804,10 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     # make sure the input file names are right including ".txt" or get seg fault
     # print(' '.join(preprocess_command_list))  # suppress full command echo
     try:
-        subprocess.run(preprocess_command_list, check=True)
+        run_subprocess_streamed(preprocess_command_list)
     except subprocess.CalledProcessError as e:
         if e.returncode == 126:
-            executable_name = e.cmd.split()[0].split('/')[-1]
+            executable_name = e.cmd.split()[0].split('/')[-1] if isinstance(e.cmd, str) else str(e.cmd).split()[0]
             error_message = (
                 f"\nFATAL ERROR: Cannot execute '{executable_name}' (Exit Code 126).\n"
                 "This means the program is not compatible with your operating system (e.g., a Linux binary on macOS)\n"
