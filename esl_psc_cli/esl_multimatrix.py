@@ -648,12 +648,18 @@ def main(raw_args=None):
     # ------------------------------------------------------------------
     if not resume_mode:
         validate_specific_paths(args)
-        ecf.validate_alignment_dir_two_line(args.alignments_dir, allow_multi_line=True)
+        # When generating new gap-canceled alignments, skip expensive upfront
+        # 2-line FASTA verification on the source alignments. Both the Rust and
+        # Python deletion cancelers accept multi-line FASTA and will emit
+        # strictly 2-line FASTA, enforcing sequence-length consistency.
+        # For predictions, strictly require 2-line FASTA in the directory that
+        # will be used to read sequences for scoring.
+        if not args.no_pred_output:
+            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+        # Otherwise, skip any upfront source alignment validation.
         # --- Limited genes list sanity check --------------------------------
         validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
-        if (args.prediction_alignments_dir
-                and args.prediction_alignments_dir != args.alignments_dir):
-            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir, allow_multi_line=True)
+        
         if args.use_existing_alignments and args.canceled_alignments_dir:
             ecf.validate_alignment_dir_two_line(
                 args.canceled_alignments_dir, recursive=True)
