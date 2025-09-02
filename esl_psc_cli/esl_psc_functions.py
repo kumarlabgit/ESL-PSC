@@ -149,7 +149,7 @@ def get_binary_path(esl_dir, base_name):
     return os.path.join(esl_dir, "bin", exe)
 
 
-def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_pty_on_posix=True):
+def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_pty_on_posix=True, squash_blank_lines=False):
     """Run a subprocess while streaming its output live to our stdout.
 
     On POSIX (Linux/macOS), this attaches the child to a pseudo-terminal (PTY)
@@ -183,6 +183,7 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
 
         try:
             # Read from the PTY master until the child exits and output drains
+            pending = b""
             while True:
                 rlist, _, _ = select.select([master_fd], [], [], 0.1)
                 if master_fd in rlist:
@@ -193,12 +194,29 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
                     if not data:
                         # EOF
                         break
-                    try:
-                        sys.stdout.buffer.write(data)
-                    except Exception:
-                        # Fallback for environments without .buffer
-                        sys.stdout.write(data.decode(errors="replace"))
-                    sys.stdout.flush()
+                    if squash_blank_lines:
+                        # Normalize line endings and emit full lines only
+                        pending += data
+                        # Normalize CRLF -> LF first
+                        pending = pending.replace(b"\r\n", b"\n")
+                        # Convert any remaining CR to LF (progress updates)
+                        pending = pending.replace(b"\r", b"\n")
+                        *complete, pending = pending.split(b"\n") if b"\n" in pending else ([], pending)
+                        for chunk in complete:
+                            try:
+                                s = chunk.decode(errors="replace")
+                            except Exception:
+                                s = ""
+                            if s.strip():
+                                sys.stdout.write(s + "\n")
+                        sys.stdout.flush()
+                    else:
+                        try:
+                            sys.stdout.buffer.write(data)
+                        except Exception:
+                            # Fallback for environments without .buffer
+                            sys.stdout.write(data.decode(errors="replace"))
+                        sys.stdout.flush()
                 if proc.poll() is not None and not rlist:
                     # Child exited and no more data to read
                     break
@@ -225,6 +243,8 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
         try:
             assert proc.stdout is not None
             for line in proc.stdout:
+                if squash_blank_lines and not line.strip():
+                    continue
                 print(line, end="")
         finally:
             if proc.stdout is not None:
