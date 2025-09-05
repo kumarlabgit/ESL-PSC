@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMessageBox
+from typing import Sequence
+
+from PySide6.QtWidgets import (
+    QMessageBox,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QDialogButtonBox,
+    QLabel,
+    QDoubleSpinBox,
+)
+
+from gui.ui.widgets.histogram_canvas import HistogramCanvas
 
 
 class AutoSelectOptionsDialog(QMessageBox):
@@ -64,3 +76,59 @@ class AutoSelectOptionsDialog(QMessageBox):
         """Treat window close as cancel."""
         self.choice = None
         super().closeEvent(event)
+
+
+class PhenoThresholdDialog(QDialog):
+    """Dialog for choosing thresholds for continuous phenotypes."""
+
+    def __init__(self, values: Sequence[float], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Phenotype Thresholds")
+        layout = QVBoxLayout(self)
+
+        form = QHBoxLayout()
+        form.addWidget(QLabel("Lower threshold:"))
+        self.lower_spin = QDoubleSpinBox()
+        form.addWidget(self.lower_spin)
+        form.addWidget(QLabel("Upper threshold:"))
+        self.upper_spin = QDoubleSpinBox()
+        form.addWidget(self.upper_spin)
+        layout.addLayout(form)
+
+        self.values = list(values)
+        if self.values:
+            vmin, vmax = min(self.values), max(self.values)
+        else:
+            vmin, vmax = 0.0, 1.0
+        self.lower_spin.setRange(vmin, vmax)
+        self.upper_spin.setRange(vmin, vmax)
+        self.lower_spin.setDecimals(3)
+        self.upper_spin.setDecimals(3)
+        self.lower_spin.setValue(vmin)
+        self.upper_spin.setValue(vmax)
+
+        self.canvas = HistogramCanvas(self, width=4, height=2, dpi=100)
+        layout.addWidget(self.canvas)
+
+        self.lower_spin.valueChanged.connect(self._update_plot)
+        self.upper_spin.valueChanged.connect(self._update_plot)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+        self._update_plot()
+
+    def _update_plot(self) -> None:
+        self.canvas.plot_values(
+            self.values, self.lower_spin.value(), self.upper_spin.value()
+        )
+
+    @property
+    def lower_threshold(self) -> float:
+        return self.lower_spin.value()
+
+    @property
+    def upper_threshold(self) -> float:
+        return self.upper_spin.value()

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QSizePolicy,
     QProgressDialog,
+    QDialog,
 )
 from PySide6.QtGui import (
     QPainter,
@@ -48,6 +49,7 @@ from gui.ui.widgets.graphics_view import ZoomableGraphicsView
 from gui.ui.widgets.label_items import HoverLabelItem
 from gui.ui.widgets.dialogs import (
     AutoSelectOptionsDialog as AutoSelectOptionsDialogExt,
+    PhenoThresholdDialog,
 )
 
 
@@ -1238,6 +1240,39 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
         """Automatically choose contrast pairs based on phenotype transitions."""
+        if self._continuous_pheno:
+            dlg_thresh = PhenoThresholdDialog(
+                list(self._phenotypes.values()), parent=self
+            )
+            if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
+                return
+            lower = dlg_thresh.lower_threshold
+            upper = dlg_thresh.upper_threshold
+            if lower >= upper:
+                QMessageBox.warning(
+                    self,
+                    "Threshold Error",
+                    "Lower threshold must be less than upper threshold",
+                )
+                return
+            self._phenotypes = {
+                name: 1 if val >= upper else -1
+                for name, val in self._phenotypes.items()
+                if val >= upper or val <= lower
+            }
+            self._update_pheno_mode_and_range()
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+            self._update_auto_btn()
+            if sum(1 for v in self._phenotypes.values() if v in (1, -1)) < 4:
+                QMessageBox.warning(
+                    self,
+                    "Threshold Error",
+                    "Not enough species outside the thresholds for auto-selection",
+                )
+                return
+
         # Ask user how to resolve ambiguous choices
         dlg = AutoSelectOptionsDialogExt(bool(self._alignments_dir), parent=self)
         dlg.exec()
