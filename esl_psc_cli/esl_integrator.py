@@ -209,15 +209,16 @@ def replace_group_penalties(esl_inputs_outputs_dir, gene_objects_dict,
     file in the preprocessed input to change the group penalties.
     the penalty function operates on the number of variable sites.
     '''
-    # go to alignment folder for this species combo
-    os.chdir(input_alignments_dir)
+    # Build absolute paths to each gene's alignment file; do not change CWD
     gene_list = list(gene_objects_dict.keys())
-    # loop through alignment files in order
-    new_penalties = [] # list of numbers
-    alignment_file_list = [name + '.fas' for name in gene_list]
+    new_penalties = []  # list of numbers
+    alignment_file_list = [os.path.join(input_alignments_dir, name + '.fas')
+                           for name in gene_list]
     for file_path in alignment_file_list:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Alignment file not found: {file_path}")
         records = ecf.get_seq_records_in_order(file_path,
-                                               input_species_list)  
+                                               input_species_list)
         # calculate new penalty based on num variable sites and add to list
         new_penalties.append(penalty_function(ecf.count_var_sites(records)))
     # now modify penalties in group index file
@@ -529,10 +530,11 @@ if __name__ == '__main__':
         args.path_file_path = ecf.make_path_file(args.input_alignments_dir)
 
     if not args.preprocessed_dir_name:
-        # construct name from response matrix and alignments name
-        args.preprocessed_dir_name = os.path.join(args.esl_inputs_outputs_dir,
-                     os.path.basename(args.input_alignments_dir)
-                     + "_" + os.path.basename(args.response_matrix_path))
+        # construct a NAME (not full path) from response matrix and alignments name
+        args.preprocessed_dir_name = (
+            os.path.basename(args.input_alignments_dir)
+            + "_" + os.path.basename(args.response_matrix_path)
+        )
         
     
     # list of input species

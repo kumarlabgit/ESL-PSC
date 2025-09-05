@@ -35,6 +35,7 @@ class ESLWorker(QRunnable):
         self.is_running = False
         self.was_stopped = False # Flag to indicate if stop() was called
         self.process = None
+        self.original_cwd: str | None = None
         # Track deletion-canceler progress counts for step progress bar
         self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
         self.del_current_combo: int = 0           # number of combos completed so far
@@ -64,7 +65,7 @@ class ESLWorker(QRunnable):
     def run(self):
         """Execute esl_multimatrix in a subprocess and stream its output."""
         self.is_running = True
-        original_cwd = os.getcwd()  # Preserve GUI's working directory
+        self.original_cwd = os.getcwd()  # Preserve GUI's working directory
         exit_code = 0
 
         class StreamEmitter(io.TextIOBase):
@@ -346,7 +347,7 @@ class ESLWorker(QRunnable):
             finally:
                 self.is_running = False
                 try:
-                    os.chdir(original_cwd)
+                    os.chdir(self.original_cwd)
                 except Exception:
                     pass
                 if not self.was_stopped:
@@ -399,7 +400,7 @@ class ESLWorker(QRunnable):
                     self.process.kill()
                 self.process = None
                 try:
-                    os.chdir(original_cwd)
+                    os.chdir(self.original_cwd)
                 except Exception:
                     pass
                 if not self.was_stopped:
@@ -415,5 +416,11 @@ class ESLWorker(QRunnable):
                     self.process.kill()
                 except Exception:
                     pass
+            # Attempt to restore the original working directory immediately on stop
+            try:
+                if self.original_cwd and os.getcwd() != self.original_cwd:
+                    os.chdir(self.original_cwd)
+            except Exception:
+                pass
             # Emit special code for user stop
             self.signals.finished.emit(-1)

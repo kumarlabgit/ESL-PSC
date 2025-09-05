@@ -363,12 +363,14 @@ def parse_args_with_config(parser, raw_args=None):
     path_args = [
         'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir',
         'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file',
-        'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir'
+        'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir',
+        # Ensure critical CLI paths are also normalized
+        'input_alignments_dir', 'response_matrix_path', 'path_file_path'
     ]
 
     # Convert path arguments to absolute paths
     for path_arg in path_args:
-        path = getattr(args, path_arg)
+        path = getattr(args, path_arg, None)
         if path:
             setattr(args, path_arg, os.path.abspath(path))
 
@@ -620,16 +622,17 @@ def get_median_var_sites(alignment_dir):
     number fo variable sites, ignoring alignments with zero variable sites.
     The median is rounded down to the nearest integer.
     '''
-    previous_dir = os.getcwd()
-    os.chdir(alignment_dir)
-    alignment_list = [file for file in os.listdir() if file.endswith('.fas')]
+    alignment_dir = os.path.abspath(alignment_dir)
+    alignment_list = [
+        os.path.join(alignment_dir, file)
+        for file in os.listdir(alignment_dir) if file.endswith('.fas')
+    ]
     numbers_of_var_sites = []
-    for alignment in alignment_list:
-        num_var = count_var_sites(list(SeqIO.parse(alignment, "fasta")))
+    for alignment_path in alignment_list:
+        num_var = count_var_sites(list(SeqIO.parse(alignment_path, "fasta")))
         if num_var == 0:
             continue  # skip alignments with no variability
         numbers_of_var_sites.append(num_var)
-    os.chdir(previous_dir)
 
     if not numbers_of_var_sites:
         raise ValueError(
