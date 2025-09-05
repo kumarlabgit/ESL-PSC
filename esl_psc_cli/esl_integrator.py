@@ -225,13 +225,49 @@ def replace_group_penalties(esl_inputs_outputs_dir, gene_objects_dict,
                                + preprocessed_dir_name + '.txt')
     group_indices_file = os.path.join(esl_inputs_outputs_dir,
                                       group_indices_file)
-    with open(group_indices_file, 'r') as file:
-        group_indices_lines = file.readlines() # get existing lines
-    # now just replace the old penalties
-    group_indices_lines[2] = ','.join([str(penalty)
-                                        for penalty in new_penalties]) 
-    with open(group_indices_file, 'w') as file:
-        file.write(''.join(group_indices_lines)) #overwrite new penalties
+    # Read existing file as bytes to preserve newline style
+    with open(group_indices_file, 'rb') as file:
+        content_bytes = file.read()
+    lines = content_bytes.splitlines(True)  # keep newline characters
+    if len(lines) < 3:
+        raise RuntimeError(f"Group indices file is missing the penalties line: {group_indices_file}")
+    # Preserve the original newline sequence used on the penalties line
+    old_line = lines[2]
+    if old_line.endswith(b'\r\n'):
+        newline = b'\r\n'
+    elif old_line.endswith(b'\n'):
+        newline = b'\n'
+    elif old_line.endswith(b'\r'):
+        newline = b'\r'
+    else:
+        newline = b'\n'
+    # Build the new penalties line as ASCII bytes (digits/commas)
+    new_line = (','.join(str(p) for p in new_penalties)).encode('ascii') + newline
+    lines[2] = new_line
+    # Atomically write to a temp file in the same directory, then replace
+    dir_name = os.path.dirname(group_indices_file)
+    base_name = os.path.basename(group_indices_file)
+    tmp_path = os.path.join(dir_name, f".{base_name}.tmp.{os.getpid()}.{int(time.time()*1000)}")
+    # Try to preserve existing file permissions
+    try:
+        mode = os.stat(group_indices_file).st_mode
+    except Exception:
+        mode = None
+    try:
+        with open(tmp_path, 'wb') as tmp:
+            tmp.write(b''.join(lines))
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        if mode is not None:
+            os.chmod(tmp_path, mode)
+        os.replace(tmp_path, group_indices_file)
+    finally:
+        # Ensure no temp file is left behind on failure before replace
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
     return
 
 
