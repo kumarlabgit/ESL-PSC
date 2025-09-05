@@ -44,3 +44,39 @@ class HistogramCanvas(FigureCanvasQTAgg):
         )
         self.axes.legend()
         self.draw()
+
+    def plot_values(
+        self, values: Sequence[float], lower: float, upper: float
+    ) -> None:
+        """Plot a histogram of phenotype values with threshold lines."""
+        self.axes.clear()
+
+        if not values:
+            self.draw()
+            return
+
+        self.axes.hist(
+            values,
+            bins="auto",
+            color="lightblue",
+            edgecolor="black",
+        )
+        self.axes.axvline(
+            x=lower,
+            color="red",
+            linestyle="--",
+            label=f"Lower = {lower:.3g}",
+        )
+        self.axes.axvline(
+            x=upper,
+            color="green",
+            linestyle="--",
+            label=f"Upper = {upper:.3g}",
+        )
+        self.axes.set(
+            xlabel="Phenotype Value",
+            ylabel="Count of Species",
+            title="Phenotype Value Distribution",
+        )
+        self.axes.legend()
+        self.draw()
