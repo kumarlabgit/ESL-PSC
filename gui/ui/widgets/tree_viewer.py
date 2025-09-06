@@ -600,6 +600,22 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _update_auto_btn(self) -> None:
+        # When continuous phenotypes are present, enable auto-select as long as
+        # there are enough species with values to plausibly form pairs. The
+        # threshold dialog will refine groups; validation still occurs later.
+        if getattr(self, "_continuous_pheno", False):
+            count = len(self._phenotypes)
+            if count >= 4:
+                self.auto_btn.setEnabled(True)
+                self.auto_btn.setToolTip(
+                    "Automatically choose contrast pairs based on continuous phenotype thresholds"
+                )
+            else:
+                self.auto_btn.setEnabled(False)
+                self.auto_btn.setToolTip("Add more phenotypes")
+            return
+
+        # Binary phenotype fallback: need at least two convergents and two controls
         count = sum(1 for v in self._phenotypes.values() if v in (1, -1))
         if count >= 4:
             self.auto_btn.setEnabled(True)
@@ -1179,6 +1195,7 @@ class TreeViewer(QWidget):
         self._reset_scene()
         self._draw_tree(self._tree)
         self._apply_pairs()
+        self._update_auto_btn()
         if self._on_pheno_changed:
             self._on_pheno_changed(path)
 
@@ -1236,6 +1253,8 @@ class TreeViewer(QWidget):
         self._update_pheno_mode_and_range()
         self._reset_scene()
         self._draw_tree(self._tree)
+        self._apply_pairs()
+        self._update_auto_btn()
 
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
