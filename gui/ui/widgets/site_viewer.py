@@ -99,6 +99,11 @@ class SiteViewer(QWidget):
         # Cache the phenotype value considered "convergent" (defaults to +1)
         self.convergent_pheno_value: float = 1.0
 
+        # Determine if phenotypes are continuous (any value not exactly -1 or 1)
+        self._continuous_pheno: bool = any(
+            (float(v) not in (-1.0, 1.0)) for v in self.species_pheno_map.values()
+        ) if self.species_pheno_map else False
+
         if all_sites_info is None:
             all_sites_info = [
                 {
@@ -180,8 +185,23 @@ class SiteViewer(QWidget):
         # No stateChanged connection so users cannot toggle
         self.top_hbox.addWidget(self.showAllCheck)
 
+        # Add Other Species sort controls BEFORE Filters
+        other_sort_label = QLabel("Sort Other Species By:")
+        other_sort_label.setFont(font_bold)
+        self.other_sort_combo = QComboBox()
+        self.other_sort_combo.addItem("Alphabetical")       # idx 0 -> alpha
+        self.other_sort_combo.addItem("MSA Order")          # idx 1 -> msa
+        self.other_sort_combo.addItem("Phenotype High → Low")  # idx 2 -> pheno_hi
+        self.other_sort_combo.addItem("Phenotype Low → High")  # idx 3 -> pheno_lo
+        # Default alphabetical
+        self.other_species_sort_mode = "alpha"
+        self.other_sort_combo.currentIndexChanged.connect(self.onOtherSortModeChanged)
+        self.top_hbox.addWidget(other_sort_label)
+        self.top_hbox.addWidget(self.other_sort_combo)
+
         # --- Filters dropdown ---
         filters_label = QLabel("Filters:")
+        filters_label.setFont(font_bold)
         self.filter_combo = QComboBox()
         self.filter_combo.addItem("No Filter")                    # idx 0
         self.filter_combo.addItem("Show Only Selected Sites")     # idx 1
@@ -433,6 +453,11 @@ class SiteViewer(QWidget):
 
     def onSortModeChanged(self, idx):
         self.default_sort_mode = "score" if idx == 0 else "position"
+        self.rebuildTables()
+
+    def onOtherSortModeChanged(self, idx):
+        modes = {0: "alpha", 1: "msa", 2: "pheno_hi", 3: "pheno_lo"}
+        self.other_species_sort_mode = modes.get(idx, "alpha")
         self.rebuildTables()
 
     def onShowAllChanged(self, state):
@@ -939,7 +964,6 @@ class SiteViewer(QWidget):
                         aa = seq[site['position']]
                         it = self.make_aa_item(aa)
                         self.top_right_table.setItem(rr,c, it)
-
         for r in range(total_rows):
             self.top_right_table.setRowHeight(r, 24)
 
@@ -947,6 +971,25 @@ class SiteViewer(QWidget):
         # "other" species
         used_set = set(self.convergent_species + self.control_species + self.outgroup_species)
         other_species = [sp for sp in self.all_species if sp not in used_set]
+        # Apply user-selected sort for Other Species
+        def _pheno_val(sp: str) -> float:
+            # For sorting, treat unlabeled as 0; continuous uses raw value; binary uses 1/-1
+            if sp in self.species_pheno_map:
+                try:
+                    return float(self.species_pheno_map[sp])
+                except Exception:
+                    return 0.0
+            return 0.0
+        if getattr(self, 'other_species_sort_mode', 'alpha') == "alpha":
+            other_species.sort(key=lambda s: s)
+        elif self.other_species_sort_mode == "msa":
+            # Preserve order from the input records
+            other_species = [sid for sid in self.species_ids if sid not in used_set]
+        elif self.other_species_sort_mode == "pheno_hi":
+            other_species.sort(key=lambda s: (-_pheno_val(s), s))
+        elif self.other_species_sort_mode == "pheno_lo":
+            other_species.sort(key=lambda s: (_pheno_val(s), s))
+
         if not other_species:
             self.bottom_left_table.setRowCount(0)
             self.bottom_right_table.setRowCount(0)
@@ -978,9 +1021,7 @@ class SiteViewer(QWidget):
         def species_label_helper(sp):
             disp_txt = sp
             if sp in self.species_pheno_map:
-                p_val = self.species_pheno_map[sp]
-                p_name = self.pheno_name_map.get(p_val, str(p_val))
-                disp_txt += f" ({p_name})"
+                disp_txt += f" ({self._format_pheno_for_label(sp)})"
             item = left_item(disp_txt)
             if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
                 item.setForeground(QBrush(QColor("blue")))
@@ -990,7 +1031,7 @@ class SiteViewer(QWidget):
 
         for i, sp in enumerate(other_species):
             rr = row_sp_start + i
-            self.bottom_left_table.setItem(rr, 0, self._create_species_item(sp))
+            self.bottom_left_table.setItem(rr, 0, species_label_helper(sp))
 
         for r in range(total_rows):
             self.bottom_left_table.setRowHeight(r, 24)
@@ -1022,14 +1063,34 @@ class SiteViewer(QWidget):
         """Return a table item for a species with phenotype annotation and coloring."""
         disp_txt = sp
         if sp in self.species_pheno_map:
-            p_val = self.species_pheno_map[sp]
-            p_name = self.pheno_name_map.get(p_val, str(p_val))
-            disp_txt += f" ({p_name})"
+            disp_txt += f" ({self._format_pheno_for_label(sp)})"
         item = QTableWidgetItem(disp_txt)
         item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
             item.setForeground(QBrush(QColor("blue")))
         return item
+
+    def _format_pheno_for_label(self, sp: str) -> str:
+        """Return the display string for a species' phenotype.
+
+        - If continuous phenotypes are present, show the numeric value with up to 3 decimals.
+        - Otherwise, use the phenotype name map (e.g., 1 -> "C4", -1 -> "C3") or the raw value.
+        - If the species has no phenotype value, return an empty string (no annotation).
+        """
+        if sp not in self.species_pheno_map:
+            return ""
+        val = self.species_pheno_map.get(sp)
+        if val is None:
+            return ""
+        try:
+            fval = float(val)
+        except Exception:
+            return str(val)
+        if getattr(self, "_continuous_pheno", False):
+            sval = f"{fval:.3f}".rstrip('0').rstrip('.')
+            return sval
+        # binary or named
+        return self.pheno_name_map.get(fval, str(fval))
 
     def _adjustVerticalSplitter(self):
         """Set vertical splitter sizes so top pane shows conv+ctrl species without scroll if space allows."""

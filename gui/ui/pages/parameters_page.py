@@ -76,6 +76,22 @@ class ParametersPage(BaseWizardPage):
         explanation.setWordWrap(True)
         output_layout.addWidget(explanation)
 
+        # Place the continuous-mode toggle at the TOP of Output Options
+        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
+        self.use_continuous_chk.setToolTip(
+            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
+        )
+
+        def _on_use_cont_toggled(checked: bool) -> None:
+            setattr(self.config, 'use_continuous_phenotypes', checked)
+            if hasattr(self, '_update_sps_plot_state'):
+                self._update_sps_plot_state()
+            # Also refresh visibility/enabled state of dependent widgets
+            self.update_output_options_state()
+
+        self.use_continuous_chk.toggled.connect(_on_use_cont_toggled)
+        output_layout.addWidget(self.use_continuous_chk)
+
         # Output file base name (on its own row, left-aligned)
         output_name_layout = QHBoxLayout()
         output_name_layout.addWidget(QLabel("Output File Base Name:"))
@@ -296,21 +312,7 @@ class ParametersPage(BaseWizardPage):
         self.continuous_plot_chk.setVisible(False)
         output_layout.addWidget(self.continuous_plot_chk)
 
-        # Toggle for using continuous phenotypes (mirrors InputPage control)
-        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
-        self.use_continuous_chk.setToolTip(
-            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
-        )
-
-        def _on_use_cont_toggled(checked: bool) -> None:
-            setattr(self.config, 'use_continuous_phenotypes', checked)
-            if hasattr(self, '_update_sps_plot_state'):
-                self._update_sps_plot_state()
-            # Also refresh visibility/enabled state of dependent widgets
-            self.update_output_options_state()
-
-        self.use_continuous_chk.toggled.connect(_on_use_cont_toggled)
-        output_layout.addWidget(self.use_continuous_chk)
+        # (Continuous-mode toggle moved to top of Output Options above)
         
         # Connect output type changes to enable/disable SPS plot options
         def update_sps_plot_state():

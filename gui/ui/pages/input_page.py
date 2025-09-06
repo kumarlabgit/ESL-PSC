@@ -83,23 +83,7 @@ class InputPage(BaseWizardPage):
         
         input_type_layout.addWidget(self.use_species_groups)
         input_type_layout.addWidget(self.use_response_dir)
-        # Continuous phenotypes toggle (appears when continuous inputs are detected)
-        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
-        self.use_continuous_chk.setToolTip(
-            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
-        )
-        self.use_continuous_chk.setVisible(False)
-        def _on_cont_toggled(checked: bool):
-            setattr(self.config, 'use_continuous_phenotypes', checked)
-            # If Parameters page exists, update its dependent UI immediately
-            try:
-                wiz = self.wizard()
-                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
-                    wiz.params_page.update_output_options_state()
-            except Exception:
-                pass
-        self.use_continuous_chk.toggled.connect(_on_cont_toggled)
-        input_type_layout.addWidget(self.use_continuous_chk)
+        # The 'Use continuous phenotype values?' selector now lives on the Output Options page
         input_type_group.setLayout(input_type_layout)
         
         req_layout.addWidget(input_type_group)
@@ -439,24 +423,14 @@ class InputPage(BaseWizardPage):
                 pass
 
     def _update_continuous_checkbox_visibility(self) -> None:
-        """Show/Hide and sync the continuous phenotypes checkbox based on detected inputs."""
+        """Sync configuration flags for continuous mode; UI control is on Output Options page."""
         cont_detected = bool(
             getattr(self.config, 'species_pheno_is_continuous', False) or
             getattr(self.config, 'response_matrices_are_continuous', False)
         )
-        # Only show within the Input Type group when something continuous is detected
-        self.use_continuous_chk.setVisible(cont_detected)
         if not cont_detected:
-            # Ensure config is off when not applicable
-            self.use_continuous_chk.blockSignals(True)
-            self.use_continuous_chk.setChecked(False)
-            self.use_continuous_chk.blockSignals(False)
+            # When no continuous inputs are present, ensure the setting is off
             self.config.use_continuous_phenotypes = False
-        else:
-            # Reflect current config state
-            self.use_continuous_chk.blockSignals(True)
-            self.use_continuous_chk.setChecked(bool(getattr(self.config, 'use_continuous_phenotypes', False)))
-            self.use_continuous_chk.blockSignals(False)
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""
