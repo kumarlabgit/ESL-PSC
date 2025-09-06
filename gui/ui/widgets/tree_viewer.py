@@ -349,6 +349,19 @@ class TreeViewer(QWidget):
         """Update colors when palette (e.g., system light/dark mode) changes."""
         if event.type() == QEvent.Type.PaletteChange:
             self._update_line_pen()
+            # Re-apply pair overlays to restore highlight colors/visibility
+            # after the base branch pens have been updated for the new palette.
+            # This ensures colored paths and dashed alternates remain visible.
+            self._apply_pairs()
+            # If the user had an in-progress selection, recreate the selection box
+            if self._current_role and self._current_first:
+                label = self._label_items.get(self._current_first)
+                if label:
+                    color = QColor("blue") if self._current_role == "convergent" else QColor("red")
+                    rect = label.boundingRect().adjusted(-2, 0, 2, 0)
+                    rect.moveTo(label.pos())
+                    self._selection_rect = self.scene.addRect(rect, QPen(color, 2))
+                    self._selection_rect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         super().changeEvent(event)
 
     # ------------------------------------------------------------------
