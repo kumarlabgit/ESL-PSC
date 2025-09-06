@@ -340,10 +340,14 @@ class ESLWorker(QRunnable):
 
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Treat exceptions raised after a user-initiated stop as cancellation
+                    exit_code = -1
             finally:
                 self.is_running = False
                 try:
@@ -390,10 +394,14 @@ class ESLWorker(QRunnable):
 
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Suppress errors that arise due to user-initiated stop and mark as cancelled
+                    exit_code = -1
             finally:
                 self.is_running = False
                 if self.process and self.process.poll() is None:
