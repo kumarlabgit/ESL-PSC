@@ -1489,24 +1489,39 @@ class TreeViewer(QWidget):
                 if low <= up:
                     dlg_thresh.lower_spin.setValue(low)
                     dlg_thresh.upper_spin.setValue(up)
+            else:
+                # Default both thresholds to the median of phenotype values at session start
+                vals = sorted(float(v) for v in self._phenotypes.values())
+                if vals:
+                    mid = len(vals) // 2
+                    if len(vals) % 2 == 1:
+                        median = vals[mid]
+                    else:
+                        median = 0.5 * (vals[mid - 1] + vals[mid])
+                    vmin, vmax = float(self._pheno_min), float(self._pheno_max)
+                    med = max(vmin, min(vmax, float(median)))
+                    # Allow equality by default: both thresholds start at the median
+                    dlg_thresh.lower_spin.setValue(med)
+                    dlg_thresh.upper_spin.setValue(med)
             if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
                 return
             lower = dlg_thresh.lower_threshold
             upper = dlg_thresh.upper_threshold
-            if lower >= upper:
+            # Allow equality; only error if lower > upper
+            if lower > upper:
                 QMessageBox.warning(
                     self,
                     "Threshold Error",
-                    "Lower threshold must be less than upper threshold",
+                    "Lower threshold must not exceed upper threshold",
                 )
                 return
             # Remember for this session
             self._last_thresh_lower, self._last_thresh_upper = float(lower), float(upper)
             # Build a temporary binary mapping for the algorithm only
             temp_mapping = {
-                name: (1 if val >= upper else -1)
+                name: (1 if val > upper else -1)
                 for name, val in self._phenotypes.items()
-                if val >= upper or val <= lower
+                if (val > upper) or (val < lower)
             }
             if sum(1 for v in temp_mapping.values() if v in (1, -1)) < 4:
                 QMessageBox.warning(
@@ -1592,9 +1607,19 @@ class TreeViewer(QWidget):
             candidates.sort(key=lambda c: c.distance)
         # For composite, compute equal-weight average of z-scores across metrics
         elif method == "composite":
-            # Ensure sequence lengths if alignments available (optional)
+            # Ensure sequence lengths if alignments available (optional).
+            # For continuous mode, gather lengths for the thresholded set only
+            # so candidate species have lengths available.
             if self._alignments_dir:
-                self._ensure_sequence_lengths()
+                if self._continuous_pheno and temp_mapping is not None:
+                    backup = self._phenotypes
+                    try:
+                        self._phenotypes = temp_mapping  # temporary scope for length scan
+                        self._ensure_sequence_lengths()
+                    finally:
+                        self._phenotypes = backup
+                else:
+                    self._ensure_sequence_lengths()
 
             import math
             n = len(candidates)
