@@ -1621,6 +1621,9 @@ class TreeViewer(QWidget):
                     self._phenotypes = backup
             else:
                 self._ensure_sequence_lengths()
+            # Show sequence-length annotations like the 'longest' method
+            self._show_seq_lengths = True
+            self._update_seq_length_annotations()
 
             # Build all possible duos (convergent x control) under each candidate ancestor
             # and compute raw metrics for each duo.

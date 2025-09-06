@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QDoubleSpinBox,
+    QPushButton,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
 
 
-class AutoSelectOptionsDialog(QMessageBox):
-    """Simple dialog to choose auto-select behavior.
+class AutoSelectOptionsDialog(QDialog):
+    """Dialog to choose auto-select behavior with vertically stacked buttons.
 
     Presents options in this order: Longest Sequence → Shortest distance → Max trait contrast → Composite best → Random → Default → Cancel.
     Stores the chosen option as `self.choice` in {"default","longest","shortest","contrast","composite","random",None}.
@@ -25,82 +26,77 @@ class AutoSelectOptionsDialog(QMessageBox):
     def __init__(self, allow_longest: bool, allow_contrast: bool, allow_composite: bool = True, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Auto Select Options")
-        self.setText("Choose how to resolve equally valid siblings")
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Choose how to resolve equally valid siblings"))
 
-        # Buttons in a fixed order using ActionRole to preserve ordering cross-platform
-        self.longest_btn = self.addButton(
-            "Longest Sequence", QMessageBox.ButtonRole.ActionRole
-        )
-        if not allow_longest:
-            self.longest_btn.setEnabled(False)
-            self.longest_btn.setToolTip(
-                "Set an alignments directory in the input page, to enable this option"
-            )
-
-        self.shortest_btn = self.addButton(
-            "Shortest distance", QMessageBox.ButtonRole.ActionRole
-        )
-
-        self.contrast_btn = self.addButton(
-            "Max trait contrast", QMessageBox.ButtonRole.ActionRole
-        )
-        if not allow_contrast:
-            self.contrast_btn.setEnabled(False)
-            self.contrast_btn.setToolTip(
-                "Available only for continuous phenotypes"
-            )
-
-        self.composite_btn = self.addButton(
-            "Composite best", QMessageBox.ButtonRole.ActionRole
-        )
-        if not allow_composite:
-            self.composite_btn.setEnabled(False)
-
-        self.random_btn = self.addButton(
-            "Random", QMessageBox.ButtonRole.ActionRole
-        )
-
-        self.default_btn = self.addButton(
-            "Default", QMessageBox.ButtonRole.ActionRole
-        )
-        # Make the Default button appear as the default (blue) accept button.
-        self.setDefaultButton(self.default_btn)
-
-        # Cancel button
-        self.cancel_btn = self.addButton(
-            "Cancel", QMessageBox.ButtonRole.RejectRole
-        )
+        def mk_btn(text: str, choice: str, enabled: bool = True, tip: str | None = None) -> QPushButton:
+            btn = QPushButton(text)
+            btn.setEnabled(enabled)
+            if tip:
+                btn.setToolTip(tip)
+            btn.clicked.connect(lambda: self._pick(choice))
+            layout.addWidget(btn)
+            return btn
 
         self.choice: str | None = None
 
-    def exec(self) -> int:
-        result = super().exec()
-        clicked = self.clickedButton()
-        if clicked == self.default_btn:
-            self.choice = "default"
-        elif clicked == self.longest_btn:
-            self.choice = "longest"
-        elif clicked == self.shortest_btn:
-            self.choice = "shortest"
-        elif clicked == self.contrast_btn:
-            self.choice = "contrast"
-        elif clicked == self.composite_btn:
-            self.choice = "composite"
-        elif clicked == self.random_btn:
-            self.choice = "random"
-        else:
-            self.choice = None
-        return result
+        # Create buttons stacked vertically
+        self.longest_btn = mk_btn(
+            "Longest Sequence",
+            "longest",
+            enabled=True,
+            tip=(
+                "Choose tips with the greatest total sequence length under each ancestor. "
+                "If no alignments directory is set, you will be prompted to choose one."
+            ),
+        )
+        self.shortest_btn = mk_btn(
+            "Shortest distance",
+            "shortest",
+            tip=(
+                "Resolve equally valid siblings using a shortest-distance heuristic."
+            ),
+        )
+        self.contrast_btn = mk_btn(
+            "Max trait contrast",
+            "contrast",
+            enabled=allow_contrast,
+            tip=(
+                "Choose tips with maximal continuous-phenotype difference."
+                if allow_contrast
+                else "Available only when continuous phenotypes are loaded"
+            ),
+        )
+        self.composite_btn = mk_btn(
+            "Composite best",
+            "composite",
+            enabled=allow_composite,
+            tip=(
+                "Best pair of siblings based on a composite score of distance, and sequence length, "
+                "and trait contrast if available (all rescaled)."
+            ),
+        )
+        self.random_btn = mk_btn(
+            "Random",
+            "random",
+            tip=("Choose randomly among siblings."),
+        )
+        self.default_btn = mk_btn(
+            "Default",
+            "default",
+            tip=(
+                "Use initial adjacent tips with opposite phenotypes."
+            ),
+        )
 
-    def reject(self) -> None:
-        """Handle programmatic rejection (e.g., Esc)."""
-        self.choice = None
-        super().reject()
+        # Cancel at the bottom
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        layout.addWidget(cancel)
 
-    def closeEvent(self, event):
-        """Treat window close as cancel."""
-        self.choice = None
-        super().closeEvent(event)
+    def _pick(self, choice: str) -> None:
+        self.choice = choice
+        self.accept()
 
 
 class PhenoThresholdDialog(QDialog):
