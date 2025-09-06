@@ -1505,12 +1505,12 @@ class TreeViewer(QWidget):
 
         # Ask user how to resolve ambiguous choices
         dlg = AutoSelectOptionsDialogExt(
-            bool(self._alignments_dir), bool(self._continuous_pheno), parent=self
+            bool(self._alignments_dir), bool(self._continuous_pheno), True, parent=self
         )
         dlg.exec()
         if not dlg.choice:
             return
-        method = dlg.choice  # "default", "longest", "random", or "contrast"
+        method = dlg.choice  # "default", "longest", "shortest", "contrast", "composite", or "random"
 
         # If longest is requested, ensure we have an alignments directory and
         # collect sequence length info for relevant species.
@@ -1561,13 +1561,111 @@ class TreeViewer(QWidget):
                 conv_leaf = next(self._tree.find_clades(name=conv))
                 ctrl_leaf = next(self._tree.find_clades(name=ctrl))
                 anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
-                dist = self._tree.distance(conv_leaf, ctrl_leaf)
+                # Robust distance: if branch lengths missing, fall back to node count
+                try:
+                    dist = float(self._tree.distance(conv_leaf, ctrl_leaf))
+                except Exception:
+                    conv_path = self._path_to(anc, conv_leaf)
+                    ctrl_path = self._path_to(anc, ctrl_leaf)
+                    dist = float(len(conv_path) + len(ctrl_path))
                 desc = {l.name or "" for l in anc.get_terminals()}
                 candidates.append(CandidatePair(conv, ctrl, dist, desc))
             prev_name = name
             prev_pheno = ph
 
-        candidates.sort(key=lambda c: c.distance)
+        # Sort strategy based on method
+        if method in ("default", "shortest"):
+            # Stable sort by shortest distance; default tie-break is encounter order
+            candidates.sort(key=lambda c: c.distance)
+        # For composite, compute equal-weight average of z-scores across metrics
+        elif method == "composite":
+            # Ensure sequence lengths if alignments available (optional)
+            if self._alignments_dir:
+                self._ensure_sequence_lengths()
+
+            import math
+            n = len(candidates)
+            if n == 0:
+                pass
+            else:
+                # --- Distances: z-scores over candidate distances (lower is better -> negate z)
+                d_vals = [c.distance for c in candidates]
+                d_mean = sum(d_vals) / n if n else 0.0
+                d_var = sum((x - d_mean) * (x - d_mean) for x in d_vals) / n if n else 0.0
+                d_std = math.sqrt(d_var) if d_var > 0.0 else 0.0
+                if d_std <= 1e-12:
+                    d_z = [0.0] * n
+                else:
+                    d_z = [-(x - d_mean) / d_std for x in d_vals]  # negative because smaller is better
+
+                # --- Contrast magnitudes (continuous only): z across candidate contrasts (higher is better)
+                c_vals: List[float | None] = []
+                if self._continuous_pheno:
+                    for c in candidates:
+                        v1 = self._phenotypes.get(c.convergent)
+                        v2 = self._phenotypes.get(c.control)
+                        try:
+                            c_vals.append(abs(float(v1) - float(v2)))  # type: ignore[arg-type]
+                        except Exception:
+                            c_vals.append(None)
+                else:
+                    c_vals = [None] * n
+                c_present = [v for v in c_vals if v is not None]
+                if len(c_present) >= 2:
+                    c_mean = sum(c_present) / len(c_present)
+                    c_var = sum((x - c_mean) * (x - c_mean) for x in c_present) / len(c_present)
+                    c_std = math.sqrt(c_var) if c_var > 0.0 else 0.0
+                else:
+                    c_mean = 0.0
+                    c_std = 0.0
+                if c_std <= 1e-12:
+                    c_z: List[float | None] = [0.0 if v is not None else None for v in c_vals]
+                else:
+                    c_z = [((v - c_mean) / c_std) if v is not None else None for v in c_vals]  # type: ignore[operator]
+
+                # --- Sequence length: species-level z, pair score is avg of species z-scores (higher is better)
+                # Compute species length z-scores across all available species lengths
+                if self._seq_lengths:
+                    l_all = list(self._seq_lengths.values())
+                    if len(l_all) >= 2:
+                        l_mean = sum(l_all) / len(l_all)
+                        l_var = sum((x - l_mean) * (x - l_mean) for x in l_all) / len(l_all)
+                        l_std = math.sqrt(l_var) if l_var > 0.0 else 0.0
+                    else:
+                        l_mean = float(l_all[0]) if l_all else 0.0
+                        l_std = 0.0
+                    sp_len_z: Dict[str, float] = {}
+                    if l_std <= 1e-12:
+                        # Near-constant lengths: zero out z
+                        for sp, val in self._seq_lengths.items():
+                            sp_len_z[sp] = 0.0
+                    else:
+                        for sp, val in self._seq_lengths.items():
+                            sp_len_z[sp] = (float(val) - l_mean) / l_std
+                else:
+                    sp_len_z = {}
+
+                pair_len_z: List[float | None] = []
+                for c in candidates:
+                    z1 = sp_len_z.get(c.convergent)
+                    z2 = sp_len_z.get(c.control)
+                    if z1 is None or z2 is None:
+                        pair_len_z.append(None)
+                    else:
+                        pair_len_z.append(0.5 * (z1 + z2))
+
+                # --- Composite score: average of available z-components per candidate
+                comp_scores: List[float] = []
+                for i in range(n):
+                    parts: List[float] = [d_z[i]]  # always present
+                    if c_z[i] is not None:
+                        parts.append(float(c_z[i]))
+                    if pair_len_z[i] is not None:
+                        parts.append(float(pair_len_z[i]))
+                    comp_scores.append(sum(parts) / len(parts) if parts else 0.0)
+
+                # Sort by composite score descending
+                candidates = [c for _, c in sorted(zip(comp_scores, candidates), key=lambda t: t[0], reverse=True)]
 
         added: List[PairInfo] = []
         invalid: set[str] = set(existing_desc)

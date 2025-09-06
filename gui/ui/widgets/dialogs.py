@@ -18,11 +18,11 @@ from gui.ui.widgets.histogram_canvas import HistogramCanvas
 class AutoSelectOptionsDialog(QMessageBox):
     """Simple dialog to choose auto-select behavior.
 
-    Presents options in this order: Longest Sequence → Max trait contrast → Random → Default → Cancel.
-    Stores the chosen option as `self.choice` in {"default","longest","random","contrast",None}.
+    Presents options in this order: Longest Sequence → Shortest distance → Max trait contrast → Composite best → Random → Default → Cancel.
+    Stores the chosen option as `self.choice` in {"default","longest","shortest","contrast","composite","random",None}.
     """
 
-    def __init__(self, allow_longest: bool, allow_contrast: bool, parent=None):
+    def __init__(self, allow_longest: bool, allow_contrast: bool, allow_composite: bool = True, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Auto Select Options")
         self.setText("Choose how to resolve equally valid siblings")
@@ -37,6 +37,10 @@ class AutoSelectOptionsDialog(QMessageBox):
                 "Set an alignments directory in the input page, to enable this option"
             )
 
+        self.shortest_btn = self.addButton(
+            "Shortest distance", QMessageBox.ButtonRole.ActionRole
+        )
+
         self.contrast_btn = self.addButton(
             "Max trait contrast", QMessageBox.ButtonRole.ActionRole
         )
@@ -45,6 +49,12 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.contrast_btn.setToolTip(
                 "Available only for continuous phenotypes"
             )
+
+        self.composite_btn = self.addButton(
+            "Composite best", QMessageBox.ButtonRole.ActionRole
+        )
+        if not allow_composite:
+            self.composite_btn.setEnabled(False)
 
         self.random_btn = self.addButton(
             "Random", QMessageBox.ButtonRole.ActionRole
@@ -70,8 +80,12 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.choice = "default"
         elif clicked == self.longest_btn:
             self.choice = "longest"
+        elif clicked == self.shortest_btn:
+            self.choice = "shortest"
         elif clicked == self.contrast_btn:
             self.choice = "contrast"
+        elif clicked == self.composite_btn:
+            self.choice = "composite"
         elif clicked == self.random_btn:
             self.choice = "random"
         else:
