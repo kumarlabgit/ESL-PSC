@@ -18,11 +18,11 @@ from gui.ui.widgets.histogram_canvas import HistogramCanvas
 class AutoSelectOptionsDialog(QMessageBox):
     """Simple dialog to choose auto-select behavior.
 
-    Presents options in this order: Longest Sequence → Random → Default → Cancel.
-    Stores the chosen option as `self.choice` in {"default","longest","random",None}.
+    Presents options in this order: Longest Sequence → Max trait contrast → Random → Default → Cancel.
+    Stores the chosen option as `self.choice` in {"default","longest","random","contrast",None}.
     """
 
-    def __init__(self, allow_longest: bool, parent=None):
+    def __init__(self, allow_longest: bool, allow_contrast: bool, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Auto Select Options")
         self.setText("Choose how to resolve equally valid siblings")
@@ -35,6 +35,15 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.longest_btn.setEnabled(False)
             self.longest_btn.setToolTip(
                 "Set an alignments directory in the input page, to enable this option"
+            )
+
+        self.contrast_btn = self.addButton(
+            "Max trait contrast", QMessageBox.ButtonRole.ActionRole
+        )
+        if not allow_contrast:
+            self.contrast_btn.setEnabled(False)
+            self.contrast_btn.setToolTip(
+                "Available only for continuous phenotypes"
             )
 
         self.random_btn = self.addButton(
@@ -61,6 +70,8 @@ class AutoSelectOptionsDialog(QMessageBox):
             self.choice = "default"
         elif clicked == self.longest_btn:
             self.choice = "longest"
+        elif clicked == self.contrast_btn:
+            self.choice = "contrast"
         elif clicked == self.random_btn:
             self.choice = "random"
         else:

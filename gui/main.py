@@ -21,11 +21,14 @@ def main():
     print(f"Working directory: {os.getcwd()}")
     
     try:
-        # Try to enable high DPI scaling if available
+        # Try to enable high DPI scaling if available without emitting deprecation warnings
+        import warnings
         try:
-            QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-            QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-            print("Enabled high DPI scaling")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+                QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+                print("Enabled high DPI scaling")
         except (AttributeError, NameError) as e:
             print(f"Could not enable high DPI scaling (not supported in this Qt version): {e}")
         

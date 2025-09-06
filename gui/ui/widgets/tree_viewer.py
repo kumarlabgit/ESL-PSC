@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QProgressDialog,
     QDialog,
+    QInputDialog,
+    QStyle,
 )
 from PySide6.QtGui import (
     QPainter,
@@ -37,6 +39,8 @@ from PySide6.QtGui import (
     QCursor,
     QLinearGradient,
     QBrush,
+    QIcon,
+    QKeySequence,
 )
 from PySide6.QtSvg import QSvgGenerator
 from PySide6.QtCore import Qt, QEvent
@@ -98,9 +102,13 @@ class TreeViewer(QWidget):
         # "Set" label and phenotype toggle buttons shown on the right
         set_lbl = QLabel("<b>Set:</b>")
         self.conv_mode_btn = QPushButton("Convergent")
-        self.conv_mode_btn.setStyleSheet("color: blue;")
+        self.conv_mode_btn.setStyleSheet(
+            "QPushButton { color: blue; } QPushButton:disabled { color: gray; }"
+        )
         self.ctrl_mode_btn = QPushButton("Non-convergent")
-        self.ctrl_mode_btn.setStyleSheet("color: red;")
+        self.ctrl_mode_btn.setStyleSheet(
+            "QPushButton { color: red; } QPushButton:disabled { color: gray; }"
+        )
         for btn in (self.conv_mode_btn, self.ctrl_mode_btn):
             btn.setCheckable(True)
             btn.setSizePolicy(
@@ -129,6 +137,9 @@ class TreeViewer(QWidget):
         self._pheno_min: float = 0.0
         self._pheno_max: float = 1.0
         self._update_pheno_mode_and_range()
+        # Remember last used continuous thresholds for the session
+        self._last_thresh_lower: float | None = None
+        self._last_thresh_upper: float | None = None
 
         # Map explicit species name to total aligned amino acid sequence length.
         self._seq_lengths: Dict[str, int] = {}
@@ -161,20 +172,20 @@ class TreeViewer(QWidget):
         save_pheno_btn.setToolTip("Write the current phenotype assignments to disk")
         save_pheno_btn.clicked.connect(self._save_phenotypes)
 
-        invert_pheno_btn = QPushButton("Invert Phenotype")
-        invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        invert_pheno_btn.setToolTip(
+        self.invert_pheno_btn = QPushButton("Invert Phenotype")
+        self.invert_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.invert_pheno_btn.setToolTip(
             "Swap convergent and control phenotypes for all species"
         )
-        invert_pheno_btn.clicked.connect(self._invert_phenotypes)
+        self.invert_pheno_btn.clicked.connect(self._invert_phenotypes)
 
         # Additional phenotype utility buttons
-        set_nonconv_btn = QPushButton("Set All to Non-convergent")
-        set_nonconv_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        set_nonconv_btn.setToolTip(
+        self.set_nonconv_btn = QPushButton("Set All to Non-convergent")
+        self.set_nonconv_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.set_nonconv_btn.setToolTip(
             "Assign the Non-convergent phenotype (-1) to every species in the tree"
         )
-        set_nonconv_btn.clicked.connect(self._set_all_non_convergent)
+        self.set_nonconv_btn.clicked.connect(self._set_all_non_convergent)
 
         clear_pheno_btn = QPushButton("Clear Phenotypes")
         clear_pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -184,8 +195,8 @@ class TreeViewer(QWidget):
         # Add phenotype buttons to the top row
         top_row.addWidget(pheno_btn)
         top_row.addWidget(save_pheno_btn)
-        top_row.addWidget(invert_pheno_btn)
-        top_row.addWidget(set_nonconv_btn)
+        top_row.addWidget(self.invert_pheno_btn)
+        top_row.addWidget(self.set_nonconv_btn)
         top_row.addWidget(clear_pheno_btn)
         # Stretch so the set buttons stay at far right
         top_row.addStretch()
@@ -223,7 +234,7 @@ class TreeViewer(QWidget):
         self.save_btn.clicked.connect(self._save_groups)
 
         # ---------------------------
-        # Second row: instruction label on left, export & group buttons on right
+        # Second row: instruction label on left, UNDO/REDO, auto-select & export/group buttons on right
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(5)
@@ -231,6 +242,31 @@ class TreeViewer(QWidget):
         instruct = QLabel("Right click species names to add them to the analysis")
         bottom_row.addWidget(instruct)
         bottom_row.addStretch()
+        # Undo/Redo buttons (before Auto Select)
+        self.undo_btn = QPushButton()
+        # Prefer themed curved undo icon; fall back to standard arrow
+        undo_icon = QIcon.fromTheme("edit-undo")
+        if undo_icon.isNull():
+            undo_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack)
+        self.undo_btn.setIcon(undo_icon)
+        self.undo_btn.setToolTip("Undo")
+        self.undo_btn.setEnabled(False)
+        self.undo_btn.clicked.connect(self._undo_action)
+        self.undo_btn.setShortcut(QKeySequence(QKeySequence.StandardKey.Undo))
+
+        self.redo_btn = QPushButton()
+        # Prefer themed curved redo icon; fall back to standard arrow
+        redo_icon = QIcon.fromTheme("edit-redo")
+        if redo_icon.isNull():
+            redo_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward)
+        self.redo_btn.setIcon(redo_icon)
+        self.redo_btn.setToolTip("Redo")
+        self.redo_btn.setEnabled(False)
+        self.redo_btn.clicked.connect(self._redo_action)
+        self.redo_btn.setShortcut(QKeySequence(QKeySequence.StandardKey.Redo))
+
+        bottom_row.addWidget(self.undo_btn)
+        bottom_row.addWidget(self.redo_btn)
         bottom_row.addWidget(self.auto_btn)
         bottom_row.addWidget(export_btn)
         bottom_row.addWidget(groups_btn)
@@ -276,6 +312,37 @@ class TreeViewer(QWidget):
         self.resize(1200, 1200)
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self._update_auto_btn()
+        # Ensure controls reflect current phenotype mode on startup
+        self._update_pheno_controls_enabled()
+        # Initialize undo/redo stacks
+        self._undo_stack: List[Dict] = []
+        self._redo_stack: List[Dict] = []
+        self._update_undo_redo_btns()
+
+    # ------------------------------------------------------------------
+    def _update_pheno_controls_enabled(self) -> None:
+        """Enable/disable phenotype-setting controls for continuous mode.
+
+        - When continuous phenotypes are active, manual binary assignment is disabled:
+          the Convergent/Non-convergent toggle buttons, "Invert Phenotype", and
+          "Set All to Non-convergent" buttons are disabled.
+        - When binary, these controls are enabled.
+        """
+        is_cont = getattr(self, "_continuous_pheno", False)
+        self.conv_mode_btn.setEnabled(not is_cont)
+        self.ctrl_mode_btn.setEnabled(not is_cont)
+        if hasattr(self, "invert_pheno_btn"):
+            self.invert_pheno_btn.setEnabled(not is_cont)
+            if is_cont:
+                self.invert_pheno_btn.setToolTip("Disabled for continuous phenotypes")
+            else:
+                self.invert_pheno_btn.setToolTip("Swap convergent and control phenotypes for all species")
+        if hasattr(self, "set_nonconv_btn"):
+            self.set_nonconv_btn.setEnabled(not is_cont)
+            if is_cont:
+                self.set_nonconv_btn.setToolTip("Disabled for continuous phenotypes")
+            else:
+                self.set_nonconv_btn.setToolTip("Assign the Non-convergent phenotype (-1) to every species in the tree")
 
     # ------------------------------------------------------------------
     def changeEvent(self, event):
@@ -320,6 +387,9 @@ class TreeViewer(QWidget):
             self._continuous_pheno = False
             self._pheno_min, self._pheno_max = 0.0, 1.0
             self._pheno_sorted = []
+            # Ensure UI controls are updated even when no phenotypes are present
+            if hasattr(self, "_update_pheno_controls_enabled"):
+                self._update_pheno_controls_enabled()
             return
         self._pheno_min = min(vals)
         self._pheno_max = max(vals)
@@ -331,6 +401,9 @@ class TreeViewer(QWidget):
         else:
             self._pheno_sorted = []
         # Percentile-based coloring does not use min/max; avoid arbitrary padding.
+        # Also refresh tool/button enabled state based on phenotype mode.
+        if hasattr(self, "_update_pheno_controls_enabled"):
+            self._update_pheno_controls_enabled()
 
     # ------------------------------------------------------------------
     def _percentile_rank(self, val: float) -> float:
@@ -437,12 +510,14 @@ class TreeViewer(QWidget):
             if action == remove_pair:
                 self._remove_pair(pair_idx)
             elif action == remove_alt:
+                self._push_undo()
                 if name in pair.conv_alts:
                     pair.conv_alts.remove(name)
                 elif name in pair.ctrl_alts:
                     pair.ctrl_alts.remove(name)
                 self._apply_pairs()
             elif action == make_conv:
+                self._push_undo()
                 if name in pair.conv_alts:
                     pair.conv_alts.remove(name)
                 if pair.convergent not in pair.conv_alts:
@@ -450,6 +525,7 @@ class TreeViewer(QWidget):
                 pair.convergent = name
                 self._apply_pairs()
             elif action == make_ctrl:
+                self._push_undo()
                 if name in pair.conv_alts:
                     pair.conv_alts.remove(name)
                 if name in pair.ctrl_alts:
@@ -484,8 +560,10 @@ class TreeViewer(QWidget):
                 if action is None:
                     return
                 if action == conv_act:
+                    self._push_undo()
                     self._add_alternate(name, tgt_idx, "convergent")
                 elif action == ctrl_act:
+                    self._push_undo()
                     self._add_alternate(name, tgt_idx, "control")
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             item.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -517,17 +595,27 @@ class TreeViewer(QWidget):
             act.setEnabled(False)
 
         # phenotype change options
-        pheno_conv = pheno_ctrl = pheno_clear = None
+        pheno_conv = pheno_ctrl = pheno_clear = edit_val = None
         menu.addSeparator()
-        if pheno == 1:
-            pheno_ctrl = menu.addAction("Change to control phenotype")
-            pheno_clear = menu.addAction("Remove phenotype")
-        elif pheno == -1:
-            pheno_conv = menu.addAction("Change to convergent phenotype")
-            pheno_clear = menu.addAction("Remove phenotype")
-        else:
+        is_empty = len(self._phenotypes) == 0
+        is_cont = getattr(self, "_continuous_pheno", False)
+        if is_empty:
+            # When no phenotypes are assigned at all, allow both paths
+            edit_val = menu.addAction("Edit phenotype value…")
             pheno_conv = menu.addAction("Set to convergent phenotype")
             pheno_ctrl = menu.addAction("Set to control phenotype")
+        elif is_cont:
+            edit_val = menu.addAction("Edit phenotype value…")
+        else:
+            if pheno == 1:
+                pheno_ctrl = menu.addAction("Change to control phenotype")
+                pheno_clear = menu.addAction("Remove phenotype")
+            elif pheno == -1:
+                pheno_conv = menu.addAction("Change to convergent phenotype")
+                pheno_clear = menu.addAction("Remove phenotype")
+            else:
+                pheno_conv = menu.addAction("Set to convergent phenotype")
+                pheno_ctrl = menu.addAction("Set to control phenotype")
 
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
@@ -535,8 +623,10 @@ class TreeViewer(QWidget):
             self._update_assign_cursor()
             return
         if action == conv_act:
+            self._push_undo()
             self._add_species(name, "convergent")
         elif action == ctrl_act:
+            self._push_undo()
             self._add_species(name, "control")
         elif action == cancel_act:
             if self._selection_rect is not None:
@@ -546,23 +636,38 @@ class TreeViewer(QWidget):
             self._current_first = None
             self._update_save_btn()
         elif action == pheno_conv:
+            self._push_undo()
             self._phenotypes[name] = 1
             self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
         elif action == pheno_ctrl:
+            self._push_undo()
             self._phenotypes[name] = -1
             self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
         elif action == pheno_clear:
+            self._push_undo()
             self._phenotypes.pop(name, None)
             self._update_pheno_mode_and_range()
             self._reset_scene()
             self._draw_tree(self._tree)
             self._apply_pairs()
+        elif action == edit_val:
+            # Continuous-mode edit: prompt for a new numeric value
+            cur = float(self._phenotypes.get(name, 0.0)) if self._phenotypes.get(name) is not None else 0.0
+            val, ok = QInputDialog.getDouble(self, "Edit phenotype value", f"Set continuous value for {name}:", cur, -1e12, 1e12, 3)
+            if ok:
+                self._push_undo()
+                self._phenotypes[name] = float(val)
+                self._update_pheno_mode_and_range()
+                self._reset_scene()
+                self._draw_tree(self._tree)
+                self._apply_pairs()
+                self._update_auto_btn()
         self._update_assign_cursor()
 
     # ------------------------------------------------------------------
@@ -576,6 +681,7 @@ class TreeViewer(QWidget):
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
         item.setCursor(Qt.CursorShape.OpenHandCursor)
         if action == remove:
+            self._push_undo()
             self._remove_pair(idx)
         elif action is None:
             self._update_assign_cursor()
@@ -627,6 +733,82 @@ class TreeViewer(QWidget):
             self.auto_btn.setToolTip("Add more phenotypes")
 
     # ------------------------------------------------------------------
+    def _snapshot_state(self) -> Dict:
+        """Capture current phenotype and pair state for undo/redo."""
+        pairs_copy = [
+            PairInfo(p.convergent, p.control, list(p.conv_alts), list(p.ctrl_alts))
+            for p in self._pairs
+        ]
+        return {
+            "phenotypes": dict(self._phenotypes),
+            "pairs": pairs_copy,
+            "current_role": self._current_role,
+            "current_first": self._current_first,
+        }
+
+    # ------------------------------------------------------------------
+    def _restore_state(self, snap: Dict) -> None:
+        self._phenotypes = dict(snap.get("phenotypes", {}))
+        pairs = snap.get("pairs", [])
+        self._pairs = [
+            PairInfo(p.convergent, p.control, list(p.conv_alts), list(p.ctrl_alts))
+            for p in pairs
+        ]
+        # Restore in-progress selection state (for initial selection step)
+        self._current_role = snap.get("current_role", None)
+        self._current_first = snap.get("current_first", None)
+        self._update_pheno_mode_and_range()
+        self._reset_scene()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
+        # Recreate selection rectangle if we had an in-progress selection
+        if self._current_role and self._current_first:
+            label = self._label_items.get(self._current_first)
+            if label:
+                color = QColor("blue") if self._current_role == "convergent" else QColor("red")
+                rect = label.boundingRect().adjusted(-2, 0, 2, 0)
+                rect.moveTo(label.pos())
+                self._selection_rect = self.scene.addRect(rect, QPen(color, 2))
+                self._selection_rect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._update_auto_btn()
+        self._update_save_btn()
+
+    # ------------------------------------------------------------------
+    def _push_undo(self) -> None:
+        self._undo_stack.append(self._snapshot_state())
+        # Clear redo stack on new action
+        self._redo_stack.clear()
+        # Optional cap
+        if len(self._undo_stack) > 50:
+            self._undo_stack.pop(0)
+        self._update_undo_redo_btns()
+
+    # ------------------------------------------------------------------
+    def _update_undo_redo_btns(self) -> None:
+        self.undo_btn.setEnabled(bool(self._undo_stack))
+        self.redo_btn.setEnabled(bool(self._redo_stack))
+
+    # ------------------------------------------------------------------
+    def _undo_action(self) -> None:
+        if not self._undo_stack:
+            return
+        cur = self._snapshot_state()
+        snap = self._undo_stack.pop()
+        self._redo_stack.append(cur)
+        self._restore_state(snap)
+        self._update_undo_redo_btns()
+
+    # ------------------------------------------------------------------
+    def _redo_action(self) -> None:
+        if not self._redo_stack:
+            return
+        cur = self._snapshot_state()
+        snap = self._redo_stack.pop()
+        self._undo_stack.append(cur)
+        self._restore_state(snap)
+        self._update_undo_redo_btns()
+
+    # ------------------------------------------------------------------
     def _toggle_assign_mode(self, mode: int) -> None:
         """Toggle phenotype assignment mode using the colored buttons."""
         if self._assign_mode == mode:
@@ -648,6 +830,7 @@ class TreeViewer(QWidget):
         """Set or toggle phenotype for a species and redraw."""
         if val not in (1, -1):
             return
+        self._push_undo()
         if self._phenotypes.get(name) == val:
             self._phenotypes.pop(name, None)
         else:
@@ -743,6 +926,22 @@ class TreeViewer(QWidget):
             self._pairs = keep
 
     # ------------------------------------------------------------------
+    def _sort_pairs_by_vertical_position(self) -> None:
+        """Sort self._pairs by the Y position of each pair's common ancestor.
+
+        This renumbers pairs so labels appear in vertical order down the page.
+        """
+        def anc_y(pair: PairInfo) -> float:
+            try:
+                conv_leaf = next(self._tree.find_clades(name=pair.convergent))
+                ctrl_leaf = next(self._tree.find_clades(name=pair.control))
+                anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                return float(self._node_pos.get(anc, (0.0, 0.0))[1])
+            except Exception:
+                return 0.0
+        self._pairs.sort(key=anc_y)
+
+    # ------------------------------------------------------------------
     def _apply_pairs(self) -> None:
         # reset visuals
         for lines in self._branch_lines.values():
@@ -816,14 +1015,9 @@ class TreeViewer(QWidget):
                 if lname not in excluded:
                     lbl = self._label_items.get(lname)
                     if lbl:
-                        ph = self._phenotypes.get(lname)
-                        if ph == 1:
-                            c = QColor("#add8e6")
-                        elif ph == -1:
-                            c = QColor("#f4aaaa")
-                        else:
-                            c = QColor("gray")
-                        lbl.setDefaultTextColor(c)
+                        # Always gray-out invalid siblings, regardless of phenotype,
+                        # while keeping any appended continuous value colored via HTML span.
+                        lbl.setDefaultTextColor(QColor("gray"))
                     self._disabled_species.add(lname)
 
             # draw alternate paths
@@ -1187,6 +1381,8 @@ class TreeViewer(QWidget):
             )
             return
 
+        # State change: push undo snapshot before applying new phenotypes
+        self._push_undo()
         self._phenotypes = phenos
         self._update_pheno_mode_and_range()
         self._pairs.clear()
@@ -1237,6 +1433,7 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _set_all_non_convergent(self) -> None:
         """Assign the non-convergent phenotype (-1) to every species in the tree."""
+        self._push_undo()
         for leaf in self._tree.get_terminals():
             self._phenotypes[leaf.name] = -1
         # Update mode/range first so the redraw uses binary colors immediately
@@ -1249,6 +1446,7 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _clear_phenotypes(self) -> None:
         """Remove all phenotype assignments from the tree."""
+        self._push_undo()
         self._phenotypes.clear()
         self._update_pheno_mode_and_range()
         self._reset_scene()
@@ -1258,11 +1456,26 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _auto_select_pairs(self) -> None:
-        """Automatically choose contrast pairs based on phenotype transitions."""
+        """Automatically choose contrast pairs based on phenotype transitions.
+
+        For continuous phenotypes, thresholds are used ONLY for the auto-selection
+        algorithm (temporary binary mapping) without changing on-screen coloring or
+        the continuous legend.
+        """
+        temp_mapping: Dict[str, int] | None = None
         if self._continuous_pheno:
             dlg_thresh = PhenoThresholdDialog(
                 list(self._phenotypes.values()), parent=self
             )
+            # Pre-populate with last used thresholds for the session (clamped)
+            if self._last_thresh_lower is not None and self._last_thresh_upper is not None:
+                vmin, vmax = float(self._pheno_min), float(self._pheno_max)
+                low = max(vmin, min(vmax, float(self._last_thresh_lower)))
+                up = max(vmin, min(vmax, float(self._last_thresh_upper)))
+                # Ensure low <= up; if not, reset to dialog defaults
+                if low <= up:
+                    dlg_thresh.lower_spin.setValue(low)
+                    dlg_thresh.upper_spin.setValue(up)
             if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
                 return
             lower = dlg_thresh.lower_threshold
@@ -1274,17 +1487,15 @@ class TreeViewer(QWidget):
                     "Lower threshold must be less than upper threshold",
                 )
                 return
-            self._phenotypes = {
-                name: 1 if val >= upper else -1
+            # Remember for this session
+            self._last_thresh_lower, self._last_thresh_upper = float(lower), float(upper)
+            # Build a temporary binary mapping for the algorithm only
+            temp_mapping = {
+                name: (1 if val >= upper else -1)
                 for name, val in self._phenotypes.items()
                 if val >= upper or val <= lower
             }
-            self._update_pheno_mode_and_range()
-            self._reset_scene()
-            self._draw_tree(self._tree)
-            self._apply_pairs()
-            self._update_auto_btn()
-            if sum(1 for v in self._phenotypes.values() if v in (1, -1)) < 4:
+            if sum(1 for v in temp_mapping.values() if v in (1, -1)) < 4:
                 QMessageBox.warning(
                     self,
                     "Threshold Error",
@@ -1293,18 +1504,29 @@ class TreeViewer(QWidget):
                 return
 
         # Ask user how to resolve ambiguous choices
-        dlg = AutoSelectOptionsDialogExt(bool(self._alignments_dir), parent=self)
+        dlg = AutoSelectOptionsDialogExt(
+            bool(self._alignments_dir), bool(self._continuous_pheno), parent=self
+        )
         dlg.exec()
         if not dlg.choice:
             return
-        method = dlg.choice  # "default", "longest", or "random"
+        method = dlg.choice  # "default", "longest", "random", or "contrast"
 
         # If longest is requested, ensure we have an alignments directory and
         # collect sequence length info for relevant species.
         if method == "longest":
             if not self._alignments_dir and not self._prompt_alignment_dir():
                 return
-            self._ensure_sequence_lengths()
+            # For continuous mode, gather lengths for the thresholded set only
+            if self._continuous_pheno and temp_mapping is not None:
+                backup = self._phenotypes
+                try:
+                    self._phenotypes = temp_mapping  # temporary scope for length scan
+                    self._ensure_sequence_lengths()
+                finally:
+                    self._phenotypes = backup
+            else:
+                self._ensure_sequence_lengths()
             # Optionally show sequence-length annotations next to labels
             self._show_seq_lengths = True
             self._update_seq_length_annotations()
@@ -1322,11 +1544,13 @@ class TreeViewer(QWidget):
         candidates: List[CandidatePair] = []
         prev_name: str | None = None
         prev_pheno = None
+        # Choose phenotype source for algorithm (temporary mapping for continuous)
+        pheno_for_algo: Dict[str, int] = temp_mapping if temp_mapping is not None else self._phenotypes  # type: ignore[assignment]
         for leaf in self._tree.get_terminals():
             name = leaf.name or ""
             if name in existing_desc:
                 continue
-            ph = self._phenotypes.get(name)
+            ph = pheno_for_algo.get(name)
             if ph not in (1, -1):
                 continue
             if prev_name is not None and ph != prev_pheno:
@@ -1351,7 +1575,7 @@ class TreeViewer(QWidget):
             cand = candidates.pop(0)
             if cand.descendants & invalid:
                 continue
-            pair = self._resolve_pair(cand, method)
+            pair = self._resolve_pair(cand, method, pheno_for_algo)
             added.append(pair)
             invalid.update(cand.descendants)
             candidates = [c for c in candidates if not (c.descendants & invalid)]
@@ -1365,8 +1589,12 @@ class TreeViewer(QWidget):
             return
 
         if added:
+            # State change: push undo before applying new pairs
+            self._push_undo()
             self._pairs.extend(added)
             self._prune_nested_pairs()
+            # Renumber pairs to appear in vertical order down the page
+            self._sort_pairs_by_vertical_position()
             self._current_role = None
             self._current_first = None
             self._apply_pairs()
@@ -1458,7 +1686,9 @@ class TreeViewer(QWidget):
         Notes:
         - We never mutate ``species_name``; only the visible text is updated.
         - If both phenotype value (continuous) and sequence length are present,
-          we render as: ``Name (value, length)``.
+          we render as: ``Name (value; len: N)`` with a semicolon separator; the
+          length uses commas for readability and switches to scientific notation
+          at >= 100,000.
         - For binary phenotypes, we do not append the value.
         """
         for base_name, label in self._label_items.items():
@@ -1471,7 +1701,14 @@ class TreeViewer(QWidget):
                         fval = float(ph_val)
                         # Show a tidy float (e.g., 0.123, 2.5); no trailing zeros
                         sval = f"{fval:.3f}".rstrip('0').rstrip('.')
-                        parts.append(sval)
+                        # Compute viridis-mapped color for this value and color
+                        # ONLY the value substring via HTML span. The default
+                        # text color (set elsewhere) will still control the name
+                        # and any other unstyled text (e.g., length or base).
+                        p = self._percentile_rank(fval)
+                        vcol = viridis_qcolor(p)
+                        vhex = vcol.name()  # #RRGGBB
+                        parts.append(f"<span style=\"color:{vhex}\">{sval}</span>")
                     except Exception:
                         pass
 
@@ -1479,10 +1716,24 @@ class TreeViewer(QWidget):
             if getattr(self, "_show_seq_lengths", False):
                 length = self._seq_lengths.get(base_name)
                 if length:
-                    parts.append(str(length))
+                    # Format with commas; switch to scientific notation at >= 100,000
+                    if length >= 100_000:
+                        len_fmt = f"{float(length):.3e}"
+                    else:
+                        len_fmt = f"{length:,}"
+                    parts.append(f"len: {len_fmt}")
 
-            text = base_name if not parts else f"{base_name} (" + ", ".join(parts) + ")"
-            label.setPlainText(text)
+            # Use '; ' between value and length when both present; otherwise just the one
+            if len(parts) > 1:
+                extras = f"{parts[0]}; {parts[1]}"
+            else:
+                extras = parts[0] if parts else ""
+            text = base_name if not extras else f"{base_name} (" + extras + ")"
+            # Use rich text when we have colored spans; otherwise plain text is fine.
+            if any(part.startswith("<span") for part in parts):
+                label.setHtml(text)
+            else:
+                label.setPlainText(text)
             # Keep position stable after text change.
             pos = label.pos()
             label.setPos(pos.x(), pos.y())
@@ -1501,16 +1752,20 @@ class TreeViewer(QWidget):
         return random.choice(best)
 
     # ------------------------------------------------------------------
-    def _resolve_pair(self, cand: CandidatePair, method: str) -> PairInfo:
+    def _resolve_pair(self, cand: CandidatePair, method: str, pheno_map: Optional[Dict[str, int]] = None) -> PairInfo:
         conv_leaf = next(self._tree.find_clades(name=cand.convergent))
         ctrl_leaf = next(self._tree.find_clades(name=cand.control))
         anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+
+        # Use provided phenotype mapping if present (e.g., thresholded continuous),
+        # otherwise fall back to the viewer's current phenotypes.
+        mapping = pheno_map if pheno_map is not None else self._phenotypes
 
         convs: List[str] = []
         ctrls: List[str] = []
         for leaf in anc.get_terminals():
             nm = leaf.name or ""
-            ph = self._phenotypes.get(nm)
+            ph = mapping.get(nm)
             if ph == 1:
                 convs.append(nm)
             elif ph == -1:
@@ -1523,6 +1778,12 @@ class TreeViewer(QWidget):
                 conv_choice = self._pick_longest(convs)
             if len(ctrls) > 1:
                 ctrl_choice = self._pick_longest(ctrls)
+        elif method == "contrast" and getattr(self, "_continuous_pheno", False):
+            # For continuous traits: pick extremes among eligible descendants
+            if len(convs) > 1:
+                conv_choice = max(convs, key=lambda n: float(self._phenotypes.get(n, float("-inf"))))
+            if len(ctrls) > 1:
+                ctrl_choice = min(ctrls, key=lambda n: float(self._phenotypes.get(n, float("inf"))))
         elif method == "random":
             if len(convs) > 1:
                 conv_choice = random.choice(convs)
