@@ -1601,109 +1601,169 @@ class TreeViewer(QWidget):
             prev_name = name
             prev_pheno = ph
 
-        # Sort strategy based on method
-        if method in ("default", "shortest"):
-            # Stable sort by shortest distance; default tie-break is encounter order
-            candidates.sort(key=lambda c: c.distance)
-        # For composite, compute equal-weight average of z-scores across metrics
-        elif method == "composite":
-            # Ensure sequence lengths if alignments available (optional).
-            # For continuous mode, gather lengths for the thresholded set only
-            # so candidate species have lengths available.
-            if self._alignments_dir:
-                if self._continuous_pheno and temp_mapping is not None:
-                    backup = self._phenotypes
-                    try:
-                        self._phenotypes = temp_mapping  # temporary scope for length scan
-                        self._ensure_sequence_lengths()
-                    finally:
-                        self._phenotypes = backup
-                else:
-                    self._ensure_sequence_lengths()
+        # Candidate ordering: ALWAYS use the default (shortest-distance-first)
+        # strategy to maximize the number of non-overlapping pairs. The chosen
+        # method only affects which leaf duo is selected within each ancestor.
+        candidates.sort(key=lambda c: c.distance)
 
-            import math
-            n = len(candidates)
-            if n == 0:
+        # For composite, compute fold/normalized metrics across all possible duos
+        if method == "composite":
+            # Ensure sequence lengths are available. Prompt for an alignments
+            # directory if needed, since composite requires lengths.
+            if not self._alignments_dir and not self._prompt_alignment_dir():
+                return
+            if self._continuous_pheno and temp_mapping is not None:
+                backup = self._phenotypes
+                try:
+                    self._phenotypes = temp_mapping  # temporary scope for length scan
+                    self._ensure_sequence_lengths()
+                finally:
+                    self._phenotypes = backup
+            else:
+                self._ensure_sequence_lengths()
+
+            # Build all possible duos (convergent x control) under each candidate ancestor
+            # and compute raw metrics for each duo.
+            EPS = 1e-12
+            CAP = 10.0  # cap component folds to avoid swamping
+            duos: List[Tuple[int, str, str, float, Optional[float], Optional[float], Optional[float]]] = []
+
+            # Build duos and raw metrics
+            for idx, c in enumerate(candidates):
+                try:
+                    conv_leaf = next(self._tree.find_clades(name=c.convergent))
+                    ctrl_leaf = next(self._tree.find_clades(name=c.control))
+                    anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                except Exception:
+                    continue
+                convs: List[str] = []
+                ctrls: List[str] = []
+                for leaf in anc.get_terminals():
+                    nm = leaf.name or ""
+                    ph = pheno_for_algo.get(nm)
+                    if ph == 1:
+                        convs.append(nm)
+                    elif ph == -1:
+                        ctrls.append(nm)
+                if not convs or not ctrls:
+                    continue
+
+                for a in convs:
+                    for b in ctrls:
+                        # Tree distance for this specific duo
+                        try:
+                            a_leaf = next(self._tree.find_clades(name=a))
+                            b_leaf = next(self._tree.find_clades(name=b))
+                            d = float(self._tree.distance(a_leaf, b_leaf))
+                        except Exception:
+                            # Fallback: path length in edges between nodes
+                            try:
+                                anc2 = self._tree.common_ancestor(a_leaf, b_leaf)  # type: ignore[name-defined]
+                                ap = self._path_to(anc2, a_leaf)
+                                bp = self._path_to(anc2, b_leaf)
+                                d = float(len(ap) + len(bp))
+                            except Exception:
+                                d = float("inf")
+
+                        # Sequence length sum for this duo (if lengths known)
+                        la = self._seq_lengths.get(a)
+                        lb = self._seq_lengths.get(b)
+                        seq_sum: Optional[float] = float(la + lb) if (la is not None and lb is not None) else None
+
+                        # Phenotype values for duo (continuous only)
+                        va = None
+                        vb = None
+                        if getattr(self, "_continuous_pheno", False):
+                            try:
+                                va = float(self._phenotypes.get(a)) if self._phenotypes.get(a) is not None else None
+                                vb = float(self._phenotypes.get(b)) if self._phenotypes.get(b) is not None else None
+                            except Exception:
+                                va = None
+                                vb = None
+
+                        duos.append((idx, a, b, d, seq_sum, va, vb))
+
+            if not duos:
+                # Nothing to score; leave candidates order as-is
                 pass
             else:
-                # --- Distances: z-scores over candidate distances (lower is better -> negate z)
-                d_vals = [c.distance for c in candidates]
-                d_mean = sum(d_vals) / n if n else 0.0
-                d_var = sum((x - d_mean) * (x - d_mean) for x in d_vals) / n if n else 0.0
-                d_std = math.sqrt(d_var) if d_var > 0.0 else 0.0
-                if d_std <= 1e-12:
-                    d_z = [0.0] * n
-                else:
-                    d_z = [-(x - d_mean) / d_std for x in d_vals]  # negative because smaller is better
+                import math
+                # Mean-based normalizers
+                d_list = [d for (_, _, _, d, _, _, _) in duos if d is not None and math.isfinite(d)]
+                mean_d = (sum(d_list) / len(d_list)) if d_list else 1.0
+                # Global species length mean across available lengths (entire tree cache)
+                lens = list(self._seq_lengths.values())
+                mean_len = (sum(lens) / len(lens)) if lens else None
 
-                # --- Contrast magnitudes (continuous only): z across candidate contrasts (higher is better)
-                c_vals: List[float | None] = []
-                if self._continuous_pheno:
-                    for c in candidates:
-                        v1 = self._phenotypes.get(c.convergent)
-                        v2 = self._phenotypes.get(c.control)
-                        try:
-                            c_vals.append(abs(float(v1) - float(v2)))  # type: ignore[arg-type]
-                        except Exception:
-                            c_vals.append(None)
-                else:
-                    c_vals = [None] * n
-                c_present = [v for v in c_vals if v is not None]
-                if len(c_present) >= 2:
-                    c_mean = sum(c_present) / len(c_present)
-                    c_var = sum((x - c_mean) * (x - c_mean) for x in c_present) / len(c_present)
-                    c_std = math.sqrt(c_var) if c_var > 0.0 else 0.0
-                else:
-                    c_mean = 0.0
-                    c_std = 0.0
-                if c_std <= 1e-12:
-                    c_z: List[float | None] = [0.0 if v is not None else None for v in c_vals]
-                else:
-                    c_z = [((v - c_mean) / c_std) if v is not None else None for v in c_vals]  # type: ignore[operator]
+                # Trait: rescale all phenotypes to [1,10] across the tree, then per-ancestor
+                # duo trait score = (conv_scaled - ctrl_scaled) / mean_diff_idx where mean_diff_idx
+                # is the mean of duo differences for that ancestor.
+                scaled: Dict[str, float] = {}
+                if getattr(self, "_continuous_pheno", False):
+                    try:
+                        all_vals = [float(v) for v in self._phenotypes.values() if v is not None]
+                        if all_vals:
+                            vmin = min(all_vals)
+                            vmax = max(all_vals)
+                            if vmax > vmin:
+                                scale = 9.0 / (vmax - vmin)
+                                for nm, v in self._phenotypes.items():
+                                    if v is not None:
+                                        scaled[nm] = 1.0 + (float(v) - vmin) * scale
+                            else:
+                                # All equal: set to 1.0
+                                for nm in self._phenotypes.keys():
+                                    scaled[nm] = 1.0
+                    except Exception:
+                        scaled = {}
 
-                # --- Sequence length: species-level z, pair score is avg of species z-scores (higher is better)
-                # Compute species length z-scores across all available species lengths
-                if self._seq_lengths:
-                    l_all = list(self._seq_lengths.values())
-                    if len(l_all) >= 2:
-                        l_mean = sum(l_all) / len(l_all)
-                        l_var = sum((x - l_mean) * (x - l_mean) for x in l_all) / len(l_all)
-                        l_std = math.sqrt(l_var) if l_var > 0.0 else 0.0
+                # Per-ancestor mean of duo differences in scaled space
+                anc_diffs: Dict[int, List[float]] = {}
+                for (idx, a, b, _, _, va, vb) in duos:
+                    if getattr(self, "_continuous_pheno", False) and a in scaled and b in scaled:
+                        anc_diffs.setdefault(idx, []).append(scaled[a] - scaled[b])
+                anc_mean_diff: Dict[int, float] = {i: (sum(vals) / len(vals)) for i, vals in anc_diffs.items() if vals}
+
+                trait_raws: List[Optional[float]] = []
+                for (idx, a, b, _, _, va, vb) in duos:
+                    if getattr(self, "_continuous_pheno", False) and a in scaled and b in scaled and idx in anc_mean_diff:
+                        diff = scaled[a] - scaled[b]
+                        trait_raws.append(diff / max(anc_mean_diff[idx], EPS))
                     else:
-                        l_mean = float(l_all[0]) if l_all else 0.0
-                        l_std = 0.0
-                    sp_len_z: Dict[str, float] = {}
-                    if l_std <= 1e-12:
-                        # Near-constant lengths: zero out z
-                        for sp, val in self._seq_lengths.items():
-                            sp_len_z[sp] = 0.0
-                    else:
-                        for sp, val in self._seq_lengths.items():
-                            sp_len_z[sp] = (float(val) - l_mean) / l_std
-                else:
-                    sp_len_z = {}
+                        trait_raws.append(None)
 
-                pair_len_z: List[float | None] = []
-                for c in candidates:
-                    z1 = sp_len_z.get(c.convergent)
-                    z2 = sp_len_z.get(c.control)
-                    if z1 is None or z2 is None:
-                        pair_len_z.append(None)
-                    else:
-                        pair_len_z.append(0.5 * (z1 + z2))
+                # Compute composite score per duo: average of available components
+                duo_scores: List[float] = []
+                for i, (idx, a, b, d, ss, va, vb) in enumerate(duos):
+                    parts: List[float] = []
+                    # Distance component (shorter is better): mean_d / d
+                    parts.append(mean_d / max(d if d is not None else float("inf"), EPS))
+                    # Sequence length component (larger is better): average of mean-normalized lengths
+                    if mean_len and mean_len > 0.0:
+                        la = self._seq_lengths.get(a)
+                        lb = self._seq_lengths.get(b)
+                        if la is not None and lb is not None:
+                            parts.append(0.5 * (float(la) / mean_len + float(lb) / mean_len))
+                    # Trait component
+                    tr = trait_raws[i]
+                    if tr is not None:
+                        parts.append(tr)
+                    score = (sum(parts) / len(parts)) if parts else 0.0
+                    duo_scores.append(score)
 
-                # --- Composite score: average of available z-components per candidate
-                comp_scores: List[float] = []
-                for i in range(n):
-                    parts: List[float] = [d_z[i]]  # always present
-                    if c_z[i] is not None:
-                        parts.append(float(c_z[i]))
-                    if pair_len_z[i] is not None:
-                        parts.append(float(pair_len_z[i]))
-                    comp_scores.append(sum(parts) / len(parts) if parts else 0.0)
+                # For each candidate, keep the best-scoring duo and remember the chosen species
+                best_by_cand: Dict[int, Tuple[float, str, str]] = {}
+                for (i, (idx, a, b, *_)) in enumerate(duos):
+                    sc = duo_scores[i]
+                    cur = best_by_cand.get(idx)
+                    if cur is None or sc > cur[0]:
+                        best_by_cand[idx] = (sc, a, b)
 
-                # Sort by composite score descending
-                candidates = [c for _, c in sorted(zip(comp_scores, candidates), key=lambda t: t[0], reverse=True)]
+                # Persist chosen duos so _resolve_pair can use them for the composite method
+                self._composite_duo: Dict[Tuple[str, str], Tuple[str, str]] = {}
+                for idx, (sc, a, b) in best_by_cand.items():
+                    key = (candidates[idx].convergent, candidates[idx].control)
+                    self._composite_duo[key] = (a, b)
 
         added: List[PairInfo] = []
         invalid: set[str] = set(existing_desc)
@@ -1884,8 +1944,12 @@ class TreeViewer(QWidget):
         if not lengths:
             return names[0]
         max_len = max(lengths.values())
-        best = [n for n, l in lengths.items() if l == max_len]
-        return random.choice(best)
+        # Deterministic tie-break: first occurrence by input order
+        for n in names:
+            if lengths.get(n, 0) == max_len:
+                return n
+        # Fallback (should not happen)
+        return names[0]
 
     # ------------------------------------------------------------------
     def _resolve_pair(self, cand: CandidatePair, method: str, pheno_map: Optional[Dict[str, int]] = None) -> PairInfo:
@@ -1914,6 +1978,12 @@ class TreeViewer(QWidget):
                 conv_choice = self._pick_longest(convs)
             if len(ctrls) > 1:
                 ctrl_choice = self._pick_longest(ctrls)
+        elif method == "composite":
+            # Use the duo chosen during composite scoring if available
+            key = (cand.convergent, cand.control)
+            duo = getattr(self, "_composite_duo", {}).get(key)
+            if duo:
+                conv_choice, ctrl_choice = duo
         elif method == "contrast" and getattr(self, "_continuous_pheno", False):
             # For continuous traits: pick extremes among eligible descendants
             if len(convs) > 1:
