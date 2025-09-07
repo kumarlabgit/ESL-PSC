@@ -8,11 +8,12 @@ import os
 from gui.core.fasta_io import read_fasta
 import pandas as pd
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QBrush
+from PySide6.QtGui import QColor, QBrush, QFontMetrics
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
-    QLabel, QHeaderView
+    QLabel, QHeaderView, QPushButton, QHBoxLayout,
+    QComboBox, QDialogButtonBox
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
@@ -56,7 +57,18 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
         if response_dir and os.path.isdir(response_dir):
             files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
             if files:
-                first_matrix = os.path.join(response_dir, files[0])
+                # Determine which matrix to use: prefer a selection stored on the parent dialog,
+                # otherwise default to the first file. Never prompt here.
+                selected_name = files[0]
+                try:
+                    if parent is not None and hasattr(parent, '_selected_response_matrix'):
+                        sel = getattr(parent, '_selected_response_matrix')
+                        if sel in files:
+                            selected_name = sel
+                except Exception:
+                    pass
+
+                first_matrix = os.path.join(response_dir, selected_name)
                 # Parse by line order: even index -> Convergent, odd index -> Control.
                 # This holds for both binary and continuous response matrices.
                 with open(first_matrix, encoding="utf-8", errors="ignore") as f:
@@ -238,6 +250,8 @@ class GeneRanksDialog(QDialog):
         # Round and format columns
         if 'Highest GSS' in df.columns:
             df['Highest GSS'] = df['Highest GSS'].round(5)
+        if 'Highest Ever GSS' in df.columns:
+            df['Highest Ever GSS'] = pd.to_numeric(df['Highest Ever GSS'], errors='coerce').round(6)
         # Ensure rank columns are numeric while safely handling placeholders like 'None'
         for col in ['Best Rank', 'Best Ever Rank']:
             if col in df.columns:
@@ -252,8 +266,19 @@ class GeneRanksDialog(QDialog):
         if self.has_sites:
             msg += " Use the expand/collapse arrows to reveal selected sites for each gene."
         help_label = QLabel(msg)
-        help_label.setWordWrap(True)
-        layout.addWidget(help_label)
+        # Keep the help text on a single line and let it expand horizontally
+        help_label.setWordWrap(False)
+        help_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # Place help text and a 'Set Combo' button on the same row
+        header_row = QHBoxLayout()
+        header_row.addWidget(help_label)
+        header_row.setStretchFactor(help_label, 1)
+        header_row.addStretch()
+        set_combo_btn = QPushButton("Set Combo")
+        set_combo_btn.setToolTip("Choose which response matrix combo to use when opening Site Viewer windows.")
+        set_combo_btn.clicked.connect(self._open_combo_picker)
+        header_row.addWidget(set_combo_btn)
+        layout.addLayout(header_row)
 
         if self.has_sites:
             self._init_tree_view(layout, df)
@@ -296,6 +321,101 @@ class GeneRanksDialog(QDialog):
             _launch_site_viewer(gene, self.config, self.sites_path, parent=self)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+
+    def _open_combo_picker(self):
+        """Open a dialog allowing the user to pick a response matrix combo and preview its species."""
+        response_dir = getattr(self.config, 'response_dir', '') or ''
+        if not response_dir:
+            # Attempt to derive from species_groups_file fallback
+            base = os.path.basename(getattr(self.config, 'species_groups_file', '')).replace('.txt', '')
+            if base and getattr(self.config, 'output_dir', ''):
+                response_dir = os.path.join(self.config.output_dir, f"{base}_response_matrices")
+        if not response_dir or not os.path.isdir(response_dir):
+            QMessageBox.information(self, "No Response Matrices", "No response matrix directory was found.")
+            return
+
+        files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
+        if not files:
+            QMessageBox.information(self, "No Response Matrices", "No .txt response matrices found in the directory.")
+            return
+
+        # Build the dialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Select Response Combo")
+        vbox = QVBoxLayout(dlg)
+        combo = QComboBox(dlg)
+        combo.addItems(files)
+        # Adjust sizing so the dialog/title comfortably fits
+        try:
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            fm = QFontMetrics(combo.font())
+            longest = max(files, key=len)
+            text_w = fm.horizontalAdvance(longest)
+            min_w = min(900, text_w + 120)  # padding for arrow/margins
+            combo.setMinimumWidth(min_w)
+            dlg.setMinimumWidth(min_w + 60)
+        except Exception:
+            # Reasonable fallback width
+            dlg.resize(520, dlg.sizeHint().height())
+        # Preselect current dialog selection if present
+        current = getattr(self, '_selected_response_matrix', '') or ''
+        if current and current in files:
+            combo.setCurrentIndex(files.index(current))
+        vbox.addWidget(combo)
+
+        conv_label = QLabel("Convergent species:")
+        conv_list = QLabel("")
+        conv_list.setWordWrap(True)
+        ctrl_label = QLabel("Control species:")
+        ctrl_list = QLabel("")
+        ctrl_list.setWordWrap(True)
+        vbox.addWidget(conv_label)
+        vbox.addWidget(conv_list)
+        vbox.addWidget(ctrl_label)
+        vbox.addWidget(ctrl_list)
+
+        def parse_species_lists(fname: str):
+            path = os.path.join(response_dir, fname)
+            conv, ctrl = [], []
+            try:
+                with open(path, encoding='utf-8', errors='ignore') as f:
+                    for idx, raw in enumerate(f):
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        parts = line.split()  # tab or whitespace
+                        if len(parts) < 2:
+                            continue
+                        sp = parts[0]
+                        if idx % 2 == 0:
+                            conv.append(sp)
+                        else:
+                            ctrl.append(sp)
+            except Exception:
+                pass
+            return conv, ctrl
+
+        def refresh_lists():
+            fname = combo.currentText()
+            conv, ctrl = parse_species_lists(fname)
+            conv_list.setText("\n".join(conv) if conv else "(none)")
+            ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
+
+        combo.currentIndexChanged.connect(lambda _i: refresh_lists())
+        refresh_lists()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+        vbox.addWidget(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+
+        if dlg.exec() == QDialog.Accepted:
+            selected = combo.currentText()
+            # Persist selection for subsequent Site Viewer openings on this dialog instance
+            try:
+                setattr(self, '_selected_response_matrix', selected)
+            except Exception:
+                pass
 
     def _init_table_view(self, layout: QVBoxLayout, df: pd.DataFrame) -> None:
         """Initialize the simple table view (no selected sites)."""
