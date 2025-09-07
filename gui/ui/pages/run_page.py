@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThreadPool, Qt
 import os
+import time
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
@@ -137,6 +138,8 @@ class RunPage(BaseWizardPage):
         self.sps_plot_path = None
         self.gene_ranks_path = None
         self.selected_sites_path = None
+        # Timestamp for run start, to filter out stale artifacts from prior runs
+        self._run_start_time = None
     
     # ------------------------------------------------------------------
     # Checkpoint helpers
@@ -203,6 +206,9 @@ class RunPage(BaseWizardPage):
             # Reset progress bars for new run
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
+
+            # Record start time so we can verify which outputs were created by THIS run
+            self._run_start_time = time.time()
 
             # 2) Show overwrite warning only for a *fresh* run (no checkpoint or user forces fresh)
             from esl_psc_cli.checkpoint import Checkpointer
@@ -360,7 +366,8 @@ class RunPage(BaseWizardPage):
             ):
                 fig_name = f"{base}_pred_sps_plot.svg"
                 path = os.path.abspath(os.path.join(out_dir, fig_name))
-                if os.path.exists(path):
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
                     self.sps_plot_path = path
                     self.sps_btn.show()
 
@@ -368,7 +375,8 @@ class RunPage(BaseWizardPage):
             if getattr(self.config, "make_continuous_plot", False) and not getattr(self.config, "no_pred_output", False):
                 cont_name = f"{base}_continuous_plot.svg"
                 path = os.path.abspath(os.path.join(out_dir, cont_name))
-                if os.path.exists(path):
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
                     self.cont_plot_path = path
                     self.cont_btn.show()
 
