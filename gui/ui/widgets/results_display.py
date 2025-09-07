@@ -35,43 +35,71 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
     # Load alignment records using shared FASTA reader for reliability/consistency
     records = read_fasta(align_path)
 
-    # Determine species groups from species groups file if available
+    # Determine species groups with the following priority:
+    # 1) If a response_dir with matrices is present, use the FIRST matrix file to define groups.
+    #    This supports flipped-null and multimatrix runs where group membership per combo
+    #    comes from the response matrices rather than the species groups file.
+    # 2) Otherwise, fall back to the species groups file (first two non-empty lines only).
     conv: list[str] = []
     ctrl: list[str] = []
-    groups_path = getattr(config, "species_groups_file", "")
-    if groups_path and os.path.exists(groups_path):
-        try:
-            with open(groups_path) as fp:
-                lines = [ln.strip() for ln in fp if ln.strip()]
-            for idx in range(0, len(lines), 2):
-                conv_line = lines[idx]
-                conv.extend([sp.strip() for sp in conv_line.split(',') if sp.strip()])
-                if idx + 1 < len(lines):
-                    ctrl_line = lines[idx + 1]
-                    ctrl.extend([sp.strip() for sp in ctrl_line.split(',') if sp.strip()])
-        except Exception:
-            conv = []
-            ctrl = []
 
-    # Fallback to response matrices when species groups file is absent
-    if not conv and not ctrl:
-        response_dir = config.response_dir
-        if not response_dir:
-            base = os.path.basename(getattr(config, "species_groups_file", "")).replace(".txt", "")
+    # Prefer response_dir if available
+    response_dir = getattr(config, "response_dir", "") or ""
+    if not response_dir:
+        # Derive default response_dir name from species_groups_file if not explicitly set
+        base = os.path.basename(getattr(config, "species_groups_file", "")).replace(".txt", "")
+        if base and getattr(config, "output_dir", ""):
             response_dir = os.path.join(config.output_dir, f"{base}_response_matrices")
-        if not os.path.isdir(response_dir):
-            raise FileNotFoundError(f"Response directory not found: {response_dir}")
-        files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
-        if not files:
-            raise FileNotFoundError("No response matrices found")
-        first_matrix = os.path.join(response_dir, files[0])
-        with open(first_matrix) as f:
-            for line in f:
-                sp, val = line.strip().split()[:2]
-                if val == '1':
-                    conv.append(sp)
-                else:
-                    ctrl.append(sp)
+
+    used_response_dir = False
+    try:
+        if response_dir and os.path.isdir(response_dir):
+            files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
+            if files:
+                first_matrix = os.path.join(response_dir, files[0])
+                # Parse by line order: even index -> Convergent, odd index -> Control.
+                # This holds for both binary and continuous response matrices.
+                with open(first_matrix, encoding="utf-8", errors="ignore") as f:
+                    for idx, raw in enumerate(f):
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        parts = line.split()  # tab or whitespace separated
+                        if len(parts) < 2:
+                            continue
+                        sp = parts[0]
+                        if idx % 2 == 0:
+                            conv.append(sp)
+                        else:
+                            ctrl.append(sp)
+                used_response_dir = True
+    except Exception:
+        # Fall through to species groups parsing on error
+        conv, ctrl, used_response_dir = [], [], False
+
+    if not used_response_dir:
+        # Fall back to species groups file: construct the FIRST combo by
+        # taking the first species from each even-indexed (convergent) line
+        # and each odd-indexed (control) line.
+        groups_path = getattr(config, "species_groups_file", "")
+        if groups_path and os.path.exists(groups_path):
+            try:
+                with open(groups_path, encoding="utf-8", errors="ignore") as fp:
+                    lines = [ln.strip() for ln in fp if ln.strip()]
+                # Build conv/control by taking the first entry from each line group
+                conv = []
+                ctrl = []
+                for i, ln in enumerate(lines):
+                    first_sp = next((sp.strip() for sp in ln.split(',') if sp.strip()), None)
+                    if not first_sp:
+                        continue
+                    if i % 2 == 0:
+                        conv.append(first_sp)
+                    else:
+                        ctrl.append(first_sp)
+            except Exception:
+                conv = []
+                ctrl = []
 
     conv = sorted(dict.fromkeys(conv))
     ctrl = sorted(dict.fromkeys(ctrl))
