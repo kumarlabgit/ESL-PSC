@@ -7,6 +7,9 @@ import os
 import math
 # Use shared FASTA reader
 from gui.core.fasta_io import read_fasta
+from esl_psc_cli.deletion_canceler import (
+    parse_species_groups as cli_parse_species_groups,
+)
 import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QBrush, QFontMetrics
@@ -24,6 +27,31 @@ from gui.ui.widgets.site_viewer import SiteViewer
 # Keep references to open dialogs to prevent garbage collection
 _open_dialogs = []
 
+
+class NumericItem(QTableWidgetItem):
+    """A QTableWidgetItem that sorts by numeric value while displaying formatted text."""
+    def __init__(self, value: float, display_text: str):
+        super().__init__(display_text)
+        try:
+            self._value = float(value)
+        except Exception:
+            self._value = float('nan')
+        # Align numbers to the right for readability
+        self.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def __lt__(self, other):
+        if isinstance(other, NumericItem):
+            # Handle NaNs by pushing them to the end
+            if self._value != self._value:
+                return False
+            if other._value != other._value:
+                return True
+            return self._value < other._value
+        # Fallback to default behavior
+        try:
+            return float(self.text()) < float(other.text())
+        except Exception:
+            return super().__lt__(other)
 
 def _launch_site_viewer(
     gene: str,
@@ -51,9 +79,26 @@ def _launch_site_viewer(
     conv: list[str] = []
     ctrl: list[str] = []
 
-    # Prefer response_dir if available
+    # If parent dialog has an explicitly selected groups combo, respect it first.
+    # This enables Fast Scan to open SiteViewer with a user-chosen species grouping
+    # derived from the species groups file.
+    try:
+        if parent is not None and hasattr(parent, '_selected_groups_combo'):
+            sel = getattr(parent, '_selected_groups_combo')
+            if isinstance(sel, (tuple, list)) and len(sel) == 2:
+                conv = list(sel[0])
+                ctrl = list(sel[1])
+                used_response_dir = True  # treat as explicit selection
+            else:
+                conv = []
+                ctrl = []
+    except Exception:
+        conv = []
+        ctrl = []
+
+    # Prefer response_dir if available (and no explicit groups combo selected)
     response_dir = getattr(config, "response_dir", "") or ""
-    if not response_dir:
+    if not response_dir and not conv and not ctrl:
         # Derive default response_dir name from species_groups_file if not explicitly set
         base = os.path.basename(getattr(config, "species_groups_file", "")).replace(".txt", "")
         if base and getattr(config, "output_dir", ""):
@@ -61,7 +106,7 @@ def _launch_site_viewer(
 
     used_response_dir = False
     try:
-        if response_dir and os.path.isdir(response_dir):
+        if (not conv and not ctrl) and response_dir and os.path.isdir(response_dir):
             files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
             if files:
                 # Determine which matrix to use: prefer a selection stored on the parent dialog,
@@ -96,7 +141,7 @@ def _launch_site_viewer(
         # Fall through to species groups parsing on error
         conv, ctrl, used_response_dir = [], [], False
 
-    if not used_response_dir:
+    if not used_response_dir and not conv and not ctrl:
         # Fall back to species groups file: construct the FIRST combo by
         # taking the first species from each even-indexed (convergent) line
         # and each odd-indexed (control) line.
@@ -172,7 +217,36 @@ def _launch_site_viewer(
         species_pheno_map=species_pheno_map,
         pheno_name_map=pheno_name_map,
     )
+    # Ensure the viewer shows on top
+    try:
+        viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+    except Exception:
+        pass
     viewer.show()
+    try:
+        viewer.raise_()
+        viewer.activateWindow()
+    except Exception:
+        pass
+
+    # When the viewer closes, bring the launching dialog back to the front so
+    # it doesn't appear to "disappear" behind the wizard window.
+    if parent is not None:
+        def _refocus_parent():
+            try:
+                parent.show()
+                # On some platforms, toggling WindowActive ensures focus
+                try:
+                    parent.raise_()
+                    parent.activateWindow()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        try:
+            viewer.destroyed.connect(lambda _obj=None: _refocus_parent())
+        except Exception:
+            pass
     _open_dialogs.append(viewer)
 
 def _get_alignment_length(gene_name: str, alignments_dir: str):
@@ -657,9 +731,14 @@ class FastScanResultsDialog(QDialog):
         label = QLabel("Double-click a gene to open the Site Viewer.")
         header.addWidget(label)
         header.addStretch()
-        save_btn = QPushButton("Save Results")
-        save_btn.clicked.connect(self._save_results)
-        header.addWidget(save_btn)
+        # Buttons: Save Results first (focused), then Set Combo to its right
+        self.save_btn = QPushButton("Save Results")
+        self.save_btn.clicked.connect(self._save_results)
+        header.addWidget(self.save_btn)
+        self.set_combo_btn = QPushButton("Set Combo")
+        self.set_combo_btn.setToolTip("Choose a response matrix (if provided) or a species-groups combo to use when opening the Site Viewer from these results.")
+        self.set_combo_btn.clicked.connect(self._open_combo_picker)
+        header.addWidget(self.set_combo_btn)
         layout.addLayout(header)
 
         self.table = QTableWidget()
@@ -674,6 +753,14 @@ class FastScanResultsDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.doubleClicked.connect(lambda idx: self._open_site_viewer(idx.row()))
+        # Enable clickable header sorting; NumericItem ensures numeric sort for numeric columns
+        self.table.setSortingEnabled(True)
+        try:
+            hh = self.table.horizontalHeader()
+            hh.setSortIndicatorShown(True)
+            hh.setSectionsClickable(True)
+        except Exception:
+            pass
         layout.addWidget(self.table)
 
         self.results_df = pd.DataFrame(results)
@@ -686,15 +773,191 @@ class FastScanResultsDialog(QDialog):
                 return str(v)
             if math.isclose(x, round(x), rel_tol=0.0, abs_tol=1e-9):
                 return str(int(round(x)))
-            return f"{x:.5f}"
+            # Up to 3 decimals, strip trailing zeros and trailing dot
+            s = f"{x:.3f}".rstrip('0').rstrip('.')
+            return s
 
         for row_idx, (_, row) in enumerate(top.iterrows()):
-            self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])))
-            self.table.setItem(row_idx, 1, QTableWidgetItem(_fmt_num(row['avg_true'])))
-            self.table.setItem(row_idx, 2, QTableWidgetItem(_fmt_num(row['avg_control'])))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(_fmt_num(row['diff'])))
+            # Gene column – regular text item
+            self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])) )
+            # Numeric columns – use NumericItem for proper sorting
+            v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
+            v2 = float(row['avg_control']) if pd.notna(row['avg_control']) else float('nan')
+            v3 = float(row['diff']) if pd.notna(row['diff']) else float('nan')
+            self.table.setItem(row_idx, 1, NumericItem(v1, _fmt_num(v1)))
+            self.table.setItem(row_idx, 2, NumericItem(v2, _fmt_num(v2)))
+            self.table.setItem(row_idx, 3, NumericItem(v3, _fmt_num(v3)))
         self.table.resizeColumnsToContents()
         self.resize(800, 600)
+        # Make Save Results the default and focused button
+        try:
+            self.save_btn.setAutoDefault(True)
+            self.save_btn.setDefault(True)
+            self.save_btn.setFocus()
+        except Exception:
+            pass
+
+    def _open_combo_picker(self) -> None:
+        """Open a dialog to pick the default combo for Site Viewer.
+
+        Priority:
+        - If a response_dir is set (and exists), allow picking a response matrix file
+          (same behavior as the main ESL-PSC results display dialog).
+        - Otherwise, parse combos from the species groups file and allow picking one
+          of the computed Cartesian-product combos.
+        """
+        # Try response_dir first
+        response_dir = getattr(self.config, 'response_dir', '') or ''
+        if response_dir and os.path.isdir(response_dir):
+            files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
+            if not files:
+                QMessageBox.information(self, "Default Combo", "No response matrices found in the selected directory.")
+                return
+            from PySide6.QtWidgets import QDialogButtonBox
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Select Response Combo")
+            vbox = QVBoxLayout(dlg)
+            combo = QComboBox(dlg)
+            combo.addItems(files)
+            try:
+                combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+                fm = QFontMetrics(combo.font())
+                longest = max(files, key=len)
+                text_w = fm.horizontalAdvance(longest)
+                combo.setMinimumWidth(min(max(text_w + 40, 240), 640))
+            except Exception:
+                pass
+
+            # Place the selection dropdown at the top, matching the main results dialog UX
+            vbox.addWidget(QLabel("Select Combo:"))
+            vbox.addWidget(combo)
+
+            def parse_species_lists(fname: str):
+                path = os.path.join(response_dir, fname)
+                conv, ctrl = [], []
+                try:
+                    with open(path, encoding='utf-8', errors='ignore') as f:
+                        for idx, raw in enumerate(f):
+                            line = raw.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            sp = parts[0]
+                            if idx % 2 == 0:
+                                conv.append(sp)
+                            else:
+                                ctrl.append(sp)
+                except Exception:
+                    pass
+                return conv, ctrl
+
+            conv_list = QLabel()
+            ctrl_list = QLabel()
+            conv_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            ctrl_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            vbox.addWidget(QLabel("Convergent (trait-positive) species:"))
+            vbox.addWidget(conv_list)
+            vbox.addWidget(QLabel("Control (trait-negative) species:"))
+            vbox.addWidget(ctrl_list)
+
+            def refresh_lists():
+                fname = combo.currentText()
+                conv, ctrl = parse_species_lists(fname)
+                conv_list.setText("\n".join(conv) if conv else "(none)")
+                ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
+
+            combo.currentIndexChanged.connect(lambda _i: refresh_lists())
+            refresh_lists()
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+            vbox.addWidget(buttons)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+
+            if dlg.exec() == QDialog.Accepted:
+                selected = combo.currentText()
+                try:
+                    setattr(self, '_selected_response_matrix', selected)
+                except Exception:
+                    pass
+            return
+
+        # Otherwise, parse combos from species groups file
+        groups_path = getattr(self.config, 'species_groups_file', '') or ''
+        if not groups_path or not os.path.exists(groups_path):
+            QMessageBox.information(self, "Default Combo", "No species groups file or response directory available.")
+            return
+        try:
+            raw_combos = cli_parse_species_groups(groups_path)
+        except Exception as e:
+            QMessageBox.critical(self, "Default Combo", f"Failed to parse species groups file:\n{e}")
+            return
+        if not raw_combos:
+            QMessageBox.information(self, "Default Combo", "No combos found in species groups file.")
+            return
+
+        # Build display items and map to conv/ctrl
+        display_items = []
+        conv_ctrl_map = {}
+        for i, tup in enumerate(raw_combos):
+            picks = list(tup)
+            conv = [picks[j] for j in range(0, len(picks), 2)]
+            ctrl = [picks[j] for j in range(1, len(picks), 2)]
+            key = f"combo_{i}"
+            display_items.append(key)
+            conv_ctrl_map[key] = (conv, ctrl)
+
+        from PySide6.QtWidgets import QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Select Groups Combo")
+        vbox = QVBoxLayout(dlg)
+        combo = QComboBox(dlg)
+        combo.addItems(display_items)
+        try:
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            fm = QFontMetrics(combo.font())
+            longest = max(display_items, key=len)
+            text_w = fm.horizontalAdvance(longest)
+            combo.setMinimumWidth(min(max(text_w + 40, 240), 640))
+        except Exception:
+            pass
+
+        # Place the selection dropdown at the top, matching the main results dialog UX
+        vbox.addWidget(QLabel("Select Combo:"))
+        vbox.addWidget(combo)
+
+        conv_list = QLabel()
+        ctrl_list = QLabel()
+        conv_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        ctrl_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        vbox.addWidget(QLabel("Convergent (trait-positive) species:"))
+        vbox.addWidget(conv_list)
+        vbox.addWidget(QLabel("Control (trait-negative) species:"))
+        vbox.addWidget(ctrl_list)
+
+        def refresh_lists():
+            key = combo.currentText()
+            conv, ctrl = conv_ctrl_map.get(key, ([], []))
+            conv_list.setText("\n".join(conv) if conv else "(none)")
+            ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
+
+        combo.currentIndexChanged.connect(lambda _i: refresh_lists())
+        refresh_lists()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+        vbox.addWidget(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+
+        if dlg.exec() == QDialog.Accepted:
+            key = combo.currentText()
+            conv, ctrl = conv_ctrl_map.get(key, ([], []))
+            try:
+                setattr(self, '_selected_groups_combo', (conv, ctrl))
+            except Exception:
+                pass
 
     def _open_site_viewer(self, row: int) -> None:
         gene_item = self.table.item(row, 0)

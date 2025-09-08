@@ -69,16 +69,6 @@ def fast_scan_alignments(
     combos = _parse_species_groups(species_groups_file)
     files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
     results: List[Dict[str, float]] = []
-    debug_on = os.getenv("ESL_PSC_FASTSCAN_DEBUG", "0") == "1"
-    debug_rows: list[tuple[str, int, int, int, bool, int, int]] = []  # gene, combo_idx, n_conv, n_ctrl, out_present, ccs, ctrl_conv
-    # If debugging, remove any legacy TSV inside the alignment dir to avoid confusion
-    if debug_on:
-        legacy_dbg = os.path.join(alignment_dir, "fast_scan_debug.tsv")
-        try:
-            if os.path.exists(legacy_dbg):
-                os.remove(legacy_dbg)
-        except Exception:
-            pass
     total = len(files)
     for idx, fname in enumerate(files, 1):
         path = os.path.join(alignment_dir, fname)
@@ -111,13 +101,6 @@ def fast_scan_alignments(
             eligible_true = len(conv_present) >= 2 and len(ctrl_present) >= 1
             eligible_ctrl = len(ctrl_present) >= 2 and len(conv_present) >= 1
             if not (eligible_true or eligible_ctrl):
-                if debug_on:
-                    debug_rows.append((
-                        os.path.splitext(fname)[0], combo_index,
-                        len(conv_present), len(ctrl_present),
-                        outgroup_species in species_seq,
-                        0, 0
-                    ))
                 continue
             ccs = 0
             ctrl_conv = 0
@@ -173,13 +156,7 @@ def fast_scan_alignments(
             if eligible_ctrl:
                 ctrl_counts.append(ctrl_conv)
                 ctrl_den += 1
-            if debug_on:
-                debug_rows.append((
-                    os.path.splitext(fname)[0], combo_index,
-                    len(conv_present), len(ctrl_present),
-                    outgroup_species in species_seq,
-                    ccs, ctrl_conv
-                ))
+            
 
         avg_true = (sum(true_counts) / true_den) if true_den else 0.0
         avg_ctrl = (sum(ctrl_counts) / ctrl_den) if ctrl_den else 0.0
@@ -193,18 +170,5 @@ def fast_scan_alignments(
         )
         if progress_cb:
             progress_cb(idx, total)
-    # Optional debug output
-    if debug_on:
-        try:
-            # Save to the parent of the alignment directory
-            align_parent = os.path.dirname(os.path.abspath(alignment_dir))
-            dbg_path = os.path.join(align_parent, "fast_scan_debug.tsv")
-            with open(dbg_path, "w") as df:
-                df.write("gene\tcombo_idx\tn_conv\tn_ctrl\tout_present\tccs\tctrl_conv\n")
-                for row in debug_rows:
-                    gene, cidx, ncv, nct, outp, tccs, tctrl = row
-                    df.write(f"{gene}\t{cidx}\t{ncv}\t{nct}\t{int(bool(outp))}\t{tccs}\t{tctrl}\n")
-        except Exception:
-            pass
     results.sort(key=lambda x: x["avg_true"], reverse=True)
     return results

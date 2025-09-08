@@ -49,13 +49,14 @@ class InputPage(BaseWizardPage):
         fast_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         fast_btn.setToolTip("Quickly scan alignments for convergence signals.")
         fast_btn.clicked.connect(self._on_fast_scan)
-        top_btns.addWidget(fast_btn)
 
         load_prev_btn = QPushButton("Load and View Existing Output")
         load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
         load_prev_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         load_prev_btn.clicked.connect(lambda *_: select_and_show_existing_output(parent=self))
+        # Add 'Load Existing Output' first, then 'Fast Scan' so Fast Scan appears to the right
         top_btns.addWidget(load_prev_btn)
+        top_btns.addWidget(fast_btn)
         top_btns.setAlignment(Qt.AlignmentFlag.AlignRight)
         container_layout.addLayout(top_btns)
         
