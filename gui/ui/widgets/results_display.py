@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
     QLabel, QHeaderView, QPushButton, QHBoxLayout,
-    QComboBox, QDialogButtonBox
+    QComboBox, QDialogButtonBox, QFileDialog
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
@@ -24,7 +24,13 @@ from gui.ui.widgets.site_viewer import SiteViewer
 _open_dialogs = []
 
 
-def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) -> None:
+def _launch_site_viewer(
+    gene: str,
+    config,
+    sites_path: str | None,
+    parent=None,
+    outgroup_species: list[str] | None = None,
+) -> None:
     """Open the SiteViewer window for the given gene."""
     align_dir = getattr(config, "alignments_dir", "")
     if not align_dir:
@@ -156,7 +162,7 @@ def _launch_site_viewer(gene: str, config, sites_path: str | None, parent=None) 
         records,
         conv,
         ctrl,
-        [],  # outgroup species (not derived here)
+        outgroup_species or [],
         gene,
         all_sites_info,
         False,
@@ -633,5 +639,72 @@ class SelectedSitesDialog(QDialog):
             gene_order = list(dict.fromkeys(df["gene_name"]))[:200]
 
         dialog = SelectedSitesDialog(df, gene_order, alignments_dir, parent)
+        dialog.show()
+        _open_dialogs.append(dialog)
+
+class FastScanResultsDialog(QDialog):
+    """Display fast scan gene rankings."""
+
+    def __init__(self, results, config, outgroup, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Fast Scan Results")
+        self.config = config
+        self.outgroup = outgroup
+        layout = QVBoxLayout(self)
+
+        header = QHBoxLayout()
+        label = QLabel("Double-click a gene to open the Site Viewer.")
+        header.addWidget(label)
+        header.addStretch()
+        save_btn = QPushButton("Save Results")
+        save_btn.clicked.connect(self._save_results)
+        header.addWidget(save_btn)
+        layout.addLayout(header)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels([
+            "Gene", "Avg True Convergence", "Avg Control Convergence", "Avg True - Control",
+        ])
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.doubleClicked.connect(lambda idx: self._open_site_viewer(idx.row()))
+        layout.addWidget(self.table)
+
+        self.results_df = pd.DataFrame(results)
+        top = self.results_df.head(200)
+        self.table.setRowCount(len(top))
+        for row_idx, (_, row) in enumerate(top.iterrows()):
+            self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])))
+            self.table.setItem(row_idx, 1, QTableWidgetItem(f"{row['avg_true']:.5f}"))
+            self.table.setItem(row_idx, 2, QTableWidgetItem(f"{row['avg_control']:.5f}"))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(f"{row['diff']:.5f}"))
+        self.table.resizeColumnsToContents()
+        self.resize(800, 600)
+
+    def _open_site_viewer(self, row: int) -> None:
+        gene_item = self.table.item(row, 0)
+        if gene_item is None:
+            return
+        gene = gene_item.text()
+        try:
+            _launch_site_viewer(gene, self.config, None, parent=self, outgroup_species=[self.outgroup])
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+
+    def _save_results(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Fast Scan Results", "fast_scan_results.csv", "CSV Files (*.csv)"
+        )
+        if path:
+            try:
+                self.results_df.to_csv(path, index=False)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not save results:\n{e}")
+
+    @staticmethod
+    def show_results(results, config, outgroup, parent=None):
+        dialog = FastScanResultsDialog(results, config, outgroup, parent)
         dialog.show()
         _open_dialogs.append(dialog)

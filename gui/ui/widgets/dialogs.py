@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Sequence
 
 from PySide6.QtWidgets import (
-    QMessageBox,
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -11,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QDoubleSpinBox,
     QPushButton,
+    QComboBox,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -153,3 +153,24 @@ class PhenoThresholdDialog(QDialog):
     @property
     def upper_threshold(self) -> float:
         return self.upper_spin.value()
+
+
+class OutgroupDialog(QDialog):
+    """Dialog to pick an outgroup species."""
+
+    def __init__(self, species: Sequence[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Outgroup Species")
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Choose outgroup species:"))
+        self._combo = QComboBox()
+        self._combo.addItems(list(species))
+        layout.addWidget(self._combo)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    @property
+    def selected(self) -> str:
+        return self._combo.currentText()
