@@ -2,27 +2,35 @@
 from __future__ import annotations
 
 import os
+import itertools
 from collections import Counter
 from typing import Callable, Dict, List
 
 from gui.core.fasta_io import read_fasta
+from esl_psc_cli.deletion_canceler import (
+    parse_species_groups as cli_parse_species_groups,
+)
 
 
 def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
-    """Return list of (convergent_species, control_species) combos."""
-    combos: List[tuple[List[str], List[str]]] = []
-    if not path or not os.path.exists(path):
-        return combos
-    lines: List[str] = []
-    with open(path, encoding="utf-8", errors="ignore") as fh:
-        lines = [ln.strip() for ln in fh if ln.strip()]
-    for i in range(0, len(lines), 2):
-        conv_line = lines[i]
-        ctrl_line = lines[i + 1] if i + 1 < len(lines) else ""
-        conv = [sp.strip() for sp in conv_line.replace(",", " ").split() if sp.strip()]
-        ctrl = [sp.strip() for sp in ctrl_line.replace(",", " ").split() if sp.strip()]
-        combos.append((conv, ctrl))
-    return combos
+    """Return list of (convergent_species, control_species) combos derived
+    from the CLI's species-groups parser to ensure exact consistency.
+
+    This wraps ``esl_psc_cli.deletion_canceler.parse_species_groups`` (which
+    returns tuples of species chosen across all lines) and splits each tuple
+    by index parity into Convergent (even indices) and Control (odd indices).
+    """
+    try:
+        raw_combos = cli_parse_species_groups(path)  # list[tuple[str, ...]]
+    except Exception:
+        return []
+    conv_ctrl: List[tuple[List[str], List[str]]] = []
+    for tup in raw_combos:
+        picks = list(tup)
+        conv = [picks[i] for i in range(0, len(picks), 2)]
+        ctrl = [picks[i] for i in range(1, len(picks), 2)]
+        conv_ctrl.append((conv, ctrl))
+    return conv_ctrl
 
 
 def list_species(alignment_dir: str) -> List[str]:
@@ -43,6 +51,7 @@ def fast_scan_alignments(
     species_groups_file: str,
     outgroup_species: str,
     progress_cb: Callable[[int, int], None] | None = None,
+    response_dir: str | None = None,
 ) -> List[Dict[str, float]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -60,6 +69,16 @@ def fast_scan_alignments(
     combos = _parse_species_groups(species_groups_file)
     files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
     results: List[Dict[str, float]] = []
+    debug_on = os.getenv("ESL_PSC_FASTSCAN_DEBUG", "0") == "1"
+    debug_rows: list[tuple[str, int, int, int, bool, int, int]] = []  # gene, combo_idx, n_conv, n_ctrl, out_present, ccs, ctrl_conv
+    # If debugging, remove any legacy TSV inside the alignment dir to avoid confusion
+    if debug_on:
+        legacy_dbg = os.path.join(alignment_dir, "fast_scan_debug.tsv")
+        try:
+            if os.path.exists(legacy_dbg):
+                os.remove(legacy_dbg)
+        except Exception:
+            pass
     total = len(files)
     for idx, fname in enumerate(files, 1):
         path = os.path.join(alignment_dir, fname)
@@ -69,33 +88,78 @@ def fast_scan_alignments(
             if progress_cb:
                 progress_cb(idx, total)
             continue
-        seq_len = len(next(iter(species_seq.values())))
+        # Use the maximum sequence length seen to be robust to minor length differences
+        seq_len = max((len(s) for s in species_seq.values()), default=0)
+        # Safe accessor: return '?' when species is missing or position is out of range
+        def get_aa(species: str, pos: int) -> str:
+            seq = species_seq.get(species)
+            if not seq or pos < 0 or pos >= len(seq):
+                return "?"
+            try:
+                return seq[pos]
+            except Exception:
+                return "?"
+        # Compute CCS/Control-convergence per combo, then average across eligible combos
         true_counts: List[int] = []
         ctrl_counts: List[int] = []
-        for conv, ctrl in combos:
+        true_den = 0  # combos with >=2 convergent and >=1 control present
+        ctrl_den = 0  # combos with >=2 control and >=1 convergent present
+        for combo_index, (conv_group, ctrl_group) in enumerate(combos):
+            conv_present = [sp for sp in conv_group if sp in species_seq]
+            ctrl_present = [sp for sp in ctrl_group if sp in species_seq]
+            # Determine eligibility for each metric separately
+            eligible_true = len(conv_present) >= 2 and len(ctrl_present) >= 1
+            eligible_ctrl = len(ctrl_present) >= 2 and len(conv_present) >= 1
+            if not (eligible_true or eligible_ctrl):
+                if debug_on:
+                    debug_rows.append((
+                        os.path.splitext(fname)[0], combo_index,
+                        len(conv_present), len(ctrl_present),
+                        outgroup_species in species_seq,
+                        0, 0
+                    ))
+                continue
             ccs = 0
             ctrl_conv = 0
             for pos in range(seq_len):
-                conv_aa = [species_seq.get(sp, "?")[pos] for sp in conv]
-                ctrl_aa = [species_seq.get(sp, "?")[pos] for sp in ctrl]
-                out_aa = [species_seq.get(outgroup_species, "?")[pos]]
-                clean_conv = [x for x in conv_aa if x not in ("?", "-")]
-                clean_ctrl = [x for x in ctrl_aa if x not in ("?", "-")]
-                clean_out = [x for x in out_aa if x not in ("?", "-")]
-                if (
-                    clean_ctrl
-                    and clean_out
-                    and len(set(clean_ctrl)) == 1
-                    and len(set(clean_out)) == 1
-                    and list(set(clean_ctrl))[0] == list(set(clean_out))[0]
-                ):
-                    ctrl_res = clean_ctrl[0]
-                    conv_counter = Counter(clean_conv)
-                    for res, cnt in conv_counter.items():
-                        if res != ctrl_res and cnt >= 2:
-                            ccs += 1
-                            break
-                if clean_out and len(set(clean_out)) == 1:
+                # Raw residues at this position
+                conv_aa = [get_aa(sp, pos) for sp in conv_present]
+                ctrl_aa = [get_aa(sp, pos) for sp in ctrl_present]
+                out_aa = [get_aa(outgroup_species, pos)]
+
+                # Mask singletons among Convergent+Control (match SiteViewer logic)
+                # Count on raw residues in Convergent+Control (including '-')
+                cc_counts = Counter(conv_aa + ctrl_aa)
+                conv_ns = conv_aa[:]
+                ctrl_ns = ctrl_aa[:]
+                for lst in (conv_ns, ctrl_ns):
+                    for i, r in enumerate(lst):
+                        if r != '-' and cc_counts.get(r, 0) == 1:
+                            lst[i] = '?'
+
+                # Clean up for detection
+                clean_conv = [x for x in conv_ns if x not in ('?', '-')]
+                clean_ctrl = [x for x in ctrl_ns if x not in ('?', '-')]
+                clean_out = [x for x in out_aa if x not in ('?', '-')]
+
+                # CCS detection (only meaningful if eligible_true)
+                if eligible_true:
+                    if (
+                        clean_ctrl
+                        and clean_out
+                        and len(set(clean_ctrl)) == 1
+                        and len(set(clean_out)) == 1
+                        and list(set(clean_ctrl))[0] == list(set(clean_out))[0]
+                    ):
+                        ctrl_res = clean_ctrl[0]
+                        conv_counter = Counter(clean_conv)
+                        for res, cnt in conv_counter.items():
+                            if res != ctrl_res and cnt >= 2:
+                                ccs += 1
+                                break
+
+                # Control-convergence detection (only meaningful if eligible_ctrl)
+                if eligible_ctrl and clean_out and len(set(clean_out)) == 1:
                     out_res = clean_out[0]
                     if clean_conv and all(r == out_res for r in clean_conv):
                         ctrl_counter = Counter(clean_ctrl)
@@ -103,10 +167,22 @@ def fast_scan_alignments(
                             if res != out_res and cnt >= 2:
                                 ctrl_conv += 1
                                 break
-            true_counts.append(ccs)
-            ctrl_counts.append(ctrl_conv)
-        avg_true = sum(true_counts) / len(combos) if combos else 0.0
-        avg_ctrl = sum(ctrl_counts) / len(combos) if combos else 0.0
+            if eligible_true:
+                true_counts.append(ccs)
+                true_den += 1
+            if eligible_ctrl:
+                ctrl_counts.append(ctrl_conv)
+                ctrl_den += 1
+            if debug_on:
+                debug_rows.append((
+                    os.path.splitext(fname)[0], combo_index,
+                    len(conv_present), len(ctrl_present),
+                    outgroup_species in species_seq,
+                    ccs, ctrl_conv
+                ))
+
+        avg_true = (sum(true_counts) / true_den) if true_den else 0.0
+        avg_ctrl = (sum(ctrl_counts) / ctrl_den) if ctrl_den else 0.0
         results.append(
             {
                 "gene": os.path.splitext(fname)[0],
@@ -117,5 +193,18 @@ def fast_scan_alignments(
         )
         if progress_cb:
             progress_cb(idx, total)
+    # Optional debug output
+    if debug_on:
+        try:
+            # Save to the parent of the alignment directory
+            align_parent = os.path.dirname(os.path.abspath(alignment_dir))
+            dbg_path = os.path.join(align_parent, "fast_scan_debug.tsv")
+            with open(dbg_path, "w") as df:
+                df.write("gene\tcombo_idx\tn_conv\tn_ctrl\tout_present\tccs\tctrl_conv\n")
+                for row in debug_rows:
+                    gene, cidx, ncv, nct, outp, tccs, tctrl = row
+                    df.write(f"{gene}\t{cidx}\t{ncv}\t{nct}\t{int(bool(outp))}\t{tccs}\t{tctrl}\n")
+        except Exception:
+            pass
     results.sort(key=lambda x: x["avg_true"], reverse=True)
     return results

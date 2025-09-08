@@ -4,6 +4,7 @@ Dialogs for displaying ESL-PSC analysis results.
 from __future__ import annotations
 import os
 
+import math
 # Use shared FASTA reader
 from gui.core.fasta_io import read_fasta
 import pandas as pd
@@ -664,7 +665,10 @@ class FastScanResultsDialog(QDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels([
-            "Gene", "Avg True Convergence", "Avg Control Convergence", "Avg True - Control",
+            "Gene",
+            "Avg True Convergence",
+            "Avg Control Convergence",
+            "Avg True - Control",
         ])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -675,11 +679,20 @@ class FastScanResultsDialog(QDialog):
         self.results_df = pd.DataFrame(results)
         top = self.results_df.head(200)
         self.table.setRowCount(len(top))
+        def _fmt_num(v) -> str:
+            try:
+                x = float(v)
+            except Exception:
+                return str(v)
+            if math.isclose(x, round(x), rel_tol=0.0, abs_tol=1e-9):
+                return str(int(round(x)))
+            return f"{x:.5f}"
+
         for row_idx, (_, row) in enumerate(top.iterrows()):
             self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])))
-            self.table.setItem(row_idx, 1, QTableWidgetItem(f"{row['avg_true']:.5f}"))
-            self.table.setItem(row_idx, 2, QTableWidgetItem(f"{row['avg_control']:.5f}"))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(f"{row['diff']:.5f}"))
+            self.table.setItem(row_idx, 1, QTableWidgetItem(_fmt_num(row['avg_true'])))
+            self.table.setItem(row_idx, 2, QTableWidgetItem(_fmt_num(row['avg_control'])))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(_fmt_num(row['diff'])))
         self.table.resizeColumnsToContents()
         self.resize(800, 600)
 

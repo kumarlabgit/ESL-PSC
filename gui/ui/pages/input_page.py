@@ -2,7 +2,7 @@
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
-    QSizePolicy, QProgressDialog, QHBoxLayout
+    QSizePolicy, QProgressDialog, QHBoxLayout, QDialog
 )
 from PySide6.QtCore import Qt  # Needed for alignment
 from PySide6.QtWidgets import QApplication
@@ -275,7 +275,7 @@ class InputPage(BaseWizardPage):
             QMessageBox.warning(self, "Fast Scan", "No species found in alignments.")
             return
         dlg = OutgroupDialog(species, self)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         outgroup = dlg.selected
         progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
@@ -288,7 +288,18 @@ class InputPage(BaseWizardPage):
             progress.setValue(cur)
             QApplication.processEvents()
 
-        results = fast_scan.fast_scan_alignments(align_dir, groups_file, outgroup, update)
+        # Determine response_dir similar to results_display logic so group selection matches Site Viewer
+        resp_dir = getattr(self.config, 'response_dir', '') or ''
+        if not resp_dir:
+            try:
+                base = os.path.basename(getattr(self.config, 'species_groups_file', '')).replace('.txt', '')
+                if base and getattr(self.config, 'output_dir', ''):
+                    cand = os.path.join(self.config.output_dir, f"{base}_response_matrices")
+                    if os.path.isdir(cand):
+                        resp_dir = cand
+            except Exception:
+                resp_dir = ''
+        results = fast_scan.fast_scan_alignments(align_dir, groups_file, outgroup, update, response_dir=resp_dir)
         progress.close()
         if not results:
             QMessageBox.information(self, "Fast Scan", "No results produced.")
