@@ -775,9 +775,10 @@ class FastScanResultsDialog(QDialog):
         layout.addLayout(header)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
             "Gene",
+            "Variable Sites",
             "Avg True Convergence",
             "Avg Control Convergence",
             "Avg True - Control",
@@ -814,12 +815,14 @@ class FastScanResultsDialog(QDialog):
             # Gene column – regular text item
             self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])) )
             # Numeric columns – use NumericItem for proper sorting
+            v_sites = float(row['variable_sites']) if pd.notna(row['variable_sites']) else float('nan')
             v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
             v2 = float(row['avg_control']) if pd.notna(row['avg_control']) else float('nan')
             v3 = float(row['diff']) if pd.notna(row['diff']) else float('nan')
-            self.table.setItem(row_idx, 1, NumericItem(v1, _fmt_num(v1)))
-            self.table.setItem(row_idx, 2, NumericItem(v2, _fmt_num(v2)))
-            self.table.setItem(row_idx, 3, NumericItem(v3, _fmt_num(v3)))
+            self.table.setItem(row_idx, 1, NumericItem(v_sites, _fmt_num(v_sites)))
+            self.table.setItem(row_idx, 2, NumericItem(v1, _fmt_num(v1)))
+            self.table.setItem(row_idx, 3, NumericItem(v2, _fmt_num(v2)))
+            self.table.setItem(row_idx, 4, NumericItem(v3, _fmt_num(v3)))
         self.table.resizeColumnsToContents()
         self.resize(800, 600)
         # Make Save Results the default and focused button

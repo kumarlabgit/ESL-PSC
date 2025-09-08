@@ -1,5 +1,7 @@
-import os
 from gui.core import fast_scan
+from esl_psc_cli.esl_psc_functions import count_var_sites
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 def write_fasta(path: str, records):
     with open(path, 'w') as f:
@@ -50,3 +52,7 @@ def test_fast_scan_averages_fractional(tmp_path):
     assert abs(rec["avg_true"] - 2.5) < 1e-6, f"Expected avg_true=2.5, got {rec['avg_true']}"
     # No control-convergence sites in this synthetic design
     assert abs(rec["avg_control"] - 0.0) < 1e-6, f"Expected avg_control=0.0, got {rec['avg_control']}"
+
+    # Variable sites count should match CLI logic
+    expected_var = count_var_sites([SeqRecord(Seq(seq), id=name) for name, seq in records])
+    assert rec["variable_sites"] == expected_var
