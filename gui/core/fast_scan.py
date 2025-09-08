@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import itertools
 from collections import Counter
 from typing import Callable, Dict, List
 
@@ -10,6 +9,9 @@ from gui.core.fasta_io import read_fasta
 from esl_psc_cli.deletion_canceler import (
     parse_species_groups as cli_parse_species_groups,
 )
+from esl_psc_cli.esl_psc_functions import count_var_sites
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 
 def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
@@ -52,7 +54,7 @@ def fast_scan_alignments(
     outgroup_species: str,
     progress_cb: Callable[[int, int], None] | None = None,
     response_dir: str | None = None,
-) -> List[Dict[str, float]]:
+) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
     Parameters
@@ -73,6 +75,7 @@ def fast_scan_alignments(
     for idx, fname in enumerate(files, 1):
         path = os.path.join(alignment_dir, fname)
         records = read_fasta(path)
+        seq_records = [SeqRecord(Seq(seq), id=sp) for sp, seq in records]
         species_seq = {sp: seq for sp, seq in records}
         if not species_seq:
             if progress_cb:
@@ -160,12 +163,14 @@ def fast_scan_alignments(
 
         avg_true = (sum(true_counts) / true_den) if true_den else 0.0
         avg_ctrl = (sum(ctrl_counts) / ctrl_den) if ctrl_den else 0.0
+        var_sites = count_var_sites(seq_records)
         results.append(
             {
                 "gene": os.path.splitext(fname)[0],
                 "avg_true": avg_true,
                 "avg_control": avg_ctrl,
                 "diff": avg_true - avg_ctrl,
+                "variable_sites": var_sites,
             }
         )
         if progress_cb:
