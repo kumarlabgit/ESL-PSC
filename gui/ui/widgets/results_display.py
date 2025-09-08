@@ -105,6 +105,7 @@ def _launch_site_viewer(
             response_dir = os.path.join(config.output_dir, f"{base}_response_matrices")
 
     used_response_dir = False
+    resp_values: dict[str, float] = {}
     try:
         if (not conv and not ctrl) and response_dir and os.path.isdir(response_dir):
             files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
@@ -132,6 +133,11 @@ def _launch_site_viewer(
                         if len(parts) < 2:
                             continue
                         sp = parts[0]
+                        # capture numeric phenotype value if present (binary or continuous)
+                        try:
+                            resp_values[sp] = float(parts[1])
+                        except ValueError:
+                            pass
                         if idx % 2 == 0:
                             conv.append(sp)
                         else:
@@ -169,7 +175,8 @@ def _launch_site_viewer(
     ctrl = sorted(dict.fromkeys(ctrl))
 
     # ─── Phenotype data ───────────────────────────────────────────────
-    species_pheno_map: dict[str, float] | None = None
+    # If we parsed phenotype values from the response matrix, use them by default
+    species_pheno_map: dict[str, float] | None = (resp_values if resp_values else None)
     pheno_name_map: dict[float, str] | None = None
     pheno_path = getattr(config, "species_phenotypes_file", "")
     if pheno_path and os.path.exists(pheno_path):
@@ -185,7 +192,8 @@ def _launch_site_viewer(
                         except ValueError:
                             continue
         except Exception:
-            species_pheno_map = None
+            # Keep matrix-derived values if present; otherwise None
+            species_pheno_map = species_pheno_map if species_pheno_map else None
 
     # Phenotype display names from config
     if hasattr(config, "pheno_name1") and hasattr(config, "pheno_name2"):

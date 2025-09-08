@@ -237,6 +237,10 @@ def select_and_show_existing_output(parent=None):
     for key, val in arg_dict.items():
         if hasattr(cfg, key):
             setattr(cfg, key, val)
+    # Map CLI key names to GUI config fields where they differ
+    # species_pheno_path (CLI) -> species_phenotypes_file (GUI)
+    if not getattr(cfg, 'species_phenotypes_file', '') and 'species_pheno_path' in arg_dict:
+        cfg.species_phenotypes_file = arg_dict['species_pheno_path']
     # Fallback defaults
     if not cfg.output_dir:
         cfg.output_dir = dir_path
