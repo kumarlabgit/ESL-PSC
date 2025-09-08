@@ -2,9 +2,10 @@
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
-    QSizePolicy, QCheckBox
+    QSizePolicy, QProgressDialog, QHBoxLayout
 )
 from PySide6.QtCore import Qt  # Needed for alignment
+from PySide6.QtWidgets import QApplication
 
 # New helper for viewing completed runs
 from gui.ui.widgets.existing_output_viewer import select_and_show_existing_output
@@ -14,6 +15,9 @@ from esl_psc_cli import esl_psc_functions as ecf
 
 from gui.ui.widgets.file_selectors import FileSelector
 from gui.ui.widgets.tree_viewer import TreeViewer
+from gui.ui.widgets.dialogs import OutgroupDialog
+from gui.ui.widgets.results_display import FastScanResultsDialog
+from gui.core import fast_scan
 from Bio import Phylo
 from .base_page import BaseWizardPage
 
@@ -39,12 +43,21 @@ class InputPage(BaseWizardPage):
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ─── Load Existing Output Button (top-left) ────────────────────
+        # ─── Top Buttons (Fast Scan + Load Existing Output) ────────────
+        top_btns = QHBoxLayout()
+        fast_btn = QPushButton("Fast Scan")
+        fast_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        fast_btn.setToolTip("Quickly scan alignments for convergence signals.")
+        fast_btn.clicked.connect(self._on_fast_scan)
+        top_btns.addWidget(fast_btn)
+
         load_prev_btn = QPushButton("Load and View Existing Output")
         load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
         load_prev_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         load_prev_btn.clicked.connect(lambda *_: select_and_show_existing_output(parent=self))
-        container_layout.addWidget(load_prev_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        top_btns.addWidget(load_prev_btn)
+        top_btns.setAlignment(Qt.AlignmentFlag.AlignRight)
+        container_layout.addLayout(top_btns)
         
         # Required inputs group
         req_group = QGroupBox("Required Inputs")
@@ -243,9 +256,44 @@ class InputPage(BaseWizardPage):
         
         # Add stretch to push everything to the top
         container_layout.addStretch()
-        
+
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    def _on_fast_scan(self):
+        """Run a quick convergence scan of the alignments."""
+        align_dir = getattr(self.config, 'alignments_dir', '')
+        groups_file = getattr(self.config, 'species_groups_file', '')
+        if not align_dir or not os.path.isdir(align_dir):
+            QMessageBox.warning(self, "Fast Scan", "Please select an alignment directory first.")
+            return
+        if not groups_file or not os.path.exists(groups_file):
+            QMessageBox.warning(self, "Fast Scan", "Please select a species groups file first.")
+            return
+        species = fast_scan.list_species(align_dir)
+        if not species:
+            QMessageBox.warning(self, "Fast Scan", "No species found in alignments.")
+            return
+        dlg = OutgroupDialog(species, self)
+        if dlg.exec() != dlg.Accepted:
+            return
+        outgroup = dlg.selected
+        progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
+        progress.setWindowTitle("Fast Scan")
+        progress.setAutoClose(True)
+        progress.show()
+
+        def update(cur, total):
+            progress.setMaximum(total)
+            progress.setValue(cur)
+            QApplication.processEvents()
+
+        results = fast_scan.fast_scan_alignments(align_dir, groups_file, outgroup, update)
+        progress.close()
+        if not results:
+            QMessageBox.information(self, "Fast Scan", "No results produced.")
+            return
+        FastScanResultsDialog.show_results(results, self.config, outgroup, parent=self)
 
     def open_newick_tree(self):
         """Open a Newick file and display it in a tree viewer."""
