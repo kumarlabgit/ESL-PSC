@@ -328,11 +328,13 @@ class RunPage(BaseWizardPage):
     def show_gene_ranks(self):
         """Slot to show the gene ranks table if available."""
         if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
+            # Launch as a top-level window (no parent) to keep stable stacking
+            # relative to the wizard when opening further child windows.
             GeneRanksDialog.show_dialog(
                 self.gene_ranks_path,
                 self.config,
                 self.selected_sites_path,
-                parent=self,
+                parent=None,
             )
         else:
             QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")

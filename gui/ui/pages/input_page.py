@@ -305,7 +305,8 @@ class InputPage(BaseWizardPage):
         if not results:
             QMessageBox.information(self, "Fast Scan", "No results produced.")
             return
-        FastScanResultsDialog.show_results(results, self.config, outgroup, parent=self)
+        # Show results as a top-level window (no parent) to decouple from the wizard
+        FastScanResultsDialog.show_results(results, self.config, outgroup, parent=None)
 
     def open_newick_tree(self):
         """Open a Newick file and display it in a tree viewer."""
