@@ -300,7 +300,14 @@ class InputPage(BaseWizardPage):
                         resp_dir = cand
             except Exception:
                 resp_dir = ''
-        results = fast_scan.fast_scan_alignments(align_dir, groups_file, outgroup, update, response_dir=resp_dir)
+        # Use up to 4 processes by default for speed without oversubscribing
+        try:
+            n_jobs = min(4, os.cpu_count() or 1)
+        except Exception:
+            n_jobs = 1
+        results = fast_scan.fast_scan_alignments(
+            align_dir, groups_file, outgroup, update, response_dir=resp_dir, n_jobs=n_jobs
+        )
         progress.close()
         if not results:
             QMessageBox.information(self, "Fast Scan", "No results produced.")

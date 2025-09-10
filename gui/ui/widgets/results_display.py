@@ -12,7 +12,7 @@ from esl_psc_cli.deletion_canceler import (
 )
 import pandas as pd
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QBrush, QFontMetrics
+from PySide6.QtGui import QColor, QBrush, QFontMetrics, QKeySequence, QGuiApplication, QShortcut
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
@@ -411,6 +411,14 @@ class GeneRanksDialog(QDialog):
         # Set a minimum size to prevent the window from being too small
         self.setMinimumSize(1000, 600)
 
+        # Enable copying selected rows with Ctrl/Cmd+C
+        try:
+            sc = QShortcut(QKeySequence.Copy, self)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc.activated.connect(self._copy_selected_rows_to_clipboard)
+        except Exception:
+            pass
+
     def _open_site_viewer(self, row_or_item, _column: int) -> None:
         """Launch :class:`SiteViewer` for the selected gene."""
         # When using the tree view the signal provides a ``QTreeWidgetItem``
@@ -539,7 +547,9 @@ class GeneRanksDialog(QDialog):
         self.table = QTableWidget(len(df.index), len(df.columns))
         self.table.setHorizontalHeaderLabels(list(df.columns))
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        # Enable selecting arbitrary cells and multiple ranges for copying
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSortingEnabled(False)
         self.gene_col = list(df.columns).index('Gene') if 'Gene' in df.columns else 0
 
@@ -552,6 +562,58 @@ class GeneRanksDialog(QDialog):
         self.table.resizeColumnsToContents()
         layout.addWidget(self.table)
         self.table.cellDoubleClicked.connect(self._open_site_viewer)
+
+    def _copy_selected_rows_to_clipboard(self):
+        """Copy selection to the clipboard as TSV.
+
+        - In tree view (with sites): copy full top-level gene rows for selected items.
+        - In table view: copy selected rectangular cell blocks (supports multiple ranges).
+        """
+        try:
+            lines = []
+            if getattr(self, 'has_sites', False):
+                # Copy top-level gene rows from the tree
+                if not hasattr(self, 'tree') or self.tree is None:
+                    return
+                items = self.tree.selectedItems()
+                if not items:
+                    return
+                # Collect unique top-level items
+                top_items = []
+                seen = set()
+                for it in items:
+                    root = it
+                    while root.parent() is not None:
+                        root = root.parent()
+                    if id(root) not in seen:
+                        seen.add(id(root))
+                        top_items.append(root)
+                cols = self.tree.columnCount()
+                for it in top_items:
+                    vals = [it.text(c) for c in range(cols)]
+                    lines.append('\t'.join(vals))
+            else:
+                # Copy selected rectangular cell ranges from the table
+                if not hasattr(self, 'table') or self.table is None:
+                    return
+                ranges = self.table.selectedRanges()
+                if not ranges:
+                    return
+                blocks = []
+                for r in ranges:
+                    block_lines = []
+                    for row in range(r.topRow(), r.bottomRow() + 1):
+                        vals = []
+                        for col in range(r.leftColumn(), r.rightColumn() + 1):
+                            item = self.table.item(row, col)
+                            vals.append(item.text() if item is not None else '')
+                        block_lines.append('\t'.join(vals))
+                    blocks.append('\n'.join(block_lines))
+                lines = ['\n'.join(blocks)]
+            if lines:
+                QGuiApplication.clipboard().setText('\n'.join(lines))
+        except Exception:
+            pass
 
     def _init_tree_view(self, layout: QVBoxLayout, df: pd.DataFrame) -> None:
         """Initialize the tree view with selected sites information."""
@@ -783,17 +845,10 @@ class FastScanResultsDialog(QDialog):
         layout.addLayout(header)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels([
-            "Gene",
-            "Variable Sites",
-            "Avg True Convergence",
-            "Avg Control Convergence",
-            "Avg True - Control",
-        ])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        # Allow selecting arbitrary cells (not just rows) and multiple ranges
+        self.table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.doubleClicked.connect(lambda idx: self._open_site_viewer(idx.row()))
         # Enable clickable header sorting; NumericItem ensures numeric sort for numeric columns
         self.table.setSortingEnabled(True)
@@ -806,7 +861,76 @@ class FastScanResultsDialog(QDialog):
         layout.addWidget(self.table)
 
         self.results_df = pd.DataFrame(results)
-        top = self.results_df.head(200)
+
+        # Configure columns dynamically: include combo-based columns only when present
+        has_combo_rank_true = 'num_combos_top_frac' in self.results_df.columns
+        has_combo_rank_diff = 'num_combos_top_frac_by_diff' in self.results_df.columns
+        sort_col_idx = None
+        if has_combo_rank_true or has_combo_rank_diff:
+            # Build headers with 'by Diff' immediately after Gene, then optional 'by True'
+            headers = ["Gene"]
+            idx_diff_hdr = None
+            idx_true_hdr = None
+            if has_combo_rank_diff:
+                idx_diff_hdr = len(headers)
+                headers.append("Combos in Top % by Diff")
+            if has_combo_rank_true:
+                idx_true_hdr = len(headers)
+                headers.append("Combos in Top %")
+            # Core metrics
+            headers += [
+                "Avg True Convergence",
+                "Avg Control Convergence",
+                "Avg True - Control",
+                "CS ≥ 4 Sites",
+                "Variable Sites",
+            ]
+            # Inject percentages into headers if available and record default sort column
+            try:
+                pct = None
+                if has_combo_rank_true:
+                    tf_series = self.results_df.get('top_fraction')
+                    if tf_series is not None and not tf_series.dropna().empty:
+                        pct = int(round(float(tf_series.dropna().iloc[0]) * 100))
+                        if idx_true_hdr is not None:
+                            headers[idx_true_hdr] = f"Combos in Top {pct}%"
+                if has_combo_rank_diff:
+                    tf_series_d = self.results_df.get('top_fraction_by_diff')
+                    pct_d = None
+                    if tf_series_d is not None and not tf_series_d.dropna().empty:
+                        pct_d = int(round(float(tf_series_d.dropna().iloc[0]) * 100))
+                    elif pct is not None:
+                        pct_d = pct
+                    if pct_d is not None and idx_diff_hdr is not None:
+                        headers[idx_diff_hdr] = f"Combos in Top {pct_d}% by Diff"
+                # Default sort column -> by Diff if present, else by True if present
+                if idx_diff_hdr is not None:
+                    sort_col_idx = idx_diff_hdr
+                elif idx_true_hdr is not None:
+                    sort_col_idx = idx_true_hdr
+            except Exception:
+                pass
+            self.table.setColumnCount(len(headers))
+            self.table.setHorizontalHeaderLabels(headers)
+        else:
+            headers = [
+                "Gene",
+                "Avg True Convergence",
+                "Avg Control Convergence",
+                "Avg True - Control",
+                "CS ≥ 4 Sites",
+                "Variable Sites",
+            ]
+            self.table.setColumnCount(6)
+            self.table.setHorizontalHeaderLabels(headers)
+            # Fallback sort on Avg True
+            sort_col_idx = 1
+        # Show all rows where average true convergence > 0 (include all, no 200 cap)
+        if 'avg_true' in self.results_df.columns:
+            filtered = self.results_df[self.results_df['avg_true'] > 0]
+            top = filtered if not filtered.empty else self.results_df
+        else:
+            top = self.results_df
         self.table.setRowCount(len(top))
         def _fmt_num(v) -> str:
             try:
@@ -822,15 +946,48 @@ class FastScanResultsDialog(QDialog):
         for row_idx, (_, row) in enumerate(top.iterrows()):
             # Gene column – regular text item
             self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])) )
-            # Numeric columns – use NumericItem for proper sorting
-            v_sites = float(row['variable_sites']) if pd.notna(row['variable_sites']) else float('nan')
+            col = 1
+            # Combos by Diff immediately after Gene, if present
+            if has_combo_rank_diff:
+                combos_top_d = row.get('num_combos_top_frac_by_diff', None)
+                if combos_top_d is None or (isinstance(combos_top_d, float) and pd.isna(combos_top_d)):
+                    display_ct_d = ''
+                    combos_top_val_d = float('nan')
+                else:
+                    try:
+                        combos_top_val_d = float(combos_top_d)
+                    except Exception:
+                        combos_top_val_d = float('nan')
+                    display_ct_d = _fmt_num(combos_top_val_d) if combos_top_val_d == combos_top_val_d else ''
+                self.table.setItem(row_idx, col, NumericItem(combos_top_val_d, display_ct_d))
+                col += 1
+            # Combos by True next (if present)
+            if has_combo_rank_true:
+                combos_top = row.get('num_combos_top_frac', None)
+                if combos_top is None or (isinstance(combos_top, float) and pd.isna(combos_top)):
+                    display_ct = ''
+                    combos_top_val = float('nan')
+                else:
+                    try:
+                        combos_top_val = float(combos_top)
+                    except Exception:
+                        combos_top_val = float('nan')
+                    display_ct = _fmt_num(combos_top_val) if combos_top_val == combos_top_val else ''
+                self.table.setItem(row_idx, col, NumericItem(combos_top_val, display_ct))
+                col += 1
+            # Core metrics
             v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
             v2 = float(row['avg_control']) if pd.notna(row['avg_control']) else float('nan')
             v3 = float(row['diff']) if pd.notna(row['diff']) else float('nan')
-            self.table.setItem(row_idx, 1, NumericItem(v_sites, _fmt_num(v_sites)))
-            self.table.setItem(row_idx, 2, NumericItem(v1, _fmt_num(v1)))
-            self.table.setItem(row_idx, 3, NumericItem(v2, _fmt_num(v2)))
-            self.table.setItem(row_idx, 4, NumericItem(v3, _fmt_num(v3)))
+            self.table.setItem(row_idx, col,   NumericItem(v1, _fmt_num(v1))); col += 1
+            self.table.setItem(row_idx, col,   NumericItem(v2, _fmt_num(v2))); col += 1
+            self.table.setItem(row_idx, col,   NumericItem(v3, _fmt_num(v3))); col += 1
+            # CS ≥ 4 sites
+            cs_sites = float(row.get('cs_sites_ge_4', float('nan')))
+            self.table.setItem(row_idx, col,   NumericItem(cs_sites, _fmt_num(cs_sites))); col += 1
+            # Variable Sites at far right
+            v_sites = float(row['variable_sites']) if pd.notna(row['variable_sites']) else float('nan')
+            self.table.setItem(row_idx, col,   NumericItem(v_sites, _fmt_num(v_sites)))
         self.table.resizeColumnsToContents()
         self.resize(800, 600)
         # Make Save Results the default and focused button
@@ -838,6 +995,45 @@ class FastScanResultsDialog(QDialog):
             self.save_btn.setAutoDefault(True)
             self.save_btn.setDefault(True)
             self.save_btn.setFocus()
+        except Exception:
+            pass
+
+        # Apply default sort: by Diff-based combos count if present, else by Avg True
+        try:
+            if sort_col_idx is not None:
+                from PySide6.QtCore import Qt as _Qt
+                self.table.sortItems(sort_col_idx, _Qt.SortOrder.DescendingOrder)
+        except Exception:
+            pass
+
+        # Enable copying selected rows with Ctrl/Cmd+C
+        try:
+            sc = QShortcut(QKeySequence.Copy, self)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc.activated.connect(self._copy_selected_rows_to_clipboard)
+        except Exception:
+            pass
+
+    def _copy_selected_rows_to_clipboard(self):
+        """Copy selected rectangular cell ranges from the fast scan table as TSV."""
+        try:
+            if not hasattr(self, 'table') or self.table is None:
+                return
+            ranges = self.table.selectedRanges()
+            if not ranges:
+                return
+            blocks = []
+            for r in ranges:
+                block_lines = []
+                for row in range(r.topRow(), r.bottomRow() + 1):
+                    vals = []
+                    for col in range(r.leftColumn(), r.rightColumn() + 1):
+                        item = self.table.item(row, col)
+                        vals.append(item.text() if item is not None else '')
+                    block_lines.append('\t'.join(vals))
+                blocks.append('\n'.join(block_lines))
+            if blocks:
+                QGuiApplication.clipboard().setText('\n'.join(blocks))
         except Exception:
             pass
 
