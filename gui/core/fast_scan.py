@@ -1,8 +1,16 @@
-"""Fast scanning of alignments for CCS, control convergence, and CS-derived significance."""
+"""Fast scanning of alignments for CCS, control convergence, and CS-derived significance.
+
+Optionally uses a Rust backend binary (fast_scan_rs) if available to accelerate
+per-file scanning. Falls back to the Python implementation otherwise.
+"""
 from __future__ import annotations
 
 import os
 import math
+import json
+import shutil
+import subprocess
+import sys
 from collections import Counter
 from typing import Callable, Dict, List, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -261,57 +269,218 @@ def fast_scan_alignments(
         except Exception:
             n_jobs = 1
 
-    # Serial path
+    # Try Rust backend if available
+    rs_bin = _detect_fast_scan_rs()
+    if rs_bin:
+        try:
+            # Single Rust invocation; if a progress callback is provided, we stream
+            # progress from the Rust process stderr in real time.
+            rs_results = _run_fast_scan_rs(
+                rs_bin,
+                alignment_dir,
+                files,
+                combos,
+                outgroup_species,
+                cs_threshold=4,
+                progress_cb=progress_cb,
+                total=total,
+                done_offset=0,
+            )
+            results = rs_results
+            if len(combos) > 1:
+                _apply_combo_top_ranking(results, len(combos), top_frac)
+                _apply_combo_top_ranking_by_diff(results, len(combos), top_frac)
+                results.sort(
+                    key=lambda x: (
+                        x.get("num_combos_top_frac", 0),
+                        x.get("num_combos_top_frac_by_diff", 0),
+                        x.get("avg_true", 0.0),
+                        x.get("gene", ""),
+                    ),
+                    reverse=True,
+                )
+            else:
+                results.sort(key=lambda x: x["avg_true"], reverse=True)
+            return results
+        except Exception:
+            # Fallback to Python path on any error
+            pass
+
+    # Serial or parallel path (Python)
     if n_jobs <= 1:
         for idx, fname in enumerate(files, 1):
             res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species)
             results.append(res)
             if progress_cb:
                 progress_cb(idx, total)
-        # Post-process combo-based ranking if multiple combos
-        if len(combos) > 1:
-            _apply_combo_top_ranking(results, len(combos), top_frac)
-            _apply_combo_top_ranking_by_diff(results, len(combos), top_frac)
-            results.sort(
-                key=lambda x: (
-                    x.get("num_combos_top_frac_by_diff", 0),
-                    x.get("num_combos_top_frac", 0),
-                    x.get("avg_true", 0.0),
-                ),
-                reverse=True,
-            )
-        else:
-            results.sort(key=lambda x: x["avg_true"], reverse=True)
-        return results
-
-    # Parallel path using processes
-    with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-        future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species): fname for fname in files}
-        done = 0
-        for fut in as_completed(future_map):
-            try:
-                res = fut.result()
-                results.append(res)
-            except Exception:
-                # On failure for a file, skip but keep going
-                pass
-            done += 1
-            if progress_cb:
-                progress_cb(done, total)
+    else:
+        with ProcessPoolExecutor(max_workers=n_jobs) as ex:
+            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species): fname for fname in files}
+            done = 0
+            for fut in as_completed(future_map):
+                try:
+                    res = fut.result()
+                    results.append(res)
+                except Exception:
+                    # Skip failed file but continue
+                    pass
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+    # Post-process combo-based ranking if multiple combos
     if len(combos) > 1:
         _apply_combo_top_ranking(results, len(combos), top_frac)
         _apply_combo_top_ranking_by_diff(results, len(combos), top_frac)
         results.sort(
             key=lambda x: (
-                x.get("num_combos_top_frac_by_diff", 0),
                 x.get("num_combos_top_frac", 0),
+                x.get("num_combos_top_frac_by_diff", 0),
                 x.get("avg_true", 0.0),
+                x.get("gene", ""),
             ),
             reverse=True,
         )
     else:
         results.sort(key=lambda x: x["avg_true"], reverse=True)
     return results
+
+
+def _detect_fast_scan_rs() -> str | None:
+    """Return path to Rust fast_scan_rs binary if available, else None.
+
+    Detection priority:
+      1) Environment variable FAST_SCAN_RS pointing to the binary
+      2) bin/fast_scan_rs (relative to repo root)
+      3) fast_scan_rs/target/release/fast_scan_rs (relative to repo root)
+      4) bin/ next to the executable (packaged app/onefile)
+    """
+    # Allow disabling via env for testing or debugging
+    if os.environ.get("FAST_SCAN_RS_DISABLE", "0") in {"1", "true", "True"}:
+        return None
+    # 1) Env var
+    env_path = os.environ.get("FAST_SCAN_RS")
+    if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+        return env_path
+    # Compute repo root from this file (editable/source check)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    # 2) bin/fast_scan_rs relative to repo root (editable install)
+    cand = os.path.join(repo_root, "bin", "fast_scan_rs")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
+    # 3) fast_scan_rs/target/release/fast_scan_rs (relative to repo root)
+    cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
+    # Also try Windows .exe (even on WSL)
+    cand = os.path.join(repo_root, "bin", "fast_scan_rs.exe")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
+    # 4) Packaged app path: bin/ next to the executable
+    try:
+        exe_dir = os.path.abspath(os.path.dirname(getattr(sys, 'executable', sys.argv[0])))
+        cand = os.path.join(exe_dir, "bin", "fast_scan_rs")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+        cand = os.path.join(exe_dir, "bin", "fast_scan_rs.exe")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    except Exception:
+        pass
+    return None
+
+
+def _run_fast_scan_rs(
+    bin_path: str,
+    alignment_dir: str,
+    files: List[str],
+    combos: List[Tuple[List[str], List[str]]],
+    outgroup_species: str,
+    cs_threshold: int = 4,
+    progress_cb: Callable[[int, int], None] | None = None,
+    total: int | None = None,
+    done_offset: int = 0,
+) -> List[Dict[str, float | int]]:
+    """Invoke the Rust fast_scan_rs binary and parse its JSON output.
+
+    Returns a list of rows with the same schema as the Python worker.
+    """
+    # Build JSON spec
+    spec = {
+        "alignment_dir": alignment_dir,
+        "files": files,
+        "combos": [{"conv": c, "ctrl": d} for (c, d) in combos],
+        "outgroup": outgroup_species,
+        "cs_threshold": int(cs_threshold),
+        "emit_progress": bool(progress_cb is not None and total),
+    }
+    # Use a temporary file for stdout to avoid pipe backpressure while we read stderr for progress
+    import tempfile
+    with tempfile.TemporaryFile(mode="w+b") as tmp_out:
+        try:
+            proc = subprocess.Popen(
+                [bin_path],
+                stdin=subprocess.PIPE,
+                stdout=tmp_out,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except Exception as e:
+            raise RuntimeError(f"fast_scan_rs failed to start: {e}")
+        # Send JSON spec and close stdin
+        try:
+            assert proc.stdin is not None
+            proc.stdin.write(json.dumps(spec))
+            proc.stdin.close()
+        except Exception:
+            pass
+        # Stream stderr for progress lines like: PROGRESS <n>
+        done = 0
+        if proc.stderr is not None and progress_cb and total:
+            for line in proc.stderr:
+                if not line:
+                    break
+                line = line.strip()
+                if line.startswith("PROGRESS "):
+                    try:
+                        n = int(line.split(" ")[1])
+                        done = n
+                        progress_cb(min(done_offset + done, total), total)
+                    except Exception:
+                        pass
+        # Wait for completion
+        rc = proc.wait()
+        # Read stdout from temp file
+        tmp_out.seek(0)
+        stdout = tmp_out.read().decode("utf-8", errors="replace").strip()
+        if rc != 0:
+            raise RuntimeError(f"fast_scan_rs exited with code {rc}. Stderr may contain details.")
+    if not stdout:
+        raise RuntimeError("fast_scan_rs produced no output")
+    try:
+        data = json.loads(stdout)
+    except Exception as e:
+        raise RuntimeError(f"fast_scan_rs invalid JSON: {e}\nFirst 200 chars: {stdout[:200]}")
+    # Validate and coerce to expected list of dicts
+    if not isinstance(data, list):
+        raise RuntimeError("fast_scan_rs output was not a list")
+    out: List[Dict[str, float | int]] = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        # Ensure required keys exist; default if missing
+        out.append({
+            "gene": row.get("gene", ""),
+            "avg_true": float(row.get("avg_true", 0.0)),
+            "avg_control": float(row.get("avg_control", 0.0)),
+            "diff": float(row.get("diff", 0.0)),
+            "variable_sites": int(row.get("variable_sites", 0) or 0),
+            "cs_sites_ge_4": int(row.get("cs_sites_ge_4", 0) or 0),
+            "k_pairs": int(row.get("k_pairs", 0) or 0),
+            "per_combo_true": row.get("per_combo_true", []),
+            "per_combo_diff": row.get("per_combo_diff", []),
+        })
+    return out
 
 def _apply_combo_top_ranking(results: List[Dict[str, float | int]], n_combos: int, top_frac: float) -> None:
     """For multiple combos, compute per-gene count of combos where the gene is in the

@@ -51,6 +51,8 @@ jobs:
           cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
           cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
+          # Add Rust fast scan binary
+          cp fast_scan_rs/target/release/fast_scan_rs build/ESL-PSC.app/Contents/MacOS/bin/fast_scan_rs
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Create DMG
         run: |
@@ -94,6 +96,8 @@ jobs:
           Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
+          # Copy Rust fast scan binary built above
+          Copy-Item -Path "$env:GITHUB_WORKSPACE\fast_scan_rs\target\release\fast_scan_rs.exe" -Destination $StageDir
 
           # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force

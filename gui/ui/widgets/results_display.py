@@ -211,6 +211,32 @@ def _launch_site_viewer(
         except Exception:
             pass
 
+    def _save_results(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Fast Scan Results", "fast_scan_results.csv", "CSV Files (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            # Prepare a copy for saving: drop redundant top_fraction columns and reorder
+            df = self.results_df.copy()
+            for c in ["top_fraction", "top_fraction_by_diff"]:
+                if c in df.columns:
+                    df = df.drop(columns=[c])
+            # Desired front columns order
+            front = ["gene", "num_combos_top_frac", "num_combos_top_frac_by_diff"]
+            present_front = [c for c in front if c in df.columns]
+            # Then metrics
+            metrics = ["avg_true", "avg_control", "diff", "cs_sites_ge_4", "variable_sites", "k_pairs"]
+            present_metrics = [c for c in metrics if c in df.columns]
+            # Append the remaining columns (e.g., per_combo_*), preserving existing order
+            remaining = [c for c in df.columns if c not in set(present_front + present_metrics)]
+            ordered_cols = present_front + present_metrics + remaining
+            df = df[ordered_cols]
+            df.to_csv(path, index=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save results:\n{e}")
+
     # Launch as independent top-level window (no parent) so it opens separately
     viewer = SiteViewer(
         records,
@@ -867,16 +893,16 @@ class FastScanResultsDialog(QDialog):
         has_combo_rank_diff = 'num_combos_top_frac_by_diff' in self.results_df.columns
         sort_col_idx = None
         if has_combo_rank_true or has_combo_rank_diff:
-            # Build headers with 'by Diff' immediately after Gene, then optional 'by True'
+            # Build headers with 'by True' immediately after Gene, then optional 'by Diff'
             headers = ["Gene"]
-            idx_diff_hdr = None
             idx_true_hdr = None
-            if has_combo_rank_diff:
-                idx_diff_hdr = len(headers)
-                headers.append("Combos in Top % by Diff")
+            idx_diff_hdr = None
             if has_combo_rank_true:
                 idx_true_hdr = len(headers)
                 headers.append("Combos in Top %")
+            if has_combo_rank_diff:
+                idx_diff_hdr = len(headers)
+                headers.append("Combos in Top % by Diff")
             # Core metrics
             headers += [
                 "Avg True Convergence",
@@ -903,11 +929,11 @@ class FastScanResultsDialog(QDialog):
                         pct_d = pct
                     if pct_d is not None and idx_diff_hdr is not None:
                         headers[idx_diff_hdr] = f"Combos in Top {pct_d}% by Diff"
-                # Default sort column -> by Diff if present, else by True if present
-                if idx_diff_hdr is not None:
-                    sort_col_idx = idx_diff_hdr
-                elif idx_true_hdr is not None:
+                # Default sort column -> by True if present, else by Diff if present
+                if idx_true_hdr is not None:
                     sort_col_idx = idx_true_hdr
+                elif idx_diff_hdr is not None:
+                    sort_col_idx = idx_diff_hdr
             except Exception:
                 pass
             self.table.setColumnCount(len(headers))
@@ -947,21 +973,7 @@ class FastScanResultsDialog(QDialog):
             # Gene column – regular text item
             self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])) )
             col = 1
-            # Combos by Diff immediately after Gene, if present
-            if has_combo_rank_diff:
-                combos_top_d = row.get('num_combos_top_frac_by_diff', None)
-                if combos_top_d is None or (isinstance(combos_top_d, float) and pd.isna(combos_top_d)):
-                    display_ct_d = ''
-                    combos_top_val_d = float('nan')
-                else:
-                    try:
-                        combos_top_val_d = float(combos_top_d)
-                    except Exception:
-                        combos_top_val_d = float('nan')
-                    display_ct_d = _fmt_num(combos_top_val_d) if combos_top_val_d == combos_top_val_d else ''
-                self.table.setItem(row_idx, col, NumericItem(combos_top_val_d, display_ct_d))
-                col += 1
-            # Combos by True next (if present)
+            # Combos by True immediately after Gene, if present
             if has_combo_rank_true:
                 combos_top = row.get('num_combos_top_frac', None)
                 if combos_top is None or (isinstance(combos_top, float) and pd.isna(combos_top)):
@@ -974,6 +986,20 @@ class FastScanResultsDialog(QDialog):
                         combos_top_val = float('nan')
                     display_ct = _fmt_num(combos_top_val) if combos_top_val == combos_top_val else ''
                 self.table.setItem(row_idx, col, NumericItem(combos_top_val, display_ct))
+                col += 1
+            # Combos by Diff next (if present)
+            if has_combo_rank_diff:
+                combos_top_d = row.get('num_combos_top_frac_by_diff', None)
+                if combos_top_d is None or (isinstance(combos_top_d, float) and pd.isna(combos_top_d)):
+                    display_ct_d = ''
+                    combos_top_val_d = float('nan')
+                else:
+                    try:
+                        combos_top_val_d = float(combos_top_d)
+                    except Exception:
+                        combos_top_val_d = float('nan')
+                    display_ct_d = _fmt_num(combos_top_val_d) if combos_top_val_d == combos_top_val_d else ''
+                self.table.setItem(row_idx, col, NumericItem(combos_top_val_d, display_ct_d))
                 col += 1
             # Core metrics
             v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
