@@ -43,15 +43,33 @@ def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
 
 
 def list_species(alignment_dir: str) -> List[str]:
-    """Collect all species names present across alignment files."""
+    """Collect all species names present across alignment files.
+
+    Optimized to scan only FASTA header lines (">...") to avoid reading full
+    sequences, which improves responsiveness when choosing an outgroup.
+    """
     species: set[str] = set()
     if not alignment_dir or not os.path.isdir(alignment_dir):
         return []
     for fname in os.listdir(alignment_dir):
         if not fname.endswith(".fas"):
             continue
-        for rec_id, _ in read_fasta(os.path.join(alignment_dir, fname)):
-            species.add(rec_id)
+        fpath = os.path.join(alignment_dir, fname)
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    if not line or line[0] != ">":
+                        continue
+                    # Take the first token after '>' as species ID (consistent with read_fasta)
+                    header = line[1:].strip()
+                    if not header:
+                        continue
+                    sp = header.split()[0]
+                    if sp:
+                        species.add(sp)
+        except Exception:
+            # Skip unreadable or malformed files
+            continue
     return sorted(species)
 
 

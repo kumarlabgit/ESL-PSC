@@ -212,8 +212,17 @@ def _launch_site_viewer(
             pass
 
     def _save_results(self) -> None:
+        # Build default filename: <align_base>__<groups_base>_fast_scan_results.csv
+        align_dir = getattr(self.config, 'alignments_dir', '') or ''
+        align_base = os.path.basename(os.path.normpath(align_dir)) if align_dir else 'alignments'
+        groups_path = getattr(self.config, 'species_groups_file', '') or ''
+        groups_base = os.path.splitext(os.path.basename(groups_path))[0] if groups_path else 'groups'
+        default_name = f"{align_base}__{groups_base}_fast_scan_results.csv"
+        # Prefer output_dir for initial location if available
+        initial_dir = getattr(self.config, 'output_dir', '') or os.getcwd()
+        default_path = os.path.join(initial_dir, default_name)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Fast Scan Results", "fast_scan_results.csv", "CSV Files (*.csv)"
+            self, "Save Fast Scan Results", default_path, "CSV Files (*.csv)"
         )
         if not path:
             return
@@ -1236,14 +1245,24 @@ class FastScanResultsDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 
     def _save_results(self) -> None:
+        # Build default filename: <align_base>__<groups_base>_fast_scan_results.csv
+        align_dir = getattr(self.config, 'alignments_dir', '') or ''
+        align_base = os.path.basename(os.path.normpath(align_dir)) if align_dir else 'alignments'
+        groups_path = getattr(self.config, 'species_groups_file', '') or ''
+        groups_base = os.path.splitext(os.path.basename(groups_path))[0] if groups_path else 'groups'
+        default_name = f"{align_base}__{groups_base}_fast_scan_results.csv"
+        # Prefer output_dir for initial location if available
+        initial_dir = getattr(self.config, 'output_dir', '') or os.getcwd()
+        default_path = os.path.join(initial_dir, default_name)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Fast Scan Results", "fast_scan_results.csv", "CSV Files (*.csv)"
+            self, "Save Fast Scan Results", default_path, "CSV Files (*.csv)"
         )
-        if path:
-            try:
-                self.results_df.to_csv(path, index=False)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not save results:\n{e}")
+        if not path:
+            return
+        try:
+            self.results_df.to_csv(path, index=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save results:\n{e}")
 
     @staticmethod
     def show_results(results, config, outgroup, parent=None):

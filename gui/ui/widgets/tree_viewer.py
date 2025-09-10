@@ -494,6 +494,81 @@ class TreeViewer(QWidget):
         self._update_assign_cursor()
 
     # ------------------------------------------------------------------
+    def _add_pheno_actions(self, menu: QMenu, name: str):
+        """Add phenotype-related actions to a menu for a given species.
+
+        Returns a tuple of actions: (pheno_conv, pheno_ctrl, pheno_clear, edit_val)
+        Each element may be None if not applicable.
+        """
+        pheno_conv = pheno_ctrl = pheno_clear = edit_val = None
+        is_empty = len(self._phenotypes) == 0
+        is_cont = getattr(self, "_continuous_pheno", False)
+        pheno = self._phenotypes.get(name)
+        if is_empty:
+            # When no phenotypes are assigned at all, allow both paths
+            edit_val = menu.addAction("Edit phenotype value…")
+            pheno_conv = menu.addAction("Set to convergent phenotype")
+            pheno_ctrl = menu.addAction("Set to control phenotype")
+        elif is_cont:
+            edit_val = menu.addAction("Edit phenotype value…")
+        else:
+            if pheno == 1:
+                pheno_ctrl = menu.addAction("Change to control phenotype")
+                pheno_clear = menu.addAction("Remove phenotype")
+            elif pheno == -1:
+                pheno_conv = menu.addAction("Change to convergent phenotype")
+                pheno_clear = menu.addAction("Remove phenotype")
+            else:
+                pheno_conv = menu.addAction("Set to convergent phenotype")
+                pheno_ctrl = menu.addAction("Set to control phenotype")
+        return pheno_conv, pheno_ctrl, pheno_clear, edit_val
+
+    # ------------------------------------------------------------------
+    def _handle_pheno_action(self, action, name: str, pheno_conv, pheno_ctrl, pheno_clear, edit_val) -> bool:
+        """Handle a phenotype action selection.
+
+        Returns True if the action was handled; False otherwise.
+        """
+        if action == pheno_conv:
+            self._push_undo()
+            self._phenotypes[name] = 1
+            self._update_pheno_mode_and_range()
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+            return True
+        elif action == pheno_ctrl:
+            self._push_undo()
+            self._phenotypes[name] = -1
+            self._update_pheno_mode_and_range()
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+            return True
+        elif action == pheno_clear:
+            self._push_undo()
+            self._phenotypes.pop(name, None)
+            self._update_pheno_mode_and_range()
+            self._reset_scene()
+            self._draw_tree(self._tree)
+            self._apply_pairs()
+            return True
+        elif action == edit_val:
+            # Continuous-mode edit: prompt for a new numeric value
+            cur = float(self._phenotypes.get(name, 0.0)) if self._phenotypes.get(name) is not None else 0.0
+            val, ok = QInputDialog.getDouble(self, "Edit phenotype value", f"Set continuous value for {name}:", cur, -1e12, 1e12, 3)
+            if ok:
+                self._push_undo()
+                self._phenotypes[name] = float(val)
+                self._update_pheno_mode_and_range()
+                self._reset_scene()
+                self._draw_tree(self._tree)
+                self._apply_pairs()
+                self._update_auto_btn()
+            return True
+        return False
+
+    # ------------------------------------------------------------------
     def _show_label_menu(self, item: QGraphicsTextItem, pos) -> None:
         name = getattr(item, "species_name", "")
         menu = QMenu()
@@ -517,38 +592,45 @@ class TreeViewer(QWidget):
             if remove_alt is not None:
                 menu.addSeparator()
             remove_pair = menu.addAction("Remove Pair")
+            # Always allow phenotype editing actions as well
+            menu.addSeparator()
+            pheno_conv, pheno_ctrl, pheno_clear, edit_val = self._add_pheno_actions(menu, name)
             action = menu.exec(pos)
-            if action is None:
-                return
-            if action == remove_pair:
-                self._remove_pair(pair_idx)
-            elif action == remove_alt:
-                self._push_undo()
-                if name in pair.conv_alts:
-                    pair.conv_alts.remove(name)
-                elif name in pair.ctrl_alts:
-                    pair.ctrl_alts.remove(name)
-                self._apply_pairs()
-            elif action == make_conv:
-                self._push_undo()
-                if name in pair.conv_alts:
-                    pair.conv_alts.remove(name)
-                if pair.convergent not in pair.conv_alts:
-                    pair.conv_alts.append(pair.convergent)
-                pair.convergent = name
-                self._apply_pairs()
-            elif action == make_ctrl:
-                self._push_undo()
-                if name in pair.conv_alts:
-                    pair.conv_alts.remove(name)
-                if name in pair.ctrl_alts:
-                    pair.ctrl_alts.remove(name)
-                if pair.control not in pair.ctrl_alts:
-                    pair.ctrl_alts.append(pair.control)
-                pair.control = name
-                self._apply_pairs()
+            if action is not None:
+                if action == remove_pair:
+                    self._push_undo()
+                    self._remove_pair(pair_idx)
+                elif action == remove_alt:
+                    self._push_undo()
+                    if name in pair.conv_alts:
+                        pair.conv_alts.remove(name)
+                    elif name in pair.ctrl_alts:
+                        pair.ctrl_alts.remove(name)
+                    self._apply_pairs()
+                elif action == make_conv:
+                    self._push_undo()
+                    if name in pair.conv_alts:
+                        pair.conv_alts.remove(name)
+                    if pair.convergent not in pair.conv_alts:
+                        pair.conv_alts.append(pair.convergent)
+                    pair.convergent = name
+                    self._apply_pairs()
+                elif action == make_ctrl:
+                    self._push_undo()
+                    if name in pair.conv_alts:
+                        pair.conv_alts.remove(name)
+                    if name in pair.ctrl_alts:
+                        pair.ctrl_alts.remove(name)
+                    if pair.control not in pair.ctrl_alts:
+                        pair.ctrl_alts.append(pair.control)
+                    pair.control = name
+                    self._apply_pairs()
+                else:
+                    # Handle phenotype actions if selected
+                    handled = self._handle_pheno_action(action, name, pheno_conv, pheno_ctrl, pheno_clear, edit_val)
+                    if handled:
+                        self._update_auto_btn()
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            item.setCursor(Qt.CursorShape.OpenHandCursor)
             self._update_assign_cursor()
             return
         if name in self._disabled_species:
@@ -564,22 +646,28 @@ class TreeViewer(QWidget):
                     ctrl_act = menu.addAction(
                         f"Add as alternate control for Pair {tgt_idx}"
                     )
-            if conv_act is None and ctrl_act is None:
+            # Always allow phenotype editing actions as well
+            menu.addSeparator()
+            pheno_conv, pheno_ctrl, pheno_clear, edit_val = self._add_pheno_actions(menu, name)
+            # If neither alt action nor phenotype actions are available, show disabled note
+            if conv_act is None and ctrl_act is None and not any([pheno_conv, pheno_ctrl, pheno_clear, edit_val]):
                 act = menu.addAction("Not a valid option")
                 act.setEnabled(False)
                 menu.exec(pos)
             else:
                 action = menu.exec(pos)
-                if action is None:
-                    return
-                if action == conv_act:
-                    self._push_undo()
-                    self._add_alternate(name, tgt_idx, "convergent")
-                elif action == ctrl_act:
-                    self._push_undo()
-                    self._add_alternate(name, tgt_idx, "control")
+                if action is not None:
+                    if action == conv_act:
+                        self._push_undo()
+                        self._add_alternate(name, tgt_idx, "convergent")
+                    elif action == ctrl_act:
+                        self._push_undo()
+                        self._add_alternate(name, tgt_idx, "control")
+                    else:
+                        handled = self._handle_pheno_action(action, name, pheno_conv, pheno_ctrl, pheno_clear, edit_val)
+                        if handled:
+                            self._update_auto_btn()
             self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-            item.setCursor(Qt.CursorShape.OpenHandCursor)
             self._update_assign_cursor()
             return
 
@@ -606,29 +694,9 @@ class TreeViewer(QWidget):
         if conv_act is None and ctrl_act is None and cancel_act is None:
             act = menu.addAction("Not a valid option")
             act.setEnabled(False)
-
-        # phenotype change options
-        pheno_conv = pheno_ctrl = pheno_clear = edit_val = None
+        # phenotype change options (always available regardless of pair/disabled)
         menu.addSeparator()
-        is_empty = len(self._phenotypes) == 0
-        is_cont = getattr(self, "_continuous_pheno", False)
-        if is_empty:
-            # When no phenotypes are assigned at all, allow both paths
-            edit_val = menu.addAction("Edit phenotype value…")
-            pheno_conv = menu.addAction("Set to convergent phenotype")
-            pheno_ctrl = menu.addAction("Set to control phenotype")
-        elif is_cont:
-            edit_val = menu.addAction("Edit phenotype value…")
-        else:
-            if pheno == 1:
-                pheno_ctrl = menu.addAction("Change to control phenotype")
-                pheno_clear = menu.addAction("Remove phenotype")
-            elif pheno == -1:
-                pheno_conv = menu.addAction("Change to convergent phenotype")
-                pheno_clear = menu.addAction("Remove phenotype")
-            else:
-                pheno_conv = menu.addAction("Set to convergent phenotype")
-                pheno_ctrl = menu.addAction("Set to control phenotype")
+        pheno_conv, pheno_ctrl, pheno_clear, edit_val = self._add_pheno_actions(menu, name)
 
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
@@ -648,38 +716,9 @@ class TreeViewer(QWidget):
             self._current_role = None
             self._current_first = None
             self._update_save_btn()
-        elif action == pheno_conv:
-            self._push_undo()
-            self._phenotypes[name] = 1
-            self._update_pheno_mode_and_range()
-            self._reset_scene()
-            self._draw_tree(self._tree)
-            self._apply_pairs()
-        elif action == pheno_ctrl:
-            self._push_undo()
-            self._phenotypes[name] = -1
-            self._update_pheno_mode_and_range()
-            self._reset_scene()
-            self._draw_tree(self._tree)
-            self._apply_pairs()
-        elif action == pheno_clear:
-            self._push_undo()
-            self._phenotypes.pop(name, None)
-            self._update_pheno_mode_and_range()
-            self._reset_scene()
-            self._draw_tree(self._tree)
-            self._apply_pairs()
-        elif action == edit_val:
-            # Continuous-mode edit: prompt for a new numeric value
-            cur = float(self._phenotypes.get(name, 0.0)) if self._phenotypes.get(name) is not None else 0.0
-            val, ok = QInputDialog.getDouble(self, "Edit phenotype value", f"Set continuous value for {name}:", cur, -1e12, 1e12, 3)
-            if ok:
-                self._push_undo()
-                self._phenotypes[name] = float(val)
-                self._update_pheno_mode_and_range()
-                self._reset_scene()
-                self._draw_tree(self._tree)
-                self._apply_pairs()
+        else:
+            handled = self._handle_pheno_action(action, name, pheno_conv, pheno_ctrl, pheno_clear, edit_val)
+            if handled:
                 self._update_auto_btn()
         self._update_assign_cursor()
 
@@ -692,7 +731,6 @@ class TreeViewer(QWidget):
         remove = menu.addAction("Remove Pair")
         action = menu.exec(pos)
         self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-        item.setCursor(Qt.CursorShape.OpenHandCursor)
         if action == remove:
             self._push_undo()
             self._remove_pair(idx)
