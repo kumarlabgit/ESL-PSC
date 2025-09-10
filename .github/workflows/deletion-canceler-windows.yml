@@ -1,4 +1,4 @@
-name: Build Rust Helpers (deletion_canceler and fast_scan_rs)
+name: Build Rust Helpers
 
 on:
   # Allow manual triggering from the GitHub UI
@@ -36,7 +36,7 @@ jobs:
           ls -la deletion_canceler_rs/target/release/
           ls -la fast_scan_rs/target/release/
 
-      - name: Upload artifact: deletion_canceler (macOS)
+      - name: "Upload artifact: deletion_canceler (macOS)"
         uses: actions/upload-artifact@v4
         with:
           name: deletion_canceler-macos
@@ -44,7 +44,7 @@ jobs:
             deletion_canceler_rs/target/release/deletion_canceler
           if-no-files-found: error
 
-      - name: Upload artifact: fast_scan_rs (macOS)
+      - name: "Upload artifact: fast_scan_rs (macOS)"
         uses: actions/upload-artifact@v4
         with:
           name: fast_scan_rs-macos
@@ -85,7 +85,7 @@ jobs:
           ls -la deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/
           ls -la fast_scan_rs/target/x86_64-pc-windows-msvc/release/
 
-      - name: Upload artifact: deletion_canceler (Windows)
+      - name: "Upload artifact: deletion_canceler (Windows)"
         uses: actions/upload-artifact@v4
         with:
           name: deletion_canceler-windows-x86_64
@@ -93,7 +93,7 @@ jobs:
             deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/deletion_canceler.exe
           if-no-files-found: error
 
-      - name: Upload artifact: fast_scan_rs (Windows)
+      - name: "Upload artifact: fast_scan_rs (Windows)"
         uses: actions/upload-artifact@v4
         with:
           name: fast_scan_rs-windows-x86_64
