@@ -158,13 +158,18 @@ class PhenoThresholdDialog(QDialog):
 class OutgroupDialog(QDialog):
     """Dialog to pick an outgroup species."""
 
-    def __init__(self, species: Sequence[str], parent=None):
+    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("Select Outgroup Species")
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Choose outgroup species:"))
         self._combo = QComboBox()
         self._combo.addItems(list(species))
+        # Preselect default if provided and present in the list
+        if default_selected:
+            idx = self._combo.findText(default_selected)
+            if idx >= 0:
+                self._combo.setCurrentIndex(idx)
         layout.addWidget(self._combo)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)

@@ -25,6 +25,10 @@ class ESLConfig:
     limited_genes_file: str = ""
     response_dir: str = ""
 
+    # Session-level memory (not written to CLI args)
+    # Remembers the last outgroup species selected in the Fast Scan dialog
+    last_fast_scan_outgroup: str = ""
+
     # ─── Hyper-parameters ───────────────────────────────────────────────────────
     initial_lambda1: float = 0.01
     final_lambda1: float = 0.99

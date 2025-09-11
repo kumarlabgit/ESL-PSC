@@ -275,10 +275,17 @@ class InputPage(BaseWizardPage):
         if not species:
             QMessageBox.warning(self, "Fast Scan", "No species found in alignments.")
             return
-        dlg = OutgroupDialog(species, self)
+        # Preselect the last chosen outgroup if remembered and still present
+        default_out = getattr(self.config, 'last_fast_scan_outgroup', '') or None
+        dlg = OutgroupDialog(species, self, default_selected=default_out)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         outgroup = dlg.selected
+        # Remember for next Fast Scan within this session
+        try:
+            setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
+        except Exception:
+            pass
         progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
         progress.setWindowTitle("Fast Scan")
         progress.setAutoClose(True)
