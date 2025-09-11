@@ -201,9 +201,19 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
                         pending = pending.replace(b"\r\n", b"\n")
                         # Convert any remaining CR to LF (progress updates)
                         pending = pending.replace(b"\r", b"\n")
-                        *complete, pending = pending.split(b"\n") if b"\n" in pending else ([], pending)
+                        # Split into complete lines while keeping any trailing partial in 'pending'
+                        if b"\n" in pending:
+                            parts = pending.split(b"\n")
+                            complete = parts[:-1]
+                            pending = parts[-1]
+                        else:
+                            complete = []
                         for chunk in complete:
-                            s = chunk.decode(errors="replace")
+                            # Robustly decode bytes; fall back to str() if unexpected type
+                            if isinstance(chunk, (bytes, bytearray)):
+                                s = chunk.decode(errors="replace")
+                            else:
+                                s = str(chunk)
                             if s.strip():
                                 sys.stdout.write(s + "\n")
                         sys.stdout.flush()
@@ -213,7 +223,10 @@ def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_p
                         sys.stdout.flush()
             # Flush any trailing partial line when squashing at EOF
             if squash_blank_lines and pending:
-                tail = pending.decode(errors="replace")
+                if isinstance(pending, (bytes, bytearray)):
+                    tail = pending.decode(errors="replace")
+                else:
+                    tail = str(pending)
                 if tail.strip():
                     sys.stdout.write(tail + "\n")
                 sys.stdout.flush()
