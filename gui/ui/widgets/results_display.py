@@ -284,54 +284,13 @@ def _launch_site_viewer(
         viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
     except Exception:
         pass
-    # Raise the results dialog first so it stays above the wizard, then show
-    # the viewer and bring it to the front.
-    try:
-        if parent is not None:
-            # Ensure native window exists then raise without taking focus
-            _ = parent.winId()
-            parent.raise_()
-    except Exception:
-        pass
+    # Show the viewer as a normal, independent top-level window and let the
+    # window manager handle stacking/focus without forced raises.
     viewer.show()
     try:
-        viewer.raise_()
         viewer.activateWindow()
     except Exception:
         pass
-
-    # After the event loop processes the new window, reassert the stacking
-    # by raising the viewer again. Do this twice to handle platform/WM quirks.
-    def _reassert_order():
-        try:
-            viewer.raise_()
-            viewer.activateWindow()
-        except Exception:
-            pass
-    try:
-        QTimer.singleShot(0, _reassert_order)
-        QTimer.singleShot(50, _reassert_order)
-    except Exception:
-        pass
-
-    # When the viewer closes, bring the launching dialog back to the front so
-    # it doesn't appear to "disappear" behind the wizard window.
-    if parent is not None:
-        def _refocus_parent():
-            try:
-                parent.show()
-                # On some platforms, toggling WindowActive ensures focus
-                try:
-                    parent.raise_()
-                    parent.activateWindow()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        try:
-            viewer.destroyed.connect(lambda _obj=None: _refocus_parent())
-        except Exception:
-            pass
     _open_dialogs.append(viewer)
  
 def _select_combo_from_groups(parent, groups_path, current=None):
@@ -464,9 +423,12 @@ class GeneRanksDialog(QDialog):
 
     def __init__(self, dataframe, config, sites_path=None, parent=None):
         super().__init__(parent)
-        # Make this a true top-level window (behaves like a normal app window)
+        # Ensure no platform-specific 'always-on-top' hints are set
         try:
-            self.setWindowFlag(Qt.WindowType.Window, True)
+            flags = self.windowFlags()
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
+            self.setWindowFlags(flags)
         except Exception:
             pass
         self.setWindowTitle("Top Gene Ranks")
@@ -957,9 +919,12 @@ class FastScanResultsDialog(QDialog):
 
     def __init__(self, results, config, outgroup, parent=None):
         super().__init__(parent)
-        # Make this a true top-level window (behaves like a normal app window)
+        # Clear any always-on-top hints to allow normal stacking/focus behavior
         try:
-            self.setWindowFlag(Qt.WindowType.Window, True)
+            flags = self.windowFlags()
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
+            self.setWindowFlags(flags)
         except Exception:
             pass
         self.setWindowTitle("Fast Scan Results")

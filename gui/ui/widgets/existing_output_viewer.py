@@ -166,11 +166,12 @@ class _ExistingOutputDialog(QDialog):
 
     def _show_gene_ranks(self):  # pragma: no cover – UI slot
         if self._gene_ranks_path:
+            # Launch as a top-level window with no parent so normal stacking applies
             GeneRanksDialog.show_dialog(
                 self._gene_ranks_path,
                 self._cfg,
                 self._sites_path,
-                parent=self,
+                parent=None,
             )
         else:
             QMessageBox.information(self, "Unavailable", "No gene-ranks file found for this run.")
