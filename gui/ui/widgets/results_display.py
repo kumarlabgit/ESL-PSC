@@ -11,7 +11,7 @@ import pandas as pd
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QBrush, QFontMetrics, QKeySequence, QGuiApplication, QShortcut
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
+    QDialog, QWidget, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
     QLabel, QHeaderView, QPushButton, QHBoxLayout,
     QComboBox, QDialogButtonBox, QFileDialog, QListWidget
@@ -275,7 +275,7 @@ def _launch_site_viewer(
         all_sites_info,
         False,
         pss_map,
-        parent=None,
+        parent=parent,
         species_pheno_map=species_pheno_map,
         pheno_name_map=pheno_name_map,
     )
@@ -284,13 +284,57 @@ def _launch_site_viewer(
         viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
     except Exception:
         pass
-    # Show the viewer as a normal, independent top-level window and let the
-    # window manager handle stacking/focus without forced raises.
+    # Make sure the launching window isn't modal or on-top so it won't trap
+    # the Site Viewer beneath it on some Linux window managers.
+    try:
+        if parent is not None:
+            try:
+                parent.setWindowModality(Qt.WindowModality.NonModal)
+            except Exception:
+                pass
+            try:
+                pflags = parent.windowFlags()
+                pflags &= ~Qt.WindowType.WindowStaysOnTopHint
+                pflags &= ~Qt.WindowType.X11BypassWindowManagerHint
+                parent.setWindowFlags(pflags)
+                parent.show()  # reapply flags
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Show the viewer and ensure it initially comes to front. Some WMs may
+    # keep dialogs above new windows; briefly mark viewer as topmost, then
+    # remove that hint so normal stacking resumes.
+    try:
+        viewer.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    except Exception:
+        pass
     viewer.show()
     try:
         # Bring the viewer to the front once; do not touch other windows
         viewer.raise_()
         viewer.activateWindow()
+    except Exception:
+        pass
+    # Reassert once after the window is mapped to handle WM timing quirks
+    try:
+        def _raise_viewer_once():
+            try:
+                viewer.raise_()
+                viewer.activateWindow()
+            except Exception:
+                pass
+        QTimer.singleShot(0, _raise_viewer_once)
+        # Drop the temporary topmost hint shortly after mapping
+        def _drop_topmost():
+            try:
+                viewer.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+                # Re-show to apply new flags on some platforms
+                viewer.show()
+            except Exception:
+                pass
+        QTimer.singleShot(150, _drop_topmost)
     except Exception:
         pass
     _open_dialogs.append(viewer)
@@ -420,19 +464,22 @@ class ContinuousPlotDialog(QDialog):
         _open_dialogs.append(dialog)
 
 
-class GeneRanksDialog(QDialog):
+class GeneRanksDialog(QWidget):
     """Dialog to display top gene ranks and optional selected sites."""
 
     def __init__(self, dataframe, config, sites_path=None, parent=None):
         super().__init__(parent)
-        # Make this a normal top-level window and ensure no always-on-top hints
+        # Make this a true normal top-level window (not Dialog) for stacking
         try:
-            # Ensure Window type (not Dialog) for normal stacking behavior
-            self.setWindowFlag(Qt.WindowType.Window, True)
-            flags = self.windowFlags()
-            flags &= ~Qt.WindowType.WindowStaysOnTopHint
-            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
-            self.setWindowFlags(flags)
+            base_flags = (
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+            )
+            self.setWindowFlags(base_flags)
         except Exception:
             pass
         self.setWindowTitle("Top Gene Ranks")
@@ -918,19 +965,22 @@ class SelectedSitesDialog(QDialog):
         dialog.show()
         _open_dialogs.append(dialog)
 
-class FastScanResultsDialog(QDialog):
+class FastScanResultsDialog(QWidget):
     """Display fast scan gene rankings."""
 
     def __init__(self, results, config, outgroup, parent=None):
         super().__init__(parent)
-        # Make this a normal top-level window and clear any always-on-top hints
+        # Make this a true normal top-level window (not Dialog) for stacking
         try:
-            # Ensure Window type (not Dialog) for normal stacking behavior
-            self.setWindowFlag(Qt.WindowType.Window, True)
-            flags = self.windowFlags()
-            flags &= ~Qt.WindowType.WindowStaysOnTopHint
-            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
-            self.setWindowFlags(flags)
+            base_flags = (
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+            )
+            self.setWindowFlags(base_flags)
         except Exception:
             pass
         self.setWindowTitle("Fast Scan Results")

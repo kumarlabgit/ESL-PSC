@@ -48,17 +48,20 @@ class SiteViewer(QWidget):
         pheno_name_map: Dict[float, str] | None = None,
     ) -> None:
         super().__init__(parent)
-        # Ensure this widget is a true top-level window with normal stacking
+        # Ensure this widget is a normal top-level window (not a dialog) with
+        # standard controls and no always-on-top hints, and is non-modal.
         try:
-            flags = self.windowFlags()
-            flags |= Qt.WindowType.Window
-            flags &= ~Qt.WindowType.WindowStaysOnTopHint
-            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
-            self.setWindowFlags(flags)
-            # Explicitly non-modal
-            from PySide6.QtCore import Qt as _Qt
+            base_flags = (
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+            )
+            self.setWindowFlags(base_flags)
             if hasattr(self, 'setWindowModality'):
-                self.setWindowModality(_Qt.WindowModality.NonModal)
+                self.setWindowModality(Qt.WindowModality.NonModal)
         except Exception:
             pass
 
