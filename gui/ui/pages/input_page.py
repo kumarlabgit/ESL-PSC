@@ -2,7 +2,8 @@
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
-    QSizePolicy, QProgressDialog, QHBoxLayout, QDialog
+    QSizePolicy, QProgressDialog, QHBoxLayout, QDialog, QComboBox,
+    QDialogButtonBox
 )
 from PySide6.QtCore import Qt  # Needed for alignment
 from PySide6.QtWidgets import QApplication
@@ -16,7 +17,11 @@ from esl_psc_cli import esl_psc_functions as ecf
 from gui.ui.widgets.file_selectors import FileSelector
 from gui.ui.widgets.tree_viewer import TreeViewer
 from gui.ui.widgets.dialogs import OutgroupDialog
-from gui.ui.widgets.results_display import FastScanResultsDialog
+from gui.ui.widgets.results_display import (
+    FastScanResultsDialog,
+    _select_combo_from_groups,
+    _launch_site_viewer,
+)
 from gui.core import fast_scan
 from Bio import Phylo
 from .base_page import BaseWizardPage
@@ -43,7 +48,7 @@ class InputPage(BaseWizardPage):
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ─── Top Buttons (Fast Scan + Load Existing Output) ────────────
+        # ─── Top Buttons (Load Existing Output, Site Viewer, Fast Scan) ────────────
         top_btns = QHBoxLayout()
         fast_btn = QPushButton("Fast Scan")
         fast_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -54,8 +59,14 @@ class InputPage(BaseWizardPage):
         load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
         load_prev_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         load_prev_btn.clicked.connect(lambda *_: select_and_show_existing_output(parent=self))
-        # Add 'Load Existing Output' first, then 'Fast Scan' so Fast Scan appears to the right
+
+        site_view_btn = QPushButton("Site Viewer")
+        site_view_btn.setToolTip("View an alignment with a chosen species combo.")
+        site_view_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        site_view_btn.clicked.connect(self._on_site_viewer)
+        # Add 'Load Existing Output', then 'Site Viewer', then 'Fast Scan'
         top_btns.addWidget(load_prev_btn)
+        top_btns.addWidget(site_view_btn)
         top_btns.addWidget(fast_btn)
         top_btns.setAlignment(Qt.AlignmentFlag.AlignRight)
         container_layout.addLayout(top_btns)
@@ -141,9 +152,7 @@ class InputPage(BaseWizardPage):
                 "..."
             )
         )
-        self.species_groups.path_changed.connect(
-            lambda p: setattr(self.config, 'species_groups_file', p)
-        )
+        self.species_groups.path_changed.connect(self._on_species_groups_changed)
         self.input_files_layout.addWidget(self.species_groups)
 
         # Button to open a Newick tree viewer
@@ -260,6 +269,120 @@ class InputPage(BaseWizardPage):
 
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    def _on_site_viewer(self):
+        """Open the Site Viewer for a chosen alignment."""
+        groups_path = getattr(self.config, 'species_groups_file', '')
+        resp_dir = getattr(self.config, 'response_dir', '')
+        if not (groups_path and os.path.exists(groups_path)) and not (
+            resp_dir and os.path.isdir(resp_dir)
+        ):
+            QMessageBox.warning(
+                self,
+                "Site Viewer",
+                "Please select a species groups file or a response matrix directory first.",
+            )
+            return
+        align_dir = getattr(self.config, 'alignments_dir', '')
+        if not align_dir or not os.path.isdir(align_dir):
+            QMessageBox.warning(
+                self,
+                "Site Viewer",
+                "Please select an alignment directory first.",
+            )
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Alignment File",
+            align_dir,
+            "FASTA Files (*.fas *.fasta *.fa)",
+        )
+        if not path:
+            return
+        gene = os.path.splitext(os.path.basename(path))[0]
+
+        # Choose species combination
+        if groups_path and os.path.exists(groups_path):
+            current = getattr(self.config, 'preferred_groups_combo', None)
+            res = _select_combo_from_groups(self, groups_path, current)
+            if not res:
+                return
+            self.config.preferred_groups_combo = res
+            self.config.preferred_response_matrix = ""
+            setattr(self, '_selected_groups_combo', res)
+            setattr(self, '_selected_response_matrix', "")
+        else:
+            files = sorted([f for f in os.listdir(resp_dir) if f.endswith('.txt')])
+            if not files:
+                QMessageBox.warning(self, "Site Viewer", "No response matrices found.")
+                return
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Select Response Combo")
+            vbox = QVBoxLayout(dlg)
+            combo = QComboBox(dlg)
+            combo.addItems(files)
+            cur = getattr(self.config, 'preferred_response_matrix', '')
+            if cur and cur in files:
+                combo.setCurrentIndex(files.index(cur))
+            vbox.addWidget(combo)
+            conv_label = QLabel("Convergent species:")
+            conv_list = QLabel("")
+            conv_list.setWordWrap(True)
+            ctrl_label = QLabel("Control species:")
+            ctrl_list = QLabel("")
+            ctrl_list.setWordWrap(True)
+            vbox.addWidget(conv_label)
+            vbox.addWidget(conv_list)
+            vbox.addWidget(ctrl_label)
+            vbox.addWidget(ctrl_list)
+
+            def parse_species_lists(fname: str):
+                path = os.path.join(resp_dir, fname)
+                conv, ctrl = [], []
+                try:
+                    with open(path, encoding='utf-8', errors='ignore') as f:
+                        for idx, raw in enumerate(f):
+                            line = raw.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            sp = parts[0]
+                            if idx % 2 == 0:
+                                conv.append(sp)
+                            else:
+                                ctrl.append(sp)
+                except Exception:
+                    pass
+                return conv, ctrl
+
+            def refresh_lists():
+                fname = combo.currentText()
+                conv, ctrl = parse_species_lists(fname)
+                conv_list.setText("\n".join(conv) if conv else "(none)")
+                ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
+
+            combo.currentIndexChanged.connect(lambda _i: refresh_lists())
+            refresh_lists()
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+            vbox.addWidget(buttons)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+
+            if dlg.exec() != QDialog.Accepted:
+                return
+            selected = combo.currentText()
+            self.config.preferred_response_matrix = selected
+            self.config.preferred_groups_combo = None
+            setattr(self, '_selected_response_matrix', selected)
+            setattr(self, '_selected_groups_combo', None)
+
+        try:
+            _launch_site_viewer(gene, self.config, None, parent=self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 
     def _on_fast_scan(self):
         """Run a quick convergence scan of the alignments."""
@@ -455,9 +578,19 @@ class InputPage(BaseWizardPage):
             except Exception:
                 pass
 
+    def _on_species_groups_changed(self, path: str) -> None:
+        """Update config when species groups file changes and reset preferred combo."""
+        setattr(self.config, 'species_groups_file', path)
+        self.config.preferred_groups_combo = None
+        self.config.preferred_response_matrix = ""
+        setattr(self, '_selected_groups_combo', None)
+        setattr(self, '_selected_response_matrix', "")
+
     def _on_response_dir_changed(self, path: str) -> None:
         """Set response directory and detect continuous response matrices."""
         setattr(self.config, 'response_dir', path)
+        self.config.preferred_response_matrix = ""
+        self.config.preferred_groups_combo = None
         self.config.response_matrices_are_continuous = False
         if not path or not os.path.isdir(path):
             self.config.use_continuous_phenotypes = False
@@ -513,7 +646,7 @@ class InputPage(BaseWizardPage):
 
     def _update_groups_file(self, path: str) -> None:
         self.species_groups.set_path(path)
-        setattr(self.config, 'species_groups_file', path)
+        self._on_species_groups_changed(path)
 
     def _update_alignment_dir(self, path: str) -> None:
         """Update the alignment directory selector and config."""
