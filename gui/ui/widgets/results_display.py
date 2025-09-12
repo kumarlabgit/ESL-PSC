@@ -1296,7 +1296,26 @@ class FastScanResultsDialog(QDialog):
         if not path:
             return
         try:
-            self.results_df.to_csv(path, index=False)
+            # Drop extremely wide per-combo arrays from the export to keep CSV manageable
+            df = self.results_df.copy()
+            for col in ("per_combo_true", "per_combo_diff"):
+                if col in df.columns:
+                    df = df.drop(columns=[col])
+            # Reorder columns: Gene, then combo-rank columns (if present), then core metrics, then the rest
+            present_front = [c for c in ["gene", "num_combos_top_frac", "num_combos_top_frac_by_diff"] if c in df.columns]
+            metrics = [
+                "avg_true",
+                "avg_control",
+                "diff",
+                "cs_sites_ge_4",
+                "variable_sites",
+                "k_pairs",
+            ]
+            present_metrics = [c for c in metrics if c in df.columns]
+            remaining = [c for c in df.columns if c not in set(present_front + present_metrics)]
+            ordered_cols = present_front + present_metrics + remaining
+            df = df[ordered_cols]
+            df.to_csv(path, index=False)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save results:\n{e}")
 
