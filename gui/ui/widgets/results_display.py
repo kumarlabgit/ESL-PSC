@@ -288,6 +288,8 @@ def _launch_site_viewer(
     # window manager handle stacking/focus without forced raises.
     viewer.show()
     try:
+        # Bring the viewer to the front once; do not touch other windows
+        viewer.raise_()
         viewer.activateWindow()
     except Exception:
         pass
@@ -423,8 +425,10 @@ class GeneRanksDialog(QDialog):
 
     def __init__(self, dataframe, config, sites_path=None, parent=None):
         super().__init__(parent)
-        # Ensure no platform-specific 'always-on-top' hints are set
+        # Make this a normal top-level window and ensure no always-on-top hints
         try:
+            # Ensure Window type (not Dialog) for normal stacking behavior
+            self.setWindowFlag(Qt.WindowType.Window, True)
             flags = self.windowFlags()
             flags &= ~Qt.WindowType.WindowStaysOnTopHint
             flags &= ~Qt.WindowType.X11BypassWindowManagerHint
@@ -919,8 +923,10 @@ class FastScanResultsDialog(QDialog):
 
     def __init__(self, results, config, outgroup, parent=None):
         super().__init__(parent)
-        # Clear any always-on-top hints to allow normal stacking/focus behavior
+        # Make this a normal top-level window and clear any always-on-top hints
         try:
+            # Ensure Window type (not Dialog) for normal stacking behavior
+            self.setWindowFlag(Qt.WindowType.Window, True)
             flags = self.windowFlags()
             flags &= ~Qt.WindowType.WindowStaysOnTopHint
             flags &= ~Qt.WindowType.X11BypassWindowManagerHint

@@ -48,6 +48,19 @@ class SiteViewer(QWidget):
         pheno_name_map: Dict[float, str] | None = None,
     ) -> None:
         super().__init__(parent)
+        # Ensure this widget is a true top-level window with normal stacking
+        try:
+            flags = self.windowFlags()
+            flags |= Qt.WindowType.Window
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+            flags &= ~Qt.WindowType.X11BypassWindowManagerHint
+            self.setWindowFlags(flags)
+            # Explicitly non-modal
+            from PySide6.QtCore import Qt as _Qt
+            if hasattr(self, 'setWindowModality'):
+                self.setWindowModality(_Qt.WindowModality.NonModal)
+        except Exception:
+            pass
 
         # ------------------------------------------------------------------
         # If caller did not supply an outgroup list, attempt to re-apply the
