@@ -7,9 +7,6 @@ import os
 import math
 # Use shared FASTA reader
 from gui.core.fasta_io import read_fasta
-from esl_psc_cli.deletion_canceler import (
-    parse_species_groups as cli_parse_species_groups,
-)
 import pandas as pd
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QBrush, QFontMetrics, QKeySequence, QGuiApplication, QShortcut
@@ -17,7 +14,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
     QLabel, QHeaderView, QPushButton, QHBoxLayout,
-    QComboBox, QDialogButtonBox, QFileDialog
+    QComboBox, QDialogButtonBox, QFileDialog, QListWidget
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
@@ -314,6 +311,78 @@ def _launch_site_viewer(
         except Exception:
             pass
     _open_dialogs.append(viewer)
+ 
+def _select_combo_from_groups(parent, groups_path, current=None):
+    """Open a dialog to choose a species combination from a groups file."""
+    try:
+        with open(groups_path, encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+    except Exception as e:
+        QMessageBox.critical(parent, "Default Combo", f"Failed to read species groups file:\n{e}")
+        return None
+    if not lines or len(lines) % 2 != 0:
+        QMessageBox.critical(parent, "Default Combo", "Species groups file has an invalid format.")
+        return None
+    groups = [[sp.strip() for sp in ln.split(',') if sp.strip()] for ln in lines]
+    n_pairs = len(groups) // 2
+
+    dlg = QDialog(parent)
+    dlg.setWindowTitle("Select Species Combination")
+    vbox = QVBoxLayout(dlg)
+
+    conv_widgets = []
+    ctrl_widgets = []
+    current_conv = []
+    current_ctrl = []
+    if current and isinstance(current, (tuple, list)) and len(current) == 2:
+        current_conv = list(current[0])
+        current_ctrl = list(current[1])
+
+    for i in range(n_pairs):
+        hbox = QHBoxLayout()
+        conv_label = QLabel(f"Convergent {i + 1}:")
+        hbox.addWidget(conv_label)
+        conv_list = QListWidget()
+        conv_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for sp in groups[2 * i]:
+            conv_list.addItem(sp)
+        idx = 0
+        if current_conv and i < len(current_conv) and current_conv[i] in groups[2 * i]:
+            idx = groups[2 * i].index(current_conv[i])
+        conv_list.setCurrentRow(idx)
+        if len(groups[2 * i]) == 1:
+            conv_list.setEnabled(False)
+        hbox.addWidget(conv_list)
+        conv_widgets.append(conv_list)
+
+        ctrl_label = QLabel(f"Control {i + 1}:")
+        hbox.addWidget(ctrl_label)
+        ctrl_list = QListWidget()
+        ctrl_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for sp in groups[2 * i + 1]:
+            ctrl_list.addItem(sp)
+        idx = 0
+        if current_ctrl and i < len(current_ctrl) and current_ctrl[i] in groups[2 * i + 1]:
+            idx = groups[2 * i + 1].index(current_ctrl[i])
+        ctrl_list.setCurrentRow(idx)
+        if len(groups[2 * i + 1]) == 1:
+            ctrl_list.setEnabled(False)
+        hbox.addWidget(ctrl_list)
+        ctrl_widgets.append(ctrl_list)
+
+        vbox.addLayout(hbox)
+
+    buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+    vbox.addWidget(buttons)
+    buttons.accepted.connect(dlg.accept)
+    buttons.rejected.connect(dlg.reject)
+
+    if dlg.exec() == QDialog.Accepted:
+        conv = [w.currentItem().text() for w in conv_widgets]
+        ctrl = [w.currentItem().text() for w in ctrl_widgets]
+        return conv, ctrl
+    return None
+
 
 def _get_alignment_length(gene_name: str, alignments_dir: str):
     """Return the length of the alignment for the given gene."""
@@ -483,10 +552,20 @@ class GeneRanksDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 
     def _open_combo_picker(self):
-        """Open a dialog allowing the user to pick a response matrix combo and preview its species."""
+        """Open a dialog allowing the user to pick species groups or a response matrix."""
+        groups_path = getattr(self.config, 'species_groups_file', '') or ''
+        if groups_path and os.path.exists(groups_path):
+            current = getattr(self, '_selected_groups_combo', None)
+            res = _select_combo_from_groups(self, groups_path, current)
+            if res:
+                try:
+                    setattr(self, '_selected_groups_combo', res)
+                except Exception:
+                    pass
+            return
+
         response_dir = getattr(self.config, 'response_dir', '') or ''
         if not response_dir:
-            # Attempt to derive from species_groups_file fallback
             base = os.path.basename(getattr(self.config, 'species_groups_file', '')).replace('.txt', '')
             if base and getattr(self.config, 'output_dir', ''):
                 response_dir = os.path.join(self.config.output_dir, f"{base}_response_matrices")
@@ -499,25 +578,21 @@ class GeneRanksDialog(QDialog):
             QMessageBox.information(self, "No Response Matrices", "No .txt response matrices found in the directory.")
             return
 
-        # Build the dialog
         dlg = QDialog(self)
         dlg.setWindowTitle("Select Response Combo")
         vbox = QVBoxLayout(dlg)
         combo = QComboBox(dlg)
         combo.addItems(files)
-        # Adjust sizing so the dialog/title comfortably fits
         try:
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
             fm = QFontMetrics(combo.font())
             longest = max(files, key=len)
             text_w = fm.horizontalAdvance(longest)
-            min_w = min(900, text_w + 120)  # padding for arrow/margins
+            min_w = min(900, text_w + 120)
             combo.setMinimumWidth(min_w)
             dlg.setMinimumWidth(min_w + 60)
         except Exception:
-            # Reasonable fallback width
             dlg.resize(520, dlg.sizeHint().height())
-        # Preselect current dialog selection if present
         current = getattr(self, '_selected_response_matrix', '') or ''
         if current and current in files:
             combo.setCurrentIndex(files.index(current))
@@ -543,7 +618,7 @@ class GeneRanksDialog(QDialog):
                         line = raw.strip()
                         if not line:
                             continue
-                        parts = line.split()  # tab or whitespace
+                        parts = line.split()
                         if len(parts) < 2:
                             continue
                         sp = parts[0]
@@ -571,7 +646,6 @@ class GeneRanksDialog(QDialog):
 
         if dlg.exec() == QDialog.Accepted:
             selected = combo.currentText()
-            # Persist selection for subsequent Site Viewer openings on this dialog instance
             try:
                 setattr(self, '_selected_response_matrix', selected)
             except Exception:
@@ -1073,22 +1147,24 @@ class FastScanResultsDialog(QDialog):
             pass
 
     def _open_combo_picker(self) -> None:
-        """Open a dialog to pick the default combo for Site Viewer.
+        """Open a dialog to pick the default combo for Site Viewer."""
+        groups_path = getattr(self.config, 'species_groups_file', '') or ''
+        if groups_path and os.path.exists(groups_path):
+            current = getattr(self, '_selected_groups_combo', None)
+            res = _select_combo_from_groups(self, groups_path, current)
+            if res:
+                try:
+                    setattr(self, '_selected_groups_combo', res)
+                except Exception:
+                    pass
+            return
 
-        Priority:
-        - If a response_dir is set (and exists), allow picking a response matrix file
-          (same behavior as the main ESL-PSC results display dialog).
-        - Otherwise, parse combos from the species groups file and allow picking one
-          of the computed Cartesian-product combos.
-        """
-        # Try response_dir first
         response_dir = getattr(self.config, 'response_dir', '') or ''
         if response_dir and os.path.isdir(response_dir):
             files = sorted([f for f in os.listdir(response_dir) if f.endswith('.txt')])
             if not files:
                 QMessageBox.information(self, "Default Combo", "No response matrices found in the selected directory.")
                 return
-            from PySide6.QtWidgets import QDialogButtonBox
             dlg = QDialog(self)
             dlg.setWindowTitle("Select Response Combo")
             vbox = QVBoxLayout(dlg)
@@ -1103,7 +1179,6 @@ class FastScanResultsDialog(QDialog):
             except Exception:
                 pass
 
-            # Place the selection dropdown at the top, matching the main results dialog UX
             vbox.addWidget(QLabel("Select Combo:"))
             vbox.addWidget(combo)
 
@@ -1159,80 +1234,7 @@ class FastScanResultsDialog(QDialog):
                     pass
             return
 
-        # Otherwise, parse combos from species groups file
-        groups_path = getattr(self.config, 'species_groups_file', '') or ''
-        if not groups_path or not os.path.exists(groups_path):
-            QMessageBox.information(self, "Default Combo", "No species groups file or response directory available.")
-            return
-        try:
-            raw_combos = cli_parse_species_groups(groups_path)
-        except Exception as e:
-            QMessageBox.critical(self, "Default Combo", f"Failed to parse species groups file:\n{e}")
-            return
-        if not raw_combos:
-            QMessageBox.information(self, "Default Combo", "No combos found in species groups file.")
-            return
-
-        # Build display items and map to conv/ctrl
-        display_items = []
-        conv_ctrl_map = {}
-        for i, tup in enumerate(raw_combos):
-            picks = list(tup)
-            conv = [picks[j] for j in range(0, len(picks), 2)]
-            ctrl = [picks[j] for j in range(1, len(picks), 2)]
-            key = f"combo_{i}"
-            display_items.append(key)
-            conv_ctrl_map[key] = (conv, ctrl)
-
-        from PySide6.QtWidgets import QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Select Groups Combo")
-        vbox = QVBoxLayout(dlg)
-        combo = QComboBox(dlg)
-        combo.addItems(display_items)
-        try:
-            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-            fm = QFontMetrics(combo.font())
-            longest = max(display_items, key=len)
-            text_w = fm.horizontalAdvance(longest)
-            combo.setMinimumWidth(min(max(text_w + 40, 240), 640))
-        except Exception:
-            pass
-
-        # Place the selection dropdown at the top, matching the main results dialog UX
-        vbox.addWidget(QLabel("Select Combo:"))
-        vbox.addWidget(combo)
-
-        conv_list = QLabel()
-        ctrl_list = QLabel()
-        conv_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        ctrl_list.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        vbox.addWidget(QLabel("Convergent (trait-positive) species:"))
-        vbox.addWidget(conv_list)
-        vbox.addWidget(QLabel("Control (trait-negative) species:"))
-        vbox.addWidget(ctrl_list)
-
-        def refresh_lists():
-            key = combo.currentText()
-            conv, ctrl = conv_ctrl_map.get(key, ([], []))
-            conv_list.setText("\n".join(conv) if conv else "(none)")
-            ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
-
-        combo.currentIndexChanged.connect(lambda _i: refresh_lists())
-        refresh_lists()
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
-        vbox.addWidget(buttons)
-        buttons.accepted.connect(dlg.accept)
-        buttons.rejected.connect(dlg.reject)
-
-        if dlg.exec() == QDialog.Accepted:
-            key = combo.currentText()
-            conv, ctrl = conv_ctrl_map.get(key, ([], []))
-            try:
-                setattr(self, '_selected_groups_combo', (conv, ctrl))
-            except Exception:
-                pass
+        QMessageBox.information(self, "Default Combo", "No species groups file or response directory available.")
 
     def _open_site_viewer(self, row: int) -> None:
         gene_item = self.table.item(row, 0)
