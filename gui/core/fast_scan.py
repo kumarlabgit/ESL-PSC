@@ -6,9 +6,7 @@ per-file scanning. Falls back to the Python implementation otherwise.
 from __future__ import annotations
 
 import os
-import math
 import json
-import shutil
 import subprocess
 import sys
 from collections import Counter
