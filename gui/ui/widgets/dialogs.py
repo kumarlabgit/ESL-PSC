@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QDoubleSpinBox,
     QPushButton,
-    QComboBox,
+    QSizePolicy,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -105,7 +105,10 @@ class PhenoThresholdDialog(QDialog):
     def __init__(self, values: Sequence[float], parent=None):
         super().__init__(parent)
         self.setWindowTitle("Phenotype Thresholds")
+        self.setSizeGripEnabled(True)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
         form = QHBoxLayout()
         form.addWidget(QLabel("Lower threshold:"))
@@ -116,22 +119,25 @@ class PhenoThresholdDialog(QDialog):
         form.addWidget(self.upper_spin)
         layout.addLayout(form)
 
-        # Quantile tail auto-set controls
+        # Quantile tail auto-set controls (manual numeric entry)
         qrow = QHBoxLayout()
-        qlbl = QLabel("Auto-set by tails:")
+        qlbl = QLabel("Auto-set by tails (%):")
         qlbl.setToolTip(
-            "Choose a tail percentage to automatically set thresholds to the lower and upper quantiles\n"
-            "(e.g., 10% sets thresholds at the 10th and 90th percentiles)."
+            "Enter a tail percentage to automatically set lower/upper thresholds to the corresponding\n"
+            "quantiles (e.g., 10% sets thresholds at the 10th and 90th percentiles).\n"
+            "Set to 0% to keep full manual control. At 50%, both thresholds are set to the median."
         )
-        self.quantile_combo = QComboBox()
-        # First entry keeps manual control; subsequent entries auto-apply when selected
-        self.quantile_combo.addItems(["Manual", "5%", "10%", "15%", "20%", "25%", "30%"])
-        self.quantile_combo.setToolTip(
-            "Automatically set thresholds using symmetric quantile tails."
+        self.quantile_spin = QDoubleSpinBox()
+        self.quantile_spin.setSuffix("%")
+        self.quantile_spin.setRange(0.0, 50.0)  # cannot exceed 50%
+        self.quantile_spin.setDecimals(1)
+        self.quantile_spin.setSingleStep(1.0)
+        self.quantile_spin.setToolTip(
+            "0% keeps manual thresholds; >0% auto-applies symmetric quantile tails; 50% sets both to median."
         )
-        self.quantile_combo.currentIndexChanged.connect(self._on_quantile_changed)
+        self.quantile_spin.valueChanged.connect(self._on_quantile_changed)
         qrow.addWidget(qlbl)
-        qrow.addWidget(self.quantile_combo)
+        qrow.addWidget(self.quantile_spin)
         qrow.addStretch()
         layout.addLayout(qrow)
 
@@ -148,7 +154,9 @@ class PhenoThresholdDialog(QDialog):
         self.upper_spin.setValue(vmax)
 
         self.canvas = HistogramCanvas(self, width=4, height=2, dpi=100)
-        layout.addWidget(self.canvas)
+        # Ensure the plot area grows with the dialog to keep labels visible
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.canvas, stretch=1)
 
         self.lower_spin.valueChanged.connect(self._update_plot)
         self.upper_spin.valueChanged.connect(self._update_plot)
@@ -168,34 +176,40 @@ class PhenoThresholdDialog(QDialog):
     # -----------------------------
     # Quantile tails support
     # -----------------------------
-    def _on_quantile_changed(self, idx: int) -> None:
-        """When a quantile tail is chosen, auto-set lower/upper to matching percentiles."""
+    def _on_quantile_changed(self, _=None) -> None:
+        """Auto-set thresholds from a manual tail percentage.
+
+        Behavior:
+        - 0%: do nothing (manual mode).
+        - (0, 50%): set thresholds to q and 1-q quantiles.
+        - 50%: set both thresholds to the median (0.5 quantile).
+        """
         if not self.values:
             return
-        text = self.quantile_combo.currentText().strip()
-        if not text or text.lower().startswith("manual"):
-            return  # keep manual values
-        # Parse like "10%"
-        try:
-            pct = float(text.rstrip("%"))
-        except Exception:
+        pct = float(self.quantile_spin.value())
+        # 0% keeps manual thresholds
+        if pct <= 0.0:
             return
-        if pct <= 0 or pct >= 50:
-            # Tails must be in (0, 50); ignore otherwise
-            return
-        q = pct / 100.0
+        # Clamp to [0, 50] for safety (spin box already enforces this)
+        pct = min(50.0, max(0.0, pct))
         svals = sorted(float(v) for v in self.values)
-        low = self._percentile(svals, q)
-        high = self._percentile(svals, 1.0 - q)
-        # Apply with clamping to spin ranges
         vmin = self.lower_spin.minimum()
         vmax = self.upper_spin.maximum()
+        if pct >= 50.0:
+            # Both thresholds set to the median
+            med = self._percentile(svals, 0.5)
+            med = max(vmin, min(vmax, float(med)))
+            self.lower_spin.setValue(med)
+            self.upper_spin.setValue(med)
+            self._update_plot()
+            return
+        q = pct / 100.0
+        low = self._percentile(svals, q)
+        high = self._percentile(svals, 1.0 - q)
         low = max(vmin, min(vmax, float(low)))
         high = max(vmin, min(vmax, float(high)))
         if low > high:
-            # Degenerate distribution; force equality
             low = high
-        # Set without re-triggering quantile change logic
         self.lower_spin.setValue(low)
         self.upper_spin.setValue(high)
         self._update_plot()

@@ -6,15 +6,22 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import math
 import numpy as np
+from PySide6.QtWidgets import QSizePolicy
 
 
 class HistogramCanvas(FigureCanvasQTAgg):
-    """Matplotlib histogram canvas usable in PyQt6 widgets."""
+    """Matplotlib histogram canvas usable in PySide6 widgets.
+
+    Uses constrained_layout so that axes, tick labels, and axis labels are
+    automatically laid out to fit within the canvas bounds at any size.
+    """
 
     def __init__(self, parent=None, width: float = 5, height: float = 2, dpi: int = 100) -> None:
-        fig = Figure(figsize=(width, height), dpi=dpi)
+        fig = Figure(figsize=(width, height), dpi=dpi, constrained_layout=True)
         super().__init__(fig)
         self.setParent(parent)
+        # Make the canvas expand to fill available space in layouts
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.axes = fig.add_subplot(111)
 
     def plot_scores(self, scores: Sequence[float], threshold: float) -> None:
@@ -131,4 +138,12 @@ class HistogramCanvas(FigureCanvasQTAgg):
                 title="Phenotype Value Distribution",
             )
         self.axes.legend()
+        # With constrained_layout enabled, drawing triggers a layout pass that
+        # allocates enough space for tick/axis labels to avoid clipping.
         self.draw()
+
+    # Ensure that on resize, a new draw is scheduled so constrained_layout can
+    # adapt the subplot geometry to the new size and keep labels visible.
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self.draw_idle()
