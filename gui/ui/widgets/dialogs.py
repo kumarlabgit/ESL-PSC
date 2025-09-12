@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QPushButton,
     QSizePolicy,
+    QComboBox,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -258,6 +259,16 @@ class OutgroupDialog(QDialog):
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
+
+        # Ensure the dialog is initially wide enough so the window title isn't truncated
+        try:
+            min_w = 420
+            self.setMinimumWidth(min_w)
+            # Use sizeHint to get a sensible initial height; ensure width >= min_w
+            hint = self.sizeHint()
+            self.resize(max(hint.width(), min_w), hint.height())
+        except Exception:
+            pass
 
     @property
     def selected(self) -> str:
