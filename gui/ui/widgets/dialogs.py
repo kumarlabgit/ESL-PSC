@@ -116,6 +116,25 @@ class PhenoThresholdDialog(QDialog):
         form.addWidget(self.upper_spin)
         layout.addLayout(form)
 
+        # Quantile tail auto-set controls
+        qrow = QHBoxLayout()
+        qlbl = QLabel("Auto-set by tails:")
+        qlbl.setToolTip(
+            "Choose a tail percentage to automatically set thresholds to the lower and upper quantiles\n"
+            "(e.g., 10% sets thresholds at the 10th and 90th percentiles)."
+        )
+        self.quantile_combo = QComboBox()
+        # First entry keeps manual control; subsequent entries auto-apply when selected
+        self.quantile_combo.addItems(["Manual", "5%", "10%", "15%", "20%", "25%", "30%"])
+        self.quantile_combo.setToolTip(
+            "Automatically set thresholds using symmetric quantile tails."
+        )
+        self.quantile_combo.currentIndexChanged.connect(self._on_quantile_changed)
+        qrow.addWidget(qlbl)
+        qrow.addWidget(self.quantile_combo)
+        qrow.addStretch()
+        layout.addLayout(qrow)
+
         self.values = list(values)
         if self.values:
             vmin, vmax = min(self.values), max(self.values)
@@ -145,6 +164,56 @@ class PhenoThresholdDialog(QDialog):
         self.canvas.plot_values(
             self.values, self.lower_spin.value(), self.upper_spin.value()
         )
+
+    # -----------------------------
+    # Quantile tails support
+    # -----------------------------
+    def _on_quantile_changed(self, idx: int) -> None:
+        """When a quantile tail is chosen, auto-set lower/upper to matching percentiles."""
+        if not self.values:
+            return
+        text = self.quantile_combo.currentText().strip()
+        if not text or text.lower().startswith("manual"):
+            return  # keep manual values
+        # Parse like "10%"
+        try:
+            pct = float(text.rstrip("%"))
+        except Exception:
+            return
+        if pct <= 0 or pct >= 50:
+            # Tails must be in (0, 50); ignore otherwise
+            return
+        q = pct / 100.0
+        svals = sorted(float(v) for v in self.values)
+        low = self._percentile(svals, q)
+        high = self._percentile(svals, 1.0 - q)
+        # Apply with clamping to spin ranges
+        vmin = self.lower_spin.minimum()
+        vmax = self.upper_spin.maximum()
+        low = max(vmin, min(vmax, float(low)))
+        high = max(vmin, min(vmax, float(high)))
+        if low > high:
+            # Degenerate distribution; force equality
+            low = high
+        # Set without re-triggering quantile change logic
+        self.lower_spin.setValue(low)
+        self.upper_spin.setValue(high)
+        self._update_plot()
+
+    def _percentile(self, sorted_vals: list[float], q: float) -> float:
+        """Return the q-th quantile using linear interpolation (q in [0,1])."""
+        n = len(sorted_vals)
+        if n == 0:
+            return 0.0
+        if q <= 0:
+            return float(sorted_vals[0])
+        if q >= 1:
+            return float(sorted_vals[-1])
+        pos = q * (n - 1)
+        lo = int(pos)
+        hi = min(lo + 1, n - 1)
+        frac = pos - lo
+        return float((1.0 - frac) * sorted_vals[lo] + frac * sorted_vals[hi])
 
     @property
     def lower_threshold(self) -> float:
