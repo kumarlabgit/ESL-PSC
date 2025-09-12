@@ -93,6 +93,15 @@ def _launch_site_viewer(
         conv = []
         ctrl = []
 
+    if not conv and not ctrl:
+        try:
+            pref = getattr(config, 'preferred_groups_combo', None)
+            if pref and isinstance(pref, (tuple, list)) and len(pref) == 2:
+                conv = list(pref[0])
+                ctrl = list(pref[1])
+        except Exception:
+            pass
+
     # Prefer response_dir if available (and no explicit groups combo selected)
     response_dir = getattr(config, "response_dir", "") or ""
     if not response_dir and not conv and not ctrl:
@@ -115,6 +124,8 @@ def _launch_site_viewer(
                         sel = getattr(parent, '_selected_response_matrix')
                         if sel in files:
                             selected_name = sel
+                    elif getattr(config, 'preferred_response_matrix', '') in files:
+                        selected_name = getattr(config, 'preferred_response_matrix')
                 except Exception:
                     pass
 
@@ -140,6 +151,11 @@ def _launch_site_viewer(
                         else:
                             ctrl.append(sp)
                 used_response_dir = True
+                if not getattr(config, 'preferred_response_matrix', ''):
+                    try:
+                        config.preferred_response_matrix = selected_name
+                    except Exception:
+                        pass
     except Exception:
         # Fall through to species groups parsing on error
         conv, ctrl, used_response_dir = [], [], False
@@ -164,6 +180,12 @@ def _launch_site_viewer(
                         conv.append(first_sp)
                     else:
                         ctrl.append(first_sp)
+                if getattr(config, 'preferred_groups_combo', None) is None:
+                    try:
+                        config.preferred_groups_combo = (list(conv), list(ctrl))
+                        config.preferred_response_matrix = ""
+                    except Exception:
+                        pass
             except Exception:
                 conv = []
                 ctrl = []
@@ -452,6 +474,8 @@ class GeneRanksDialog(QDialog):
 
         self.config = config
         self.sites_path = sites_path
+        self._selected_groups_combo = getattr(config, 'preferred_groups_combo', None)
+        self._selected_response_matrix = getattr(config, 'preferred_response_matrix', '')
 
         df = dataframe
 
@@ -560,6 +584,8 @@ class GeneRanksDialog(QDialog):
             if res:
                 try:
                     setattr(self, '_selected_groups_combo', res)
+                    self.config.preferred_groups_combo = res
+                    self.config.preferred_response_matrix = ""
                 except Exception:
                     pass
             return
@@ -648,6 +674,8 @@ class GeneRanksDialog(QDialog):
             selected = combo.currentText()
             try:
                 setattr(self, '_selected_response_matrix', selected)
+                self.config.preferred_response_matrix = selected
+                self.config.preferred_groups_combo = None
             except Exception:
                 pass
 
@@ -937,6 +965,8 @@ class FastScanResultsDialog(QDialog):
         self.setWindowTitle("Fast Scan Results")
         self.config = config
         self.outgroup = outgroup
+        self._selected_groups_combo = getattr(config, 'preferred_groups_combo', None)
+        self._selected_response_matrix = getattr(config, 'preferred_response_matrix', '')
         layout = QVBoxLayout(self)
 
         header = QHBoxLayout()
@@ -1155,6 +1185,8 @@ class FastScanResultsDialog(QDialog):
             if res:
                 try:
                     setattr(self, '_selected_groups_combo', res)
+                    self.config.preferred_groups_combo = res
+                    self.config.preferred_response_matrix = ""
                 except Exception:
                     pass
             return
@@ -1230,6 +1262,8 @@ class FastScanResultsDialog(QDialog):
                 selected = combo.currentText()
                 try:
                     setattr(self, '_selected_response_matrix', selected)
+                    self.config.preferred_response_matrix = selected
+                    self.config.preferred_groups_combo = None
                 except Exception:
                     pass
             return

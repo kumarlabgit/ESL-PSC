@@ -2,7 +2,7 @@
 Configuration model for ESL-PSC analysis.
 """
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional, Tuple
 import os
 
 @dataclass
@@ -28,6 +28,9 @@ class ESLConfig:
     # Session-level memory (not written to CLI args)
     # Remembers the last outgroup species selected in the Fast Scan dialog
     last_fast_scan_outgroup: str = ""
+    # Remembers the last species combination chosen for Site Viewer
+    preferred_groups_combo: Optional[Tuple[List[str], List[str]]] = None
+    preferred_response_matrix: str = ""
 
     # ─── Hyper-parameters ───────────────────────────────────────────────────────
     initial_lambda1: float = 0.01
