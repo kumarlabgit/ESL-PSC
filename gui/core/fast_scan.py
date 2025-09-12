@@ -40,19 +40,24 @@ def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
     return conv_ctrl
 
 
-def list_species(alignment_dir: str) -> List[str]:
+def list_species(alignment_dir: str, max_no_new: int = 200) -> List[str]:
     """Collect all species names present across alignment files.
-
+    
     Optimized to scan only FASTA header lines (">...") to avoid reading full
     sequences, which improves responsiveness when choosing an outgroup.
+    
+    Early-stop heuristic: if no new species are discovered across
+    ``max_no_new`` consecutive files (default 200), assume the set is complete
+    and stop scanning. Pass ``max_no_new=0`` to disable early stopping.
     """
     species: set[str] = set()
     if not alignment_dir or not os.path.isdir(alignment_dir):
         return []
-    for fname in os.listdir(alignment_dir):
-        if not fname.endswith(".fas"):
-            continue
+    files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
+    no_new_streak = 0
+    for fname in files:
         fpath = os.path.join(alignment_dir, fname)
+        before = len(species)
         try:
             with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
                 for line in fh:
@@ -67,7 +72,14 @@ def list_species(alignment_dir: str) -> List[str]:
                         species.add(sp)
         except Exception:
             # Skip unreadable or malformed files
-            continue
+            pass
+        after = len(species)
+        if after == before:
+            no_new_streak += 1
+        else:
+            no_new_streak = 0
+        if max_no_new and no_new_streak >= max_no_new:
+            break
     return sorted(species)
 
 
