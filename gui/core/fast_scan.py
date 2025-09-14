@@ -361,9 +361,11 @@ def fast_scan_alignments(
             if len(combos) > 1:
                 _apply_combo_top_ranking(results, len(combos), top_frac)
                 _apply_combo_top_ranking_by_diff(results, len(combos), top_frac)
+                _apply_combo_top_ranking_by_ratio(results, len(combos), top_frac)
                 results.sort(
                     key=lambda x: (
                         x.get("num_combos_top_frac", 0),
+                        x.get("num_combos_top_frac_by_ratio", 0),
                         x.get("num_combos_top_frac_by_diff", 0),
                         x.get("avg_true", 0.0),
                         x.get("gene", ""),
@@ -402,9 +404,11 @@ def fast_scan_alignments(
     if len(combos) > 1:
         _apply_combo_top_ranking(results, len(combos), top_frac)
         _apply_combo_top_ranking_by_diff(results, len(combos), top_frac)
+        _apply_combo_top_ranking_by_ratio(results, len(combos), top_frac)
         results.sort(
             key=lambda x: (
                 x.get("num_combos_top_frac", 0),
+                x.get("num_combos_top_frac_by_ratio", 0),
                 x.get("num_combos_top_frac_by_diff", 0),
                 x.get("avg_true", 0.0),
                 x.get("gene", ""),
@@ -630,3 +634,59 @@ def _apply_combo_top_ranking_by_diff(results: List[Dict[str, float | int]], n_co
     for i, row in enumerate(results):
         row["num_combos_top_frac_by_diff"] = in_top_counts[i]
         row["top_fraction_by_diff"] = float(top_frac)
+
+def _apply_combo_top_ranking_by_ratio(results: List[Dict[str, float | int]], n_combos: int, top_frac: float) -> None:
+    """Compute per-gene count of combos where the true/(control+1) ratio is in the top fraction.
+
+    Uses per-combo true counts and diffs (true - control) to derive control.
+    If per-combo diff is missing, assume control=0 for that combo when true is present.
+    Adds:
+      - num_combos_top_frac_by_ratio
+      - top_fraction_by_ratio
+    """
+    per_combo_lists: List[List[tuple[int, float]]] = [[] for _ in range(n_combos)]
+    for i, row in enumerate(results):
+        tvals = row.get("per_combo_true") or []
+        dvals = row.get("per_combo_diff") or []
+        # Ensure lengths match n_combos, padding with None
+        if len(tvals) < n_combos:
+            tvals = list(tvals) + [None] * (n_combos - len(tvals))
+        if len(dvals) < n_combos:
+            dvals = list(dvals) + [None] * (n_combos - len(dvals))
+        for j in range(n_combos):
+            tv = tvals[j]
+            if tv is None:
+                continue
+            try:
+                t = float(tv)
+            except Exception:
+                continue
+            dv = dvals[j]
+            ctrl = 0.0
+            if dv is not None:
+                try:
+                    d = float(dv)
+                    ctrl = max(0.0, t - d)
+                except Exception:
+                    ctrl = 0.0
+            ratio = t / (ctrl + 1.0)
+            per_combo_lists[j].append((i, ratio))
+
+    in_top_counts = [0] * len(results)
+    for j in range(n_combos):
+        lst = per_combo_lists[j]
+        if not lst:
+            continue
+        lst.sort(key=lambda t: t[1], reverse=True)
+        k = max(1, int(len(lst) * top_frac))
+        if k >= len(lst):
+            chosen = set(idx for idx, _ in lst)
+        else:
+            cutoff_val = lst[k - 1][1]
+            chosen = set(idx for idx, val in lst if val >= cutoff_val)
+        for idx in chosen:
+            in_top_counts[idx] += 1
+
+    for i, row in enumerate(results):
+        row["num_combos_top_frac_by_ratio"] = in_top_counts[i]
+        row["top_fraction_by_ratio"] = float(top_frac)

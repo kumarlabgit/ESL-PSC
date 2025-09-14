@@ -1036,19 +1036,24 @@ class FastScanResultsDialog(QWidget):
 
         # Configure columns dynamically: include combo-based columns only when present
         has_combo_rank_true = 'num_combos_top_frac' in self.results_df.columns
+        has_combo_rank_ratio = 'num_combos_top_frac_by_ratio' in self.results_df.columns
         has_combo_rank_diff = 'num_combos_top_frac_by_diff' in self.results_df.columns
         sort_col_idx = None
-        if has_combo_rank_true or has_combo_rank_diff:
-            # Build headers with 'by True' immediately after Gene, then optional 'by Diff'
+        if has_combo_rank_true or has_combo_rank_ratio or has_combo_rank_diff:
+            # Build headers with 'by Ratio' then 'by Diff', then plain True after those
             headers = ["Gene"]
-            idx_true_hdr = None
+            idx_ratio_hdr = None
             idx_diff_hdr = None
-            if has_combo_rank_true:
-                idx_true_hdr = len(headers)
-                headers.append("Combos in Top %")
+            idx_true_hdr = None
+            if has_combo_rank_ratio:
+                idx_ratio_hdr = len(headers)
+                headers.append("Combos in Top % by Ratio")
             if has_combo_rank_diff:
                 idx_diff_hdr = len(headers)
                 headers.append("Combos in Top % by Diff")
+            if has_combo_rank_true:
+                idx_true_hdr = len(headers)
+                headers.append("Combos in Top %")
             # Core metrics
             headers += [
                 "Avg True Convergence",
@@ -1066,6 +1071,16 @@ class FastScanResultsDialog(QWidget):
                         pct = int(round(float(tf_series.dropna().iloc[0]) * 100))
                         if idx_true_hdr is not None:
                             headers[idx_true_hdr] = f"Combos in Top {pct}%"
+                # Ratio uses its own stored fraction but falls back to the True's if not present
+                if has_combo_rank_ratio:
+                    tfr = self.results_df.get('top_fraction_by_ratio')
+                    pct_r = None
+                    if tfr is not None and not tfr.dropna().empty:
+                        pct_r = int(round(float(tfr.dropna().iloc[0]) * 100))
+                    elif pct is not None:
+                        pct_r = pct
+                    if pct_r is not None and idx_ratio_hdr is not None:
+                        headers[idx_ratio_hdr] = f"Combos in Top {pct_r}% by Ratio"
                 if has_combo_rank_diff:
                     tf_series_d = self.results_df.get('top_fraction_by_diff')
                     pct_d = None
@@ -1075,11 +1090,13 @@ class FastScanResultsDialog(QWidget):
                         pct_d = pct
                     if pct_d is not None and idx_diff_hdr is not None:
                         headers[idx_diff_hdr] = f"Combos in Top {pct_d}% by Diff"
-                # Default sort column -> by True if present, else by Diff if present
-                if idx_true_hdr is not None:
-                    sort_col_idx = idx_true_hdr
+                # Default sort column -> prefer Ratio if present (more robust), else True, else Diff
+                if idx_ratio_hdr is not None:
+                    sort_col_idx = idx_ratio_hdr
                 elif idx_diff_hdr is not None:
                     sort_col_idx = idx_diff_hdr
+                elif idx_true_hdr is not None:
+                    sort_col_idx = idx_true_hdr
             except Exception:
                 pass
             self.table.setColumnCount(len(headers))
@@ -1119,19 +1136,19 @@ class FastScanResultsDialog(QWidget):
             # Gene column – regular text item
             self.table.setItem(row_idx, 0, QTableWidgetItem(str(row["gene"])) )
             col = 1
-            # Combos by True immediately after Gene, if present
-            if has_combo_rank_true:
-                combos_top = row.get('num_combos_top_frac', None)
-                if combos_top is None or (isinstance(combos_top, float) and pd.isna(combos_top)):
-                    display_ct = ''
-                    combos_top_val = float('nan')
+            # Combos by Ratio first (if present)
+            if has_combo_rank_ratio:
+                combos_top_r = row.get('num_combos_top_frac_by_ratio', None)
+                if combos_top_r is None or (isinstance(combos_top_r, float) and pd.isna(combos_top_r)):
+                    display_ct_r = ''
+                    combos_top_val_r = float('nan')
                 else:
                     try:
-                        combos_top_val = float(combos_top)
+                        combos_top_val_r = float(combos_top_r)
                     except Exception:
-                        combos_top_val = float('nan')
-                    display_ct = _fmt_num(combos_top_val) if combos_top_val == combos_top_val else ''
-                self.table.setItem(row_idx, col, NumericItem(combos_top_val, display_ct))
+                        combos_top_val_r = float('nan')
+                    display_ct_r = _fmt_num(combos_top_val_r) if combos_top_val_r == combos_top_val_r else ''
+                self.table.setItem(row_idx, col, NumericItem(combos_top_val_r, display_ct_r))
                 col += 1
             # Combos by Diff next (if present)
             if has_combo_rank_diff:
@@ -1146,6 +1163,20 @@ class FastScanResultsDialog(QWidget):
                         combos_top_val_d = float('nan')
                     display_ct_d = _fmt_num(combos_top_val_d) if combos_top_val_d == combos_top_val_d else ''
                 self.table.setItem(row_idx, col, NumericItem(combos_top_val_d, display_ct_d))
+                col += 1
+            # Plain "Combos in Top %" (by true) last, if present
+            if has_combo_rank_true:
+                combos_top = row.get('num_combos_top_frac', None)
+                if combos_top is None or (isinstance(combos_top, float) and pd.isna(combos_top)):
+                    display_ct = ''
+                    combos_top_val = float('nan')
+                else:
+                    try:
+                        combos_top_val = float(combos_top)
+                    except Exception:
+                        combos_top_val = float('nan')
+                    display_ct = _fmt_num(combos_top_val) if combos_top_val == combos_top_val else ''
+                self.table.setItem(row_idx, col, NumericItem(combos_top_val, display_ct))
                 col += 1
             # Core metrics
             v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
@@ -1342,7 +1373,7 @@ class FastScanResultsDialog(QWidget):
                 if col in df.columns:
                     df = df.drop(columns=[col])
             # Reorder columns: Gene, then combo-rank columns (if present), then core metrics, then the rest
-            present_front = [c for c in ["gene", "num_combos_top_frac", "num_combos_top_frac_by_diff"] if c in df.columns]
+            present_front = [c for c in ["gene", "num_combos_top_frac_by_ratio", "num_combos_top_frac_by_diff", "num_combos_top_frac"] if c in df.columns]
             metrics = [
                 "avg_true",
                 "avg_control",
