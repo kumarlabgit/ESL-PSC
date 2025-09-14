@@ -40,6 +40,48 @@ def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
     return conv_ctrl
 
 
+def _parse_species_groups_two_pair(path: str) -> List[tuple[List[str], List[str]]]:
+    """Return all 2x2 combos implied by a species groups file.
+
+    Interpret the groups file as alternating convergent/control lines per pair.
+    For N pairs, generate combos for every choice of two distinct pairs (i, j),
+    i < j. If a line contains multiple comma-separated species, generate a
+    variant for each option.
+
+    Example for 3 pairs (lines C1, K1, C2, K2, C3, K3):
+      combos include (C1,K1,C2,K2), (C1,K1,C3,K3), (C2,K2,C3,K3) with expansion
+      across any multi-species alternatives per line.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+    except Exception:
+        return []
+    if not lines or len(lines) % 2 != 0:
+        return []
+    groups: List[List[str]] = []
+    for ln in lines:
+        opts = [sp.strip() for sp in ln.split(",") if sp.strip()]
+        if not opts:
+            return []
+        groups.append(opts)
+    n_pairs = len(groups) // 2
+    combos: List[tuple[List[str], List[str]]] = []
+    # Choose 2 pairs (i, j)
+    for i in range(n_pairs):
+        for j in range(i + 1, n_pairs):
+            conv_i = groups[2 * i]
+            ctrl_i = groups[2 * i + 1]
+            conv_j = groups[2 * j]
+            ctrl_j = groups[2 * j + 1]
+            for a in conv_i:
+                for b in ctrl_i:
+                    for c in conv_j:
+                        for d in ctrl_j:
+                            combos.append(([a, c], [b, d]))
+    return combos
+
+
 def list_species(alignment_dir: str, max_no_new: int = 200) -> List[str]:
     """Collect all species names present across alignment files.
     
@@ -270,6 +312,7 @@ def fast_scan_alignments(
     response_dir: str | None = None,
     n_jobs: int | None = None,
     top_frac: float = 0.01,
+    two_pair_combos: bool = False,
 ) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -284,7 +327,7 @@ def fast_scan_alignments(
     progress_cb: callable, optional
         Callback receiving ``(current, total)`` file counts.
     """
-    combos = _parse_species_groups(species_groups_file)
+    combos = _parse_species_groups_two_pair(species_groups_file) if two_pair_combos else _parse_species_groups(species_groups_file)
     files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
     total = len(files)
     results: List[Dict[str, float | int]] = []

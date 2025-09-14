@@ -393,10 +393,15 @@ class InputPage(BaseWizardPage):
             return
         # Preselect the last chosen outgroup if remembered and still present
         default_out = getattr(self.config, 'last_fast_scan_outgroup', '') or None
-        dlg = OutgroupDialog(species, self, default_selected=default_out)
+        dlg = OutgroupDialog(species, self, default_selected=default_out, show_two_pair_option=True)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         outgroup = dlg.selected
+        use_two_pair = False
+        try:
+            use_two_pair = bool(dlg.use_two_pair_combos)
+        except Exception:
+            use_two_pair = False
         # Remember for next Fast Scan within this session
         try:
             setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
@@ -429,7 +434,13 @@ class InputPage(BaseWizardPage):
         except Exception:
             n_jobs = 1
         results = fast_scan.fast_scan_alignments(
-            align_dir, groups_file, outgroup, update, response_dir=resp_dir, n_jobs=n_jobs
+            align_dir,
+            groups_file,
+            outgroup,
+            update,
+            response_dir=resp_dir,
+            n_jobs=n_jobs,
+            two_pair_combos=use_two_pair,
         )
         progress.close()
         if not results:

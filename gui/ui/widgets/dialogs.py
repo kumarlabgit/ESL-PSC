@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QComboBox,
+    QCheckBox,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -242,7 +243,7 @@ class PhenoThresholdDialog(QDialog):
 class OutgroupDialog(QDialog):
     """Dialog to pick an outgroup species."""
 
-    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None):
+    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None, show_two_pair_option: bool = False):
         super().__init__(parent)
         self.setWindowTitle("Select Outgroup Species")
         layout = QVBoxLayout(self)
@@ -255,6 +256,16 @@ class OutgroupDialog(QDialog):
             if idx >= 0:
                 self._combo.setCurrentIndex(idx)
         layout.addWidget(self._combo)
+        # Option: use 2x2 combos derived from species groups (Fast Scan only)
+        self._two_pair_check = None
+        if show_two_pair_option:
+            self._two_pair_check = QCheckBox("Use all two-pair combos")
+            self._two_pair_check.setToolTip(
+                "Interpret the species groups file by running every combination of two pairs (2x2)\n"
+                "instead of the standard NxN across all pairs. For pairs with multiple species\n"
+                "options on a line, generate variants for each option."
+            )
+            layout.addWidget(self._two_pair_check)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
@@ -273,3 +284,10 @@ class OutgroupDialog(QDialog):
     @property
     def selected(self) -> str:
         return self._combo.currentText()
+
+    @property
+    def use_two_pair_combos(self) -> bool:
+        try:
+            return bool(self._two_pair_check and self._two_pair_check.isChecked())
+        except Exception:
+            return False
