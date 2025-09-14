@@ -56,6 +56,7 @@ def _launch_site_viewer(
     sites_path: str | None,
     parent=None,
     outgroup_species: list[str] | None = None,
+    prefer_ccs_filter: bool = False,
 ) -> None:
     """Open the SiteViewer window for the given gene."""
     align_dir = getattr(config, "alignments_dir", "")
@@ -279,6 +280,17 @@ def _launch_site_viewer(
         species_pheno_map=species_pheno_map,
         pheno_name_map=pheno_name_map,
     )
+    # If requested (e.g., when launched from Fast Scan results), default to CCS-only filter
+    try:
+        if prefer_ccs_filter and getattr(viewer, 'has_all_three', False):
+            # Ensure filter states reflect available data, then select CCS (idx 2)
+            if hasattr(viewer, 'updateFilterComboStates'):
+                viewer.updateFilterComboStates()
+            if hasattr(viewer, 'filter_combo') and viewer.filter_combo.model().item(2).isEnabled():
+                viewer.filter_combo.setCurrentIndex(2)  # triggers rebuild via signal
+    except Exception:
+        # Non-fatal: if anything goes wrong, continue with default behavior
+        pass
     # Ensure the viewer shows on top
     try:
         viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
@@ -1297,7 +1309,14 @@ class FastScanResultsDialog(QWidget):
             return
         gene = gene_item.text()
         try:
-            _launch_site_viewer(gene, self.config, None, parent=self, outgroup_species=[self.outgroup])
+            _launch_site_viewer(
+                gene,
+                self.config,
+                None,
+                parent=self,
+                outgroup_species=[self.outgroup],
+                prefer_ccs_filter=True,
+            )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 

@@ -27,6 +27,10 @@ class SiteViewer(QWidget):
     # current Python process.
     # ------------------------------------------------------------------
     REMEMBERED_OUTGROUP: List[str] = []
+    # Remember last Convergent and Control sets in-session (used when opening
+    # Site Viewer without a groups file or response dir)
+    REMEMBERED_CONVERGENT: List[str] = []
+    REMEMBERED_CONTROL: List[str] = []
 
     """
     Main alignment-inspection widget.
@@ -46,7 +50,7 @@ class SiteViewer(QWidget):
         # Optional phenotype information
         species_pheno_map: Dict[str, float] | None = None,
         pheno_name_map: Dict[float, str] | None = None,
-    ) -> None:
+        ) -> None:
         super().__init__(parent)
         # Ensure this widget is a normal top-level window (not a dialog) with
         # standard controls and no always-on-top hints, and is non-modal.
@@ -65,6 +69,9 @@ class SiteViewer(QWidget):
         except Exception:
             pass
 
+        # Precompute species present in this alignment for subsequent checks
+        all_species_this_alignment = [r[0] for r in records]
+
         # ------------------------------------------------------------------
         # If caller did not supply an outgroup list, attempt to re-apply the
         # remembered species from a previous SiteViewer window (if any).
@@ -74,7 +81,6 @@ class SiteViewer(QWidget):
             # outgroup list for this new viewer.
             # Try to add each remembered species to the outgroup if it exists in this
             # alignment and is not already there.
-            all_species_this_alignment = [r[0] for r in records]
             for sp in SiteViewer.REMEMBERED_OUTGROUP:
                 if sp not in all_species_this_alignment:
                     continue  # Species absent from this alignment
@@ -92,6 +98,31 @@ class SiteViewer(QWidget):
                         outgroup_species.append(sp)
             # Ensure deterministic ordering
             outgroup_species.sort()
+
+        # ------------------------------------------------------------------
+        # If no explicit Convergent/Control lists were provided (i.e., no
+        # groups file/response dir used), attempt to re-apply the remembered
+        # Convergent/Control sets from this session, restricted to species
+        # present in this alignment. Any species moved into Convergent/Control
+        # are removed from Outgroup to avoid duplication.
+        # ------------------------------------------------------------------
+        if (not convergent_species and not control_species) and (
+            SiteViewer.REMEMBERED_CONVERGENT or SiteViewer.REMEMBERED_CONTROL
+        ):
+            for sp in SiteViewer.REMEMBERED_CONVERGENT:
+                if sp in all_species_this_alignment:
+                    if sp in outgroup_species:
+                        outgroup_species.remove(sp)
+                    if sp not in convergent_species:
+                        convergent_species.append(sp)
+            for sp in SiteViewer.REMEMBERED_CONTROL:
+                if sp in all_species_this_alignment:
+                    if sp in outgroup_species:
+                        outgroup_species.remove(sp)
+                    if sp not in control_species:
+                        control_species.append(sp)
+            convergent_species.sort()
+            control_species.sort()
 
         # ------------------------------------------------------------------
         # store the minimal bits up front
@@ -659,18 +690,22 @@ class SiteViewer(QWidget):
             self.only_ccs = False
             self.hide_control_convergence = False
 
-        # Update remembered outgroup list after any change
+        # Update remembered lists after any change
         SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+        SiteViewer.REMEMBERED_CONVERGENT = self.convergent_species.copy()
+        SiteViewer.REMEMBERED_CONTROL = self.control_species.copy()
 
         # now recalc scores + rebuild
         self.recalc_scores()
         self.rebuildTables()
 
     # ------------------------------------------------------------------
-    # Ensure the remembered outgroup list is persisted when the window closes
+    # Ensure the remembered lists are persisted when the window closes
     # ------------------------------------------------------------------
     def closeEvent(self, event):  # noqa: N802 (Qt override)
         SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+        SiteViewer.REMEMBERED_CONVERGENT = self.convergent_species.copy()
+        SiteViewer.REMEMBERED_CONTROL = self.control_species.copy()
         super().closeEvent(event)
 
     def recalc_scores(self):

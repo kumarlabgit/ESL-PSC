@@ -274,15 +274,6 @@ class InputPage(BaseWizardPage):
         """Open the Site Viewer for a chosen alignment."""
         groups_path = getattr(self.config, 'species_groups_file', '')
         resp_dir = getattr(self.config, 'response_dir', '')
-        if not (groups_path and os.path.exists(groups_path)) and not (
-            resp_dir and os.path.isdir(resp_dir)
-        ):
-            QMessageBox.warning(
-                self,
-                "Site Viewer",
-                "Please select a species groups file or a response matrix directory first.",
-            )
-            return
         align_dir = getattr(self.config, 'alignments_dir', '')
         if not align_dir or not os.path.isdir(align_dir):
             QMessageBox.warning(
@@ -301,8 +292,10 @@ class InputPage(BaseWizardPage):
             return
         gene = os.path.splitext(os.path.basename(path))[0]
 
-        # Choose species combination
-        if groups_path and os.path.exists(groups_path):
+        # Choose species combination only if a groups file or response dir exists; otherwise skip
+        has_groups_file = bool(groups_path and os.path.exists(groups_path))
+        has_response_dir = bool(resp_dir and os.path.isdir(resp_dir))
+        if has_groups_file:
             current = getattr(self.config, 'preferred_groups_combo', None)
             res = _select_combo_from_groups(self, groups_path, current)
             if not res:
@@ -311,7 +304,7 @@ class InputPage(BaseWizardPage):
             self.config.preferred_response_matrix = ""
             setattr(self, '_selected_groups_combo', res)
             setattr(self, '_selected_response_matrix', "")
-        else:
+        elif has_response_dir:
             files = sorted([f for f in os.listdir(resp_dir) if f.endswith('.txt')])
             if not files:
                 QMessageBox.warning(self, "Site Viewer", "No response matrices found.")
