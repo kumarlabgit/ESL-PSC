@@ -276,7 +276,7 @@ def _launch_site_viewer(
         all_sites_info,
         False,
         pss_map,
-        parent=parent,
+        parent=None,
         species_pheno_map=species_pheno_map,
         pheno_name_map=pheno_name_map,
     )
@@ -296,59 +296,8 @@ def _launch_site_viewer(
         viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
     except Exception:
         pass
-    # Make sure the launching window isn't modal or on-top so it won't trap
-    # the Site Viewer beneath it on some Linux window managers.
-    try:
-        if parent is not None:
-            try:
-                parent.setWindowModality(Qt.WindowModality.NonModal)
-            except Exception:
-                pass
-            try:
-                pflags = parent.windowFlags()
-                pflags &= ~Qt.WindowType.WindowStaysOnTopHint
-                pflags &= ~Qt.WindowType.X11BypassWindowManagerHint
-                parent.setWindowFlags(pflags)
-                parent.show()  # reapply flags
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # Show the viewer and ensure it initially comes to front. Some WMs may
-    # keep dialogs above new windows; briefly mark viewer as topmost, then
-    # remove that hint so normal stacking resumes.
-    try:
-        viewer.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-    except Exception:
-        pass
+    # Show the viewer once; avoid immediate raise/activate to prevent flicker
     viewer.show()
-    try:
-        # Bring the viewer to the front once; do not touch other windows
-        viewer.raise_()
-        viewer.activateWindow()
-    except Exception:
-        pass
-    # Reassert once after the window is mapped to handle WM timing quirks
-    try:
-        def _raise_viewer_once():
-            try:
-                viewer.raise_()
-                viewer.activateWindow()
-            except Exception:
-                pass
-        QTimer.singleShot(0, _raise_viewer_once)
-        # Drop the temporary topmost hint shortly after mapping
-        def _drop_topmost():
-            try:
-                viewer.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
-                # Re-show to apply new flags on some platforms
-                viewer.show()
-            except Exception:
-                pass
-        QTimer.singleShot(150, _drop_topmost)
-    except Exception:
-        pass
     _open_dialogs.append(viewer)
  
 def _select_combo_from_groups(parent, groups_path, current=None):
