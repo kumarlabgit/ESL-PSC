@@ -323,8 +323,10 @@ class SiteViewer(QWidget):
         self.top_right_table.verticalScrollBar().valueChanged.connect(
             self.top_left_table.verticalScrollBar().setValue
         )
-        # no horizontal scroll on the left
-        self.top_left_table.horizontalScrollBar().setDisabled(True)
+        # No user horizontal scrolling on the left; we'll toggle the policy dynamically
+        # to reserve space when the right table shows a horizontal scrollbar.
+        self.top_left_table.horizontalScrollBar().setEnabled(False)
+        self.top_left_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.top_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.top_splitter.addWidget(self.top_left_table)
@@ -345,6 +347,9 @@ class SiteViewer(QWidget):
         )
         self.bottom_left_table.horizontalHeader().setStretchLastSection(True)
         self.bottom_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # No user horizontal scrolling on the left; policy toggled dynamically for alignment
+        self.bottom_left_table.horizontalScrollBar().setEnabled(False)
+        self.bottom_left_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.bottom_right_table = QTableWidget()
         self.bottom_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -367,6 +372,12 @@ class SiteViewer(QWidget):
         self.bottom_right_table.horizontalScrollBar().valueChanged.connect(
             self.top_right_table.horizontalScrollBar().setValue
         )
+
+        # Keep left panes aligned with right panes when horizontal scrollbars appear/disappear
+        self.top_right_table.horizontalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.top_right_table.verticalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.bottom_right_table.horizontalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.bottom_right_table.verticalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
 
         self.bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.bottom_splitter.addWidget(self.bottom_left_table)
@@ -443,6 +454,9 @@ class SiteViewer(QWidget):
         self.default_sort_mode = "position"
         self.sort_combo.blockSignals(False)
         self.sort_combo.currentIndexChanged.connect(self.onSortModeChanged)
+
+        # Initial sync of auxiliary scrollbars to avoid bottom-row misalignment
+        self._syncAuxScrollbars()
 
 
     def showHelp(self):
@@ -872,6 +886,8 @@ class SiteViewer(QWidget):
         self._unifyCols()
         # Re-adjust vertical splitter after tables rebuild
         self._adjustVerticalSplitter()
+        # Ensure left panes reserve scrollbar height if right panes need it
+        self._syncAuxScrollbars()
 
     def _buildTopTables(self, displayed_sites):
         self.top_left_table.clearContents()
@@ -1157,6 +1173,35 @@ class SiteViewer(QWidget):
         bottom_size = total_height - top_size
         self.vertical_splitter.setSizes([top_size, bottom_size])
 
+    def _syncAuxScrollbars(self) -> None:
+        """Ensure left species-name panes reserve horizontal scrollbar space when right panes show it.
+
+        This prevents bottom-row misalignment when both vertical and horizontal scrollbars are present
+        on the right tables by showing a non-interactive horizontal bar on the left.
+        """
+        try:
+            def sync_pair(left_tbl, right_tbl):
+                # Determine if right table actually needs the horizontal/vertical scrollbar
+                right_h_needed = (right_tbl.horizontalScrollBar().maximum() > 0) or (
+                    right_tbl.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+                )
+                right_v_needed = (right_tbl.verticalScrollBar().maximum() > 0) or (
+                    right_tbl.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+                )
+                # Only reserve space when both are present to minimize wasted height
+                show_left_h = right_h_needed and right_v_needed
+                desired = Qt.ScrollBarPolicy.ScrollBarAlwaysOn if show_left_h else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                if left_tbl.horizontalScrollBarPolicy() != desired:
+                    left_tbl.setHorizontalScrollBarPolicy(desired)
+                # Keep it non-interactive
+                left_tbl.horizontalScrollBar().setEnabled(False)
+
+            sync_pair(self.top_left_table, self.top_right_table)
+            sync_pair(self.bottom_left_table, self.bottom_right_table)
+        except Exception:
+            # Non-fatal: if anything goes wrong, skip alignment adjustment
+            pass
+
 
     def _unifyCols(self):
         self.top_right_table.resizeColumnsToContents()
@@ -1216,3 +1261,8 @@ class SiteViewer(QWidget):
         if event.type() == QEvent.Type.PaletteChange:
             self._apply_gridline_style()
         super().changeEvent(event)
+
+    def resizeEvent(self, event):  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        # Re-evaluate auxiliary scrollbars after layout/viewport size changes
+        self._syncAuxScrollbars()
