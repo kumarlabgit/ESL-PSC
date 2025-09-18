@@ -59,6 +59,32 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
 
 ![Tree Viewer](./images/tree_viewer.png)
 
+#### September 2025 Update – Continuous Phenotype Support
+
+We expanded GUI support for continuous (numeric) phenotypes across the Tree Viewer, analysis options, Site Viewer, and plots:
+
+- Tree Viewer (continuous mode)
+  - Load a phenotype file with float values. Species labels are colored by percentile using a Viridis gradient and the numeric value is shown next to each species name.
+  - Automatic contrast pair selection from continuous values using thresholds. When you click Auto Select Contrast Pairs with continuous phenotypes, you will be prompted for lower/upper thresholds to temporarily binarize values for the algorithm. Thresholds do not change the on-screen gradient coloring.
+  - Threshold picker dialog includes an interactive histogram and a tail-percentage control to auto-set symmetric quantile thresholds (e.g., 10% applies the 10th and 90th percentiles; 50% sets both to the median) while still allowing manual entry.
+  - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Default.
+  - Exported SVGs include the continuous colorbar and low/high labels. In continuous mode, manual binary tools such as Invert Phenotype and Set All to Non‑convergent are disabled by design.
+
+- Analysis modes (Parameters page and CLI)
+  - New GUI toggle: Use continuous phenotype values? This runs ESL-PSC with linear regression (ordinary least squares; sg_lasso_leastr) instead of binary logistic regression.
+  - CLI flag: `--use_continuous_phenotypes` to enable continuous-response modeling. When active, binary SPS plots are disabled by default.
+  - New plot option for continuous runs: a 2D density plot of true phenotype (X) vs SPS (Y). In the GUI this appears as Generate phenotype density plot when continuous mode is on. CLI flag: `--make_continuous_plot`.
+
+- Site Viewer: phenotype-aware “Other Species” pane
+  - Phenotype values (if provided) are displayed alongside species names, and you can sort “Other” species by Phenotype High → Low or Phenotype Low → High in addition to Alphabetical and MSA Order.
+
+- Plots for predictions
+  - Binary phenotypes: violin or KDE SPS plots remain available when a binary phenotype file is supplied.
+  - Continuous phenotypes: select the new Phenotype vs SPS density plot (GUI checkbox or `--make_continuous_plot`).
+
+- Related improvements
+  - SPS plot controls are always visible on the Parameters page but are automatically disabled when not applicable (e.g., continuous mode or no phenotype file), keeping the UI consistent while preventing invalid choices.
+  - Fast Scan quality-of-life: an option in the Outgroup dialog to Use all two‑pair combos interprets a species groups file by generating all 2×2 pair combinations (including expansion for lines with multiple species).
 
 ### Running the GUI
 1. Ensure the GUI dependencies are installed:
