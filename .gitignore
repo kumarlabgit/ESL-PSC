@@ -22,6 +22,8 @@ gui/__pycache__/main.cpython-39.pyc
 .DS_Store
 __pycache__/
 
+.venv
+
 esl_psc_output/esl_psc_results_gene_ranks.csv
 esl_psc_output/esl_psc_results_species_predictions.csv
 esl_psc_output/esl_psc_results_pred_sps_plot.svg
