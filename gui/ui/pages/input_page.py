@@ -519,6 +519,8 @@ class InputPage(BaseWizardPage):
             on_groups_saved=self._update_groups_file,
             on_alignments_changed=self._update_alignment_dir,
             alignments_dir=getattr(self.config, 'alignments_dir', ''),
+            initial_groups_file=getattr(self.config, 'species_groups_file', ''),
+            initial_phenotypes_file=getattr(self.config, 'species_phenotypes_file', ''),
         )
         self._tree_window.show()
 

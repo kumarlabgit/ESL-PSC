@@ -90,6 +90,8 @@ class TreeViewer(QWidget):
         on_alignments_changed: Optional[Callable[[str], None]] = None,
 
         alignments_dir: str = "",
+        initial_groups_file: str = "",
+        initial_phenotypes_file: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -131,6 +133,10 @@ class TreeViewer(QWidget):
         self._on_groups_saved = on_groups_saved
         self._on_alignments_changed = on_alignments_changed
         self._alignments_dir = alignments_dir
+        # Optionally preload a species groups file on open (if provided by caller)
+        self._initial_groups_file = initial_groups_file or ""
+        # Optionally preload a phenotypes file on open (if provided by caller)
+        self._initial_phenotypes_file = initial_phenotypes_file or ""
 
         # Continuous phenotype support
         self._continuous_pheno: bool = False
@@ -318,6 +324,23 @@ class TreeViewer(QWidget):
         self._undo_stack: List[Dict] = []
         self._redo_stack: List[Dict] = []
         self._update_undo_redo_btns()
+
+        # If an initial phenotypes file path was provided and exists, load it first
+        try:
+            if self._initial_phenotypes_file and os.path.exists(self._initial_phenotypes_file):
+                # Do not push undo stack or notify upstream on initial load
+                self._load_phenotypes_from_path(self._initial_phenotypes_file, push_undo=False, notify=False)
+        except Exception:
+            # Silently ignore preload errors to avoid blocking the viewer from opening
+            pass
+
+        # If an initial groups file path was provided and exists, load it now (after phenotypes)
+        try:
+            if self._initial_groups_file and os.path.exists(self._initial_groups_file):
+                self._load_groups_from_path(self._initial_groups_file)
+        except Exception:
+            # Silently ignore preload errors to avoid blocking the viewer from opening
+            pass
 
     # ------------------------------------------------------------------
     def _update_pheno_controls_enabled(self) -> None:
@@ -1199,16 +1222,79 @@ class TreeViewer(QWidget):
         self._selection_rect = None
 
     # ------------------------------------------------------------------
-    def _load_groups(self) -> None:
-        """Load a species groups file and apply its pairs."""
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Species Groups",
-            os.getcwd(),
-            "Text Files (*.txt);;All Files (*)",
-        )
+    def _load_phenotypes_from_path(self, path: str, *, push_undo: bool = True, notify: bool = True) -> bool:
+        """Load phenotypes from a CSV path and redraw.
+
+        The file must contain two columns per row: species name and numeric phenotype value.
+        Continuous values are supported. Returns True on success, False on failure.
+        """
         if not path:
-            return
+            return False
+        phenos: Dict[str, float] = {}
+        try:
+            import csv
+            with open(path, newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row or len(row) < 2:
+                        continue
+                    name = (row[0] or "").strip()
+                    val_str = (row[1] or "").strip()
+                    if not name or not val_str:
+                        continue
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        continue
+                    phenos[name] = val
+            if not phenos:
+                raise ValueError("No valid phenotype entries found")
+        except Exception as exc:
+            # Read first 100 characters for context, if possible
+            preview = ""
+            try:
+                with open(path, "r", errors="ignore") as _pf:
+                    preview = _pf.read(100)
+            except Exception:
+                preview = "<unable to read preview>"
+
+            QMessageBox.warning(
+                self,
+                "Phenotypes Error",
+                (
+                    "The file format doesn't look right for a phenotype file and it couldn't be loaded. "
+                    "Are you sure you meant to load this?\n\n"
+                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}\n\nDetails: {exc}"
+                ),
+            )
+            return False
+
+        if push_undo:
+            self._push_undo()
+        self._phenotypes = phenos
+        self._update_pheno_mode_and_range()
+        # Loading phenotypes resets existing pairs to avoid inconsistent states
+        self._pairs.clear()
+        self._current_role = None
+        self._current_first = None
+        self._reset_scene()
+        self._draw_tree(self._tree)
+        self._apply_pairs()
+        self._update_auto_btn()
+        if notify and self._on_pheno_changed:
+            self._on_pheno_changed(path)
+        return True
+
+    # ------------------------------------------------------------------
+    def _load_groups_from_path(self, path: str) -> bool:
+        """Load a species groups file from the given path and apply its pairs.
+
+        Returns True on success, False on failure. On success, this also invokes
+        the on_groups_saved callback (to propagate the chosen file path upstream),
+        prunes nested pairs, and updates the scene overlays.
+        """
+        if not path:
+            return False
         try:
             with open(path) as f:
                 lines = [ln.strip() for ln in f if ln.strip()]
@@ -1248,7 +1334,7 @@ class TreeViewer(QWidget):
                     f"File: {os.path.basename(path)}\nFirst 100 characters:\n\n{preview}\n\nDetails: {exc}"
                 ),
             )
-            return
+            return False
 
         self._pairs = pairs
         self._current_role = None
@@ -1257,6 +1343,20 @@ class TreeViewer(QWidget):
         self._apply_pairs()
         if self._on_groups_saved:
             self._on_groups_saved(path)
+        return True
+
+    # ------------------------------------------------------------------
+    def _load_groups(self) -> None:
+        """Load a species groups file and apply its pairs."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Species Groups",
+            os.getcwd(),
+            "Text Files (*.txt);;All Files (*)",
+        )
+        if not path:
+            return
+        self._load_groups_from_path(path)
 
     # ------------------------------------------------------------------
     def _save_groups(self) -> None:
