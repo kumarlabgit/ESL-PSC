@@ -943,8 +943,23 @@ class TreeViewer(QWidget):
                 conv, ctrl = self._current_first, name
             else:
                 conv, ctrl = name, self._current_first
+            # Attempt to add the pair
             self._pairs.append(PairInfo(conv, ctrl))
+            # Existing logic will remove pairs that are ancestors of others.
+            # If that happens to this newly added pair, the addition "fails".
             self._prune_nested_pairs()
+            # If the newly added pair was pruned out, inform the user and keep
+            # the current selection active so they can choose a different second.
+            if not any(p.convergent == conv and p.control == ctrl for p in self._pairs):
+                QMessageBox.information(
+                    self,
+                    "Cannot Add Pair",
+                    (
+                        "The MRCA of the two selected species already contains one or more existing pairs as descendants, "
+                        "so this pair cannot be added. Please remove the conflicting pair(s) first or choose a different combination."
+                    ),
+                )
+                return
             self._current_role = None
             self._current_first = None
             if self._selection_rect is not None:
