@@ -39,6 +39,9 @@ class InputPage(BaseWizardPage):
         scroll = QScrollArea()
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Create a container widget for the scroll area
         container = QWidget()

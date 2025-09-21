@@ -86,6 +86,17 @@ class MainWindow(QMainWindow):
             if self.minimumWidth() > max_w - 40:
                 self.setMinimumWidth(max(640, max_w - 40))
 
+            # On first show on larger screens, open at the previous "full" size (pre-change)
+            # so the window feels spacious by default, but never exceed screen bounds.
+            if not getattr(self, "_applied_initial_size", False):
+                desired_w, desired_h = 800, 900  # historical default size users expect
+                target_w = min(desired_w, max_w - 40)
+                target_h = min(desired_h, max_h - 80)
+                if target_w > 0 and target_h > 0:
+                    self.resize(max(self.minimumWidth(), target_w),
+                                max(self.minimumHeight(), target_h))
+                self._applied_initial_size = True
+
             # Also relax the wizard's own minimum height so vertical shrinking is possible
             if hasattr(self, "wizard") and self.wizard is not None:
                 try:
