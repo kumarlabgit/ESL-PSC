@@ -1156,9 +1156,25 @@ class TreeViewer(QWidget):
                 if lname not in excluded:
                     lbl = self._label_items.get(lname)
                     if lbl:
-                        # Always gray-out invalid siblings, regardless of phenotype,
-                        # while keeping any appended continuous value colored via HTML span.
-                        lbl.setDefaultTextColor(QColor("gray"))
+                        # Use a faded phenotype-aware color so users can see
+                        # which disabled species are potential alternates.
+                        if getattr(self, "_continuous_pheno", False):
+                            # Keep viridis-based color but reduce alpha
+                            base = self._color_for_species(lname)
+                            faded = QColor(base)
+                            faded.setAlpha(160)
+                            lbl.setDefaultTextColor(faded)
+                        else:
+                            ph = self._phenotypes.get(lname)
+                            if ph == 1 or ph == 1.0:
+                                # light sky blue (matches alt convergent dash color)
+                                lbl.setDefaultTextColor(QColor("#87CEFA"))
+                            elif ph == -1 or ph == -1.0:
+                                # light pink (matches alt control dash color)
+                                lbl.setDefaultTextColor(QColor("#f4aaaa"))
+                            else:
+                                # No phenotype: keep subdued gray
+                                lbl.setDefaultTextColor(QColor("gray"))
                     self._disabled_species.add(lname)
 
             # draw alternate paths
