@@ -314,6 +314,14 @@ class TreeViewer(QWidget):
         # on the first render for visual consistency with subsequent updates.
         self._apply_pairs()
 
+        # Snapshot current tree leaf names to detect later tree changes within the
+        # same viewer instance. If leaves change (e.g., a new tree loaded upstream),
+        # we'll automatically clear any existing pairs to avoid stale state.
+        try:
+            self._leaf_names_snapshot = {leaf.name or "" for leaf in self._tree.get_terminals()}
+        except Exception:
+            self._leaf_names_snapshot = set()
+
         # Initial window size
         self.resize(1200, 1200)
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -978,18 +986,26 @@ class TreeViewer(QWidget):
     # ------------------------------------------------------------------
     def _prune_nested_pairs(self) -> None:
         """Remove pairs that are nested within another pair's ancestor."""
-        def ancestor_for(pair: PairInfo) -> Clade:
+        def ancestor_for(pair: PairInfo) -> Clade | None:
             conv, ctrl = pair.convergent, pair.control
-            conv_leaf = next(self._tree.find_clades(name=conv))
-            ctrl_leaf = next(self._tree.find_clades(name=ctrl))
-            return self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+            try:
+                conv_leaf = next(self._tree.find_clades(name=conv))
+                ctrl_leaf = next(self._tree.find_clades(name=ctrl))
+                return self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+            except Exception:
+                return None
 
         ancestors = [ancestor_for(p) for p in self._pairs]
         keep = []
         for i, anc_i in enumerate(ancestors):
+            if anc_i is None:
+                # Drop invalid pairs referencing species not present on this tree
+                continue
             nested = False
             for j, anc_j in enumerate(ancestors):
                 if i == j:
+                    continue
+                if anc_j is None:
                     continue
                 if self._is_descendant(anc_i, anc_j):
                     nested = True
@@ -998,6 +1014,49 @@ class TreeViewer(QWidget):
                 keep.append(self._pairs[i])
         if len(keep) != len(self._pairs):
             self._pairs = keep
+
+    # ------------------------------------------------------------------
+    def _purge_invalid_pairs(self) -> bool:
+        """Remove any pairs and alternates whose species are not in the current tree.
+
+        Returns True if any changes were made.
+        """
+        leaf_names = {leaf.name or "" for leaf in self._tree.get_terminals()}
+        changed = False
+        new_pairs: List[PairInfo] = []
+        for p in self._pairs:
+            if p.convergent not in leaf_names or p.control not in leaf_names:
+                changed = True
+                continue
+            # Filter alternates to only those present
+            conv_alts = [n for n in p.conv_alts if n in leaf_names]
+            ctrl_alts = [n for n in p.ctrl_alts if n in leaf_names]
+            if conv_alts != p.conv_alts or ctrl_alts != p.ctrl_alts:
+                changed = True
+            new_pairs.append(PairInfo(p.convergent, p.control, conv_alts, ctrl_alts))
+        if changed:
+            self._pairs = new_pairs
+        return changed
+
+    # ------------------------------------------------------------------
+    def _clear_pairs_if_tree_changed(self) -> bool:
+        """If the current tree leaf-name set differs from the last snapshot,
+        clear all pairs to prevent stale state from another tree.
+
+        Returns True if a reset occurred.
+        """
+        try:
+            current = {leaf.name or "" for leaf in self._tree.get_terminals()}
+        except Exception:
+            current = set()
+        snap = getattr(self, "_leaf_names_snapshot", None)
+        if snap is None or current != snap:
+            self._pairs.clear()
+            self._current_role = None
+            self._current_first = None
+            self._leaf_names_snapshot = current
+            return True
+        return False
 
     # ------------------------------------------------------------------
     def _sort_pairs_by_vertical_position(self) -> None:
@@ -1017,6 +1076,8 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _apply_pairs(self) -> None:
+        # If the tree's leaf set has changed since last snapshot, clear pairs
+        self._clear_pairs_if_tree_changed()
         # reset visuals
         for lines in self._branch_lines.values():
             for l in lines:
@@ -1048,10 +1109,16 @@ class TreeViewer(QWidget):
             self._selection_rect = None
 
         # apply all pairs sequentially
+        # Ensure we don't keep stale pairs from another tree
+        self._purge_invalid_pairs()
         for idx, pair in enumerate(self._pairs, start=1):
             conv_name, ctrl_name = pair.convergent, pair.control
-            conv_leaf = next(self._tree.find_clades(name=conv_name))
-            ctrl_leaf = next(self._tree.find_clades(name=ctrl_name))
+            conv_leaf = next(self._tree.find_clades(name=conv_name), None)
+            ctrl_leaf = next(self._tree.find_clades(name=ctrl_name), None)
+            if conv_leaf is None or ctrl_leaf is None:
+                # Skip invalid pair entries that reference names not present
+                # on the current tree instead of crashing.
+                continue
             ancestor = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
 
             conv_path = self._path_to(ancestor, conv_leaf)
@@ -1097,7 +1164,9 @@ class TreeViewer(QWidget):
             # draw alternate paths
             cc_edges = set(conv_path + ctrl_path)
             for alt_name in pair.conv_alts:
-                alt_leaf = next(self._tree.find_clades(name=alt_name))
+                alt_leaf = next(self._tree.find_clades(name=alt_name), None)
+                if alt_leaf is None:
+                    continue
                 full_path = self._path_to(ancestor, alt_leaf)
                 trimmed = []
                 for edge in full_path:
@@ -1140,7 +1209,9 @@ class TreeViewer(QWidget):
                     self._alt_boxes.append(box)
 
             for alt_name in pair.ctrl_alts:
-                alt_leaf = next(self._tree.find_clades(name=alt_name))
+                alt_leaf = next(self._tree.find_clades(name=alt_name), None)
+                if alt_leaf is None:
+                    continue
                 full_path = self._path_to(ancestor, alt_leaf)
                 trimmed = []
                 for edge in full_path:
@@ -1226,7 +1297,8 @@ class TreeViewer(QWidget):
         """Load phenotypes from a CSV path and redraw.
 
         The file must contain two columns per row: species name and numeric phenotype value.
-        Continuous values are supported. Returns True on success, False on failure.
+        Continuous values are supported. Only exact species-name matches present in the
+        current tree are applied; others are ignored. Returns True on success, False on failure.
         """
         if not path:
             return False
@@ -1266,6 +1338,17 @@ class TreeViewer(QWidget):
                     "Are you sure you meant to load this?\n\n"
                     f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}\n\nDetails: {exc}"
                 ),
+            )
+            return False
+
+        # Keep only exact matches to the current tree's leaf names to avoid stale/mismatched entries
+        leaf_names = {leaf.name or "" for leaf in self._tree.get_terminals()}
+        phenos = {n: v for n, v in phenos.items() if n in leaf_names}
+        if not phenos:
+            QMessageBox.warning(
+                self,
+                "Phenotypes Warning",
+                "No phenotype entries matched species present in the current tree.",
             )
             return False
 
@@ -1336,9 +1419,32 @@ class TreeViewer(QWidget):
             )
             return False
 
+        # Validate that ALL species referenced in the groups file exist in the current tree.
+        leaf_names = {leaf.name or "" for leaf in self._tree.get_terminals()}
+        referenced: set[str] = set()
+        for p in pairs:
+            referenced.add(p.convergent)
+            referenced.add(p.control)
+            referenced.update(p.conv_alts)
+            referenced.update(p.ctrl_alts)
+        missing = [n for n in referenced if n not in leaf_names]
+        if missing:
+            QMessageBox.warning(
+                self,
+                "Groups Warning",
+                (
+                    "The selected species groups file references species that are not present in the current tree, "
+                    "so it was not applied.\n\nMissing (first 10 shown):\n- "
+                    + "\n- ".join(missing[:10])
+                ),
+            )
+            return False
+
         self._pairs = pairs
         self._current_role = None
         self._current_first = None
+        # Remove any entries not present in this tree, then prune nested ones
+        self._purge_invalid_pairs()
         self._prune_nested_pairs()
         self._apply_pairs()
         if self._on_groups_saved:
@@ -1613,6 +1719,8 @@ class TreeViewer(QWidget):
         algorithm (temporary binary mapping) without changing on-screen coloring or
         the continuous legend.
         """
+        # If the tree's leaf set has changed since last snapshot, clear pairs now
+        self._clear_pairs_if_tree_changed()
         temp_mapping: Dict[str, int] | None = None
         if self._continuous_pheno:
             dlg_thresh = PhenoThresholdDialog(
@@ -1700,8 +1808,15 @@ class TreeViewer(QWidget):
         # Avoid overlapping with existing pairs: exclude current descendants
         existing_desc: set[str] = set()
         for pair in self._pairs:
-            conv_leaf = next(self._tree.find_clades(name=pair.convergent))
-            ctrl_leaf = next(self._tree.find_clades(name=pair.control))
+            # Be robust if a previously added pair references a species not in the
+            # currently loaded tree (e.g., after loading a new tree or groups file).
+            conv_leaf = next(self._tree.find_clades(name=pair.convergent), None)
+            ctrl_leaf = next(self._tree.find_clades(name=pair.control), None)
+            if conv_leaf is None or ctrl_leaf is None:
+                # Skip invalid pairs instead of crashing; the auto-selector will
+                # still proceed using only valid state. We avoid mutating
+                # self._pairs here to keep this action non-destructive.
+                continue
             anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
             for leaf in anc.get_terminals():
                 existing_desc.add(leaf.name or "")
