@@ -456,33 +456,37 @@ class InputPage(BaseWizardPage):
         """Open a Newick file and display it in a tree viewer."""
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open Newick File",
+            "Open Tree File",
             os.getcwd(),
-            "Newick Files (*.nwk *.newick *.tree *.txt);;All Files (*)",
+            "Newick/NEXUS Files (*.nwk *.newick *.tree *.tre *.treefile *.contree *.nh *.nhx *.dnd *.nexus *.nex *.txt);;All Files (*)",
         )
         if not path:
             return
         # Basic validation: ensure equal number of opening and closing parentheses
         try:
             with open(path, "r", errors="ignore") as _nf:
-                newick_text = _nf.read()
-            open_paren = newick_text.count("(")
-            close_paren = newick_text.count(")")
-            # Must have at least one pair of parentheses and counts must match
-            if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
-                preview = newick_text[:100]
-                raise ValueError(
-                    "The file does not appear to be valid Newick: mismatched parentheses ("
-                    f"{open_paren} '(' vs {close_paren} ')').\n\n"
-                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
-                )
-
-            tree = Phylo.read(path, "newick")
+                text = _nf.read()
+            # Lightweight NEXUS detection: header or common extensions
+            is_nexus = text.lstrip().upper().startswith("#NEXUS") or path.lower().endswith((".nex", ".nexus"))
+            if is_nexus:
+                tree = Phylo.read(path, "nexus")
+            else:
+                open_paren = text.count("(")
+                close_paren = text.count(")")
+                # Must have at least one pair of parentheses and counts must match
+                if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
+                    preview = text[:100]
+                    raise ValueError(
+                        "The file does not appear to be valid Newick: mismatched parentheses ("
+                        f"{open_paren} '(' vs {close_paren} ')').\n\n"
+                        f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
+                    )
+                tree = Phylo.read(path, "newick")
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to parse Newick file:\n{exc}",
+                f"Failed to parse tree file:\n{exc}",
             )
             return
 
