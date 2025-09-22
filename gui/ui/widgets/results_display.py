@@ -987,6 +987,42 @@ class FastScanResultsDialog(QWidget):
         has_combo_rank_true = 'num_combos_top_frac' in self.results_df.columns
         has_combo_rank_ratio = 'num_combos_top_frac_by_ratio' in self.results_df.columns
         has_combo_rank_diff = 'num_combos_top_frac_by_diff' in self.results_df.columns
+        # Single-combo mode: no combo-ranking columns present. Compute a per-gene ratio
+        # consistent with multi-combo logic: ratio = true / (control + 1), where
+        # control is derived from per_combo_diff when available (ctrl = max(0, t - d)).
+        single_combo_mode = not (has_combo_rank_true or has_combo_rank_ratio or has_combo_rank_diff)
+        if single_combo_mode:
+            def _compute_single_ratio(row):
+                try:
+                    tvals = row.get('per_combo_true', None)
+                    dvals = row.get('per_combo_diff', None)
+                    t = None
+                    d = None
+                    if isinstance(tvals, (list, tuple)) and len(tvals) >= 1:
+                        t = tvals[0]
+                    if isinstance(dvals, (list, tuple)) and len(dvals) >= 1:
+                        d = dvals[0]
+                    if t is None:
+                        at = row.get('avg_true', None)
+                        if at is None or pd.isna(at):
+                            return float('nan')
+                        t = float(at)
+                    else:
+                        t = float(t)
+                    ctrl = 0.0
+                    if d is not None:
+                        try:
+                            d = float(d)
+                            ctrl = max(0.0, t - d)
+                        except Exception:
+                            ctrl = 0.0
+                    return t / (ctrl + 1.0)
+                except Exception:
+                    return float('nan')
+            try:
+                self.results_df['ratio'] = self.results_df.apply(_compute_single_ratio, axis=1)
+            except Exception:
+                pass
         sort_col_idx = None
         if has_combo_rank_true or has_combo_rank_ratio or has_combo_rank_diff:
             # Build headers with 'by Ratio' then 'by Diff', then plain True after those
@@ -1053,15 +1089,16 @@ class FastScanResultsDialog(QWidget):
         else:
             headers = [
                 "Gene",
+                "True/(Control+1) Ratio",
                 "Avg True Convergence",
                 "Avg Control Convergence",
                 "Avg True - Control",
                 "CS ≥ 4 Sites",
                 "Variable Sites",
             ]
-            self.table.setColumnCount(6)
+            self.table.setColumnCount(7)
             self.table.setHorizontalHeaderLabels(headers)
-            # Fallback sort on Avg True
+            # Fallback sort on Ratio
             sort_col_idx = 1
         # Show all rows where average true convergence > 0 (include all, no 200 cap)
         if 'avg_true' in self.results_df.columns:
@@ -1126,6 +1163,20 @@ class FastScanResultsDialog(QWidget):
                         combos_top_val = float('nan')
                     display_ct = _fmt_num(combos_top_val) if combos_top_val == combos_top_val else ''
                 self.table.setItem(row_idx, col, NumericItem(combos_top_val, display_ct))
+                col += 1
+            # Insert single-combo ratio first if applicable
+            if single_combo_mode:
+                rv = row.get('ratio', None)
+                if rv is None or (isinstance(rv, float) and pd.isna(rv)):
+                    display_ratio = ''
+                    rvf = float('nan')
+                else:
+                    try:
+                        rvf = float(rv)
+                    except Exception:
+                        rvf = float('nan')
+                    display_ratio = _fmt_num(rvf) if rvf == rvf else ''
+                self.table.setItem(row_idx, col, NumericItem(rvf, display_ratio))
                 col += 1
             # Core metrics
             v1 = float(row['avg_true']) if pd.notna(row['avg_true']) else float('nan')
@@ -1322,7 +1373,7 @@ class FastScanResultsDialog(QWidget):
                 if col in df.columns:
                     df = df.drop(columns=[col])
             # Reorder columns: Gene, then combo-rank columns (if present), then core metrics, then the rest
-            present_front = [c for c in ["gene", "num_combos_top_frac_by_ratio", "num_combos_top_frac_by_diff", "num_combos_top_frac"] if c in df.columns]
+            present_front = [c for c in ["gene", "ratio", "num_combos_top_frac_by_ratio", "num_combos_top_frac_by_diff", "num_combos_top_frac"] if c in df.columns]
             metrics = [
                 "avg_true",
                 "avg_control",
