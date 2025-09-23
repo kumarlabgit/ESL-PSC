@@ -166,7 +166,24 @@ class InputPage(BaseWizardPage):
         )
         self.tree_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.tree_btn.clicked.connect(self.open_newick_tree)
-        self.input_files_layout.addWidget(self.tree_btn)
+        # Row: helper button on the left, combo count label on the right
+        self.groups_count_label = QLabel("number of species combos: —")
+        self.groups_count_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.groups_count_label.setToolTip(
+            "Computed as 2^n where n = sum over all lines of (number of species per line − 1)."
+        )
+        # Hidden by default; becomes visible when a valid groups file is present
+        self.groups_count_label.setVisible(False)
+        tree_row = QHBoxLayout()
+        tree_row.addWidget(self.tree_btn)
+        tree_row.addStretch()
+        tree_row.addWidget(self.groups_count_label)
+        self.input_files_layout.addLayout(tree_row)
+        # Initialize the label from any pre-populated path
+        try:
+            self._update_count_label()
+        except Exception:
+            pass
         
         # Response directory selector (initially hidden)
         self.response_dir = FileSelector(
@@ -181,6 +198,17 @@ class InputPage(BaseWizardPage):
         self.response_dir.path_changed.connect(self._on_response_dir_changed)
         self.response_dir.setVisible(False)  # Start hidden
         self.input_files_layout.addWidget(self.response_dir)
+        # Row under the response directory: right-aligned response matrices count
+        self.response_count_label = QLabel("number of response matrices: —")
+        self.response_count_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.response_count_label.setToolTip(
+            "Count of response matrix files (*.txt) in the selected directory."
+        )
+        self.response_count_label.setVisible(False)
+        resp_row = QHBoxLayout()
+        resp_row.addStretch()
+        resp_row.addWidget(self.response_count_label)
+        self.input_files_layout.addLayout(resp_row)
         
         # Add input files frame to required layout
         req_layout.addWidget(self.input_files_frame)
@@ -192,6 +220,11 @@ class InputPage(BaseWizardPage):
             self.response_dir.setVisible(use_response_dir)
             # Show/hide the helper button for creating a species groups file
             self.tree_btn.setVisible(not use_response_dir)
+            # Update the count label based on current mode and paths
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
             
             # Update config to reflect the active input type
             if use_response_dir:
@@ -590,6 +623,11 @@ class InputPage(BaseWizardPage):
                     wiz.params_page.update_output_options_state()
             except Exception:
                 pass
+            # Refresh label for valid path
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
 
     def _on_species_groups_changed(self, path: str) -> None:
         """Update config when species groups file changes and reset preferred combo."""
@@ -598,6 +636,11 @@ class InputPage(BaseWizardPage):
         self.config.preferred_response_matrix = ""
         setattr(self, '_selected_groups_combo', None)
         setattr(self, '_selected_response_matrix', "")
+        # Update count label
+        try:
+            self._update_count_label(path)
+        except Exception:
+            pass
 
     def _on_response_dir_changed(self, path: str) -> None:
         """Set response directory and detect continuous response matrices."""
@@ -605,6 +648,19 @@ class InputPage(BaseWizardPage):
         self.config.preferred_response_matrix = ""
         self.config.preferred_groups_combo = None
         self.config.response_matrices_are_continuous = False
+        # Immediately reflect the response matrices count in the UI upon selection
+        try:
+            if self.use_response_dir.isChecked():
+                cnt = self._compute_response_matrices_count(path) if path else None
+                if cnt is not None:
+                    self.response_count_label.setText(f"number of response matrices: {cnt:,}")
+                    self.response_count_label.setToolTip("Count of response matrix files (*.txt) in the selected directory.")
+                    self.response_count_label.setVisible(True)
+                else:
+                    self.response_count_label.setVisible(False)
+                QApplication.processEvents()
+        except Exception:
+            pass
         if not path or not os.path.isdir(path):
             self.config.use_continuous_phenotypes = False
             self._update_continuous_checkbox_visibility()
@@ -613,6 +669,11 @@ class InputPage(BaseWizardPage):
                 wiz = self.wizard()
                 if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
                     wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+            # Hide/refresh label for invalid path
+            try:
+                self._update_count_label()
             except Exception:
                 pass
             return
@@ -666,6 +727,85 @@ class InputPage(BaseWizardPage):
         self.alignment_dir.set_path(path)
         setattr(self.config, 'alignments_dir', path)
 
+    def _compute_species_combos_from_file(self, path: str) -> int | None:
+        """Compute number of combos as 2^n where n is the total alternates across lines.
+
+        For each non-empty line in the species groups file, split by comma and count the
+        number of species options on that line. The number of alternates is (len(options) - 1).
+        Sum alternates across all lines to obtain n, and return 2**n.
+        """
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            with open(path, encoding='utf-8', errors='ignore') as fh:
+                lines = [ln.strip() for ln in fh if ln.strip()]
+        except Exception:
+            return None
+        n_alts = 0
+        for ln in lines:
+            parts = [p.strip() for p in ln.split(',') if p.strip()]
+            if not parts:
+                continue
+            n_alts += max(0, len(parts) - 1)
+        try:
+            return 1 << int(n_alts)
+        except Exception:
+            return None
+
+    def _compute_response_matrices_count(self, dir_path: str) -> int | None:
+        """Count the number of response matrix files (*.txt) in the directory."""
+        if not dir_path or not os.path.isdir(dir_path):
+            return None
+        try:
+            return sum(1 for f in os.listdir(dir_path) if f.endswith('.txt'))
+        except Exception:
+            return None
+
+    def _update_count_label(self, path: str | None = None) -> None:
+        """Refresh the lower-right count label based on current input mode and paths.
+
+        - Species groups mode: show "number of species combos: N" only when a valid
+          species groups file exists; otherwise hide the label.
+        - Response directory mode: show "number of response matrices: M" when a valid
+          directory exists; otherwise hide the label.
+        """
+        if not hasattr(self, 'groups_count_label') or not hasattr(self, 'response_count_label'):
+            return
+        use_response_dir = bool(self.use_response_dir.isChecked())
+        if use_response_dir:
+            # Response dir count
+            try:
+                if path is None and hasattr(self, 'response_dir'):
+                    path = self.response_dir.get_path()
+            except Exception:
+                path = None
+            count = self._compute_response_matrices_count(path) if path else None
+            if count is None:
+                # Hide label entirely until a valid directory is chosen
+                self.response_count_label.setVisible(False)
+            else:
+                self.response_count_label.setText(f"number of response matrices: {count:,}")
+                self.response_count_label.setToolTip("Count of response matrix files (*.txt) in the selected directory.")
+                self.response_count_label.setVisible(True)
+            # Hide the groups label row in response mode
+            self.groups_count_label.setVisible(False)
+        else:
+            # Species groups count
+            try:
+                if path is None and hasattr(self, 'species_groups'):
+                    path = self.species_groups.get_path()
+            except Exception:
+                path = None
+            count = self._compute_species_combos_from_file(path) if path else None
+            if count is None:
+                self.groups_count_label.setVisible(False)
+            else:
+                self.groups_count_label.setText(f"number of species combos: {count:,}")
+                self.groups_count_label.setToolTip("Computed as 2^n where n = sum over all lines of (number of species per line − 1).")
+                self.groups_count_label.setVisible(True)
+            # Hide the response label row in species-groups mode
+            self.response_count_label.setVisible(False)
+
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard
     # ──────────────────────────────────────────────────────────────────────────
@@ -676,8 +816,18 @@ class InputPage(BaseWizardPage):
             self.alignment_dir.set_path(self.config.alignments_dir)
         if hasattr(self.config, 'species_groups_file'):
             self.species_groups.set_path(self.config.species_groups_file)
+            # Ensure the count label reflects the current config path/mode
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
         if hasattr(self.config, 'response_dir'):
             self.response_dir.set_path(self.config.response_dir)
+        # After setting paths above, refresh the label once more to reflect mode
+        try:
+            self._update_count_label()
+        except Exception:
+            pass
         if hasattr(self.config, 'species_phenotypes_file'):
             self.species_phenotypes.set_path(self.config.species_phenotypes_file)
         if hasattr(self.config, 'prediction_alignments_dir'):
