@@ -1816,6 +1816,17 @@ class TreeViewer(QWidget):
         if not dlg.choice:
             return
         method = dlg.choice  # "default", "longest", "shortest", "contrast", "composite", or "random"
+        # Alternates configuration
+        try:
+            num_alternates = int(getattr(dlg, "num_alternates", 0))
+        except Exception:
+            num_alternates = 0
+        try:
+            max_combos = int(getattr(dlg, "max_combinations", 1))
+        except Exception:
+            max_combos = 1
+        if num_alternates <= 0:
+            max_combos = 1  # force single combo when no alternates requested
 
         # If longest is requested, ensure we have an alignments directory and
         # collect sequence length info for relevant species.
@@ -2000,6 +2011,8 @@ class TreeViewer(QWidget):
 
             # For each candidate ancestor, compute per-duo S and select per tie rules
             best_by_cand: Dict[int, Tuple[float, str, str]] = {}
+            # Store all duo scores so we can rank alternates later
+            self._composite_per_duo: Dict[Tuple[str, str], List[Tuple[str, str, float, float, float, float]]] = {}
             for idx, c in enumerate(candidates):
                 # Collect eligible leaves under this ancestor
                 try:
@@ -2088,6 +2101,8 @@ class TreeViewer(QWidget):
                 tie_set.sort(key=lambda t: (t[3], -t[5], -t[4], t[0], t[1]))
                 a_best, b_best, s_best, _d, _L, _T = tie_set[0]
                 best_by_cand[idx] = (s_best, a_best, b_best)
+                key = (candidates[idx].convergent, candidates[idx].control)
+                self._composite_per_duo[key] = per_duo
 
             # Persist chosen duos so _resolve_pair can use them for the composite method
             self._composite_duo: Dict[Tuple[str, str], Tuple[str, str]] = {}
@@ -2096,12 +2111,118 @@ class TreeViewer(QWidget):
                 self._composite_duo[key] = (a, b)
 
         added: List[PairInfo] = []
+        # Keep scored alternates so we can enforce a global max-combos cap by removing worst first
+        alt_scores: List[Tuple[int, str, str, float]] = []  # (pair_index_in_added, role, name, score) role in {"conv","ctrl"}
         invalid: set[str] = set(existing_desc)
         while candidates:
             cand = candidates.pop(0)
             if cand.descendants & invalid:
                 continue
             pair = self._resolve_pair(cand, method, pheno_for_algo)
+            # Optionally compute alternates for this pair
+            if num_alternates > 0:
+                try:
+                    conv_leaf = next(self._tree.find_clades(name=pair.convergent))
+                    ctrl_leaf = next(self._tree.find_clades(name=pair.control))
+                    anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                except Exception:
+                    anc = None
+                if anc is not None:
+                    # Collect eligible descendants by phenotype mapping used for candidate building
+                    convs: List[str] = []
+                    ctrls: List[str] = []
+                    for leaf in anc.get_terminals():
+                        nm = leaf.name or ""
+                        ph = pheno_for_algo.get(nm)
+                        if ph == 1 and nm != pair.convergent:
+                            convs.append(nm)
+                        elif ph == -1 and nm != pair.control:
+                            ctrls.append(nm)
+
+                    # Scoring helpers (return higher-is-better score)
+                    def score_conv_alt(name: str) -> float:
+                        # Score candidate alternate convergent when paired with fixed primary control
+                        other = pair.control
+                        if method == "composite":
+                            key = (cand.convergent, cand.control)
+                            pd = getattr(self, "_composite_per_duo", {}).get(key, [])
+                            vals = [S for (a, b, S, _d, _L, _T) in pd if a == name and b == other]
+                            return max(vals) if vals else float("-inf")
+                        if method == "contrast" and getattr(self, "_continuous_pheno", False):
+                            try:
+                                va = float(self._phenotypes.get(name))
+                                vb = float(self._phenotypes.get(other))
+                                return abs(va - vb)
+                            except Exception:
+                                return float("-inf")
+                        if method == "longest":
+                            la = float(self._seq_lengths.get(name, 0))
+                            lb = float(self._seq_lengths.get(other, 0))
+                            if la <= 0 or lb <= 0:
+                                return 0.0
+                            try:
+                                return 2.0 / (1.0 / la + 1.0 / lb)
+                            except Exception:
+                                return 0.0
+                        if method in ("shortest", "default"):
+                            d = self._pair_distance_names(name, other)
+                            return -d  # smaller distance is better
+                        if method == "random":
+                            return random.random()
+                        # Fallback to distance
+                        return -self._pair_distance_names(name, other)
+
+                    def score_ctrl_alt(name: str) -> float:
+                        # Score candidate alternate control when paired with fixed primary convergent
+                        other = pair.convergent
+                        if method == "composite":
+                            key = (cand.convergent, cand.control)
+                            pd = getattr(self, "_composite_per_duo", {}).get(key, [])
+                            vals = [S for (a, b, S, _d, _L, _T) in pd if a == other and b == name]
+                            return max(vals) if vals else float("-inf")
+                        if method == "contrast" and getattr(self, "_continuous_pheno", False):
+                            try:
+                                va = float(self._phenotypes.get(other))
+                                vb = float(self._phenotypes.get(name))
+                                return abs(va - vb)
+                            except Exception:
+                                return float("-inf")
+                        if method == "longest":
+                            la = float(self._seq_lengths.get(other, 0))
+                            lb = float(self._seq_lengths.get(name, 0))
+                            if la <= 0 or lb <= 0:
+                                return 0.0
+                            try:
+                                return 2.0 / (1.0 / la + 1.0 / lb)
+                            except Exception:
+                                return 0.0
+                        if method in ("shortest", "default"):
+                            d = self._pair_distance_names(other, name)
+                            return -d
+                        if method == "random":
+                            return random.random()
+                        return -self._pair_distance_names(other, name)
+
+                    # Rank and take top-k alternates
+                    if convs:
+                        convs_scored = [(n, score_conv_alt(n)) for n in convs]
+                        convs_scored = [t for t in convs_scored if t[1] != float("-inf")]
+                        convs_scored.sort(key=lambda t: t[1], reverse=True)
+                        chosen = [n for (n, s) in convs_scored[:num_alternates]]
+                        pair.conv_alts.extend(chosen)
+                        idx_in_added = len(added)  # 0-based temp index for 'added'
+                        for n, s in convs_scored[:num_alternates]:
+                            alt_scores.append((idx_in_added, "conv", n, s))
+                    if ctrls:
+                        ctrls_scored = [(n, score_ctrl_alt(n)) for n in ctrls]
+                        ctrls_scored = [t for t in ctrls_scored if t[1] != float("-inf")]
+                        ctrls_scored.sort(key=lambda t: t[1], reverse=True)
+                        chosen = [n for (n, s) in ctrls_scored[:num_alternates]]
+                        pair.ctrl_alts.extend(chosen)
+                        idx_in_added = len(added)
+                        for n, s in ctrls_scored[:num_alternates]:
+                            alt_scores.append((idx_in_added, "ctrl", n, s))
+
             added.append(pair)
             invalid.update(cand.descendants)
             candidates = [c for c in candidates if not (c.descendants & invalid)]
@@ -2115,6 +2236,28 @@ class TreeViewer(QWidget):
             return
 
         if added:
+            # If a max combination cap is set, prune the worst alternates globally until under the cap
+            if max_combos is not None and max_combos > 0:
+                # Work on a shallow copy of pairs for calculating combo counts during pruning
+                tmp_pairs = [PairInfo(p.convergent, p.control, list(p.conv_alts), list(p.ctrl_alts)) for p in added]
+                # Sort alternates globally from worst to best (ascending score)
+                alt_scores_sorted = sorted(alt_scores, key=lambda x: (x[3], x[1], x[2]))  # by score primarily
+                # Remove until combos <= max
+                # Include existing pairs in the combo count
+                base_existing = [PairInfo(p.convergent, p.control, list(p.conv_alts), list(p.ctrl_alts)) for p in self._pairs]
+                while self._compute_combo_count(base_existing + tmp_pairs, cap=max_combos) > max_combos and alt_scores_sorted:
+                    idx, role, name, _score = alt_scores_sorted.pop(0)
+                    if idx < 0 or idx >= len(tmp_pairs):
+                        continue
+                    if role == "conv" and name in tmp_pairs[idx].conv_alts:
+                        tmp_pairs[idx].conv_alts.remove(name)
+                    elif role == "ctrl" and name in tmp_pairs[idx].ctrl_alts:
+                        tmp_pairs[idx].ctrl_alts.remove(name)
+                # Apply pruned alternates back to added list
+                for i, p in enumerate(tmp_pairs):
+                    added[i].conv_alts = p.conv_alts
+                    added[i].ctrl_alts = p.ctrl_alts
+
             # State change: push undo before applying new pairs
             self._push_undo()
             self._pairs.extend(added)
@@ -2327,6 +2470,52 @@ class TreeViewer(QWidget):
                 ctrl_choice = random.choice(ctrls)
 
         return PairInfo(conv_choice, ctrl_choice)
+
+    # ------------------------------------------------------------------
+    def _pair_distance_names(self, a_name: str, b_name: str) -> float:
+        """Robust distance between two species by name.
+
+        Attempts patristic distance; falls back to node-count distance if branch
+        lengths are unavailable or invalid.
+        """
+        try:
+            a_leaf = next(self._tree.find_clades(name=a_name))
+            b_leaf = next(self._tree.find_clades(name=b_name))
+        except Exception:
+            return float("inf")
+        # Try patristic (branch-length) distance
+        try:
+            return float(self._tree.distance(a_leaf, b_leaf))
+        except Exception:
+            pass
+        # Fallback: node-count via MRCA
+        try:
+            anc = self._tree.common_ancestor(a_leaf, b_leaf)
+        except Exception:
+            return float("inf")
+        ap = self._path_to(anc, a_leaf)
+        bp = self._path_to(anc, b_leaf)
+        return float(len(ap) + len(bp))
+
+    # ------------------------------------------------------------------
+    def _compute_combo_count(self, pairs: List[PairInfo], cap: Optional[int] = None) -> int:
+        """Compute total species combinations across the given pairs.
+
+        For each pair, the number of choices is (1 + len(conv_alts)) * (1 + len(ctrl_alts)).
+        The total across all pairs is the product of choices per pair. If ``cap`` is provided,
+        short-circuit and return any value > cap as soon as it is exceeded.
+        """
+        total = 1
+        for p in pairs:
+            choices = (1 + len(p.conv_alts)) * (1 + len(p.ctrl_alts))
+            try:
+                total *= int(choices)
+            except Exception:
+                # Fallback safe-guard
+                total = total * max(1, choices)
+            if cap is not None and total > cap:
+                return total
+        return total
 
     # ------------------------------------------------------------------
     def _y_positions(self, tree: Tree, step: int = 30) -> Dict[Clade, float]:

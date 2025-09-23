@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QComboBox,
     QCheckBox,
+    QSpinBox,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -30,6 +31,49 @@ class AutoSelectOptionsDialog(QDialog):
         self.setWindowTitle("Auto Select Options")
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Choose how to resolve equally valid siblings"))
+
+        # --- Alternates controls ---
+        # Number of alternates per convergent/control species (0..20)
+        alts_row = QHBoxLayout()
+        alts_row.addWidget(QLabel("Number of alternates to add per convergent and control species:"))
+        self._alts_spin = QSpinBox()
+        self._alts_spin.setRange(0, 20)
+        self._alts_spin.setValue(0)
+        self._alts_spin.setToolTip(
+            "Select alternate siblings species in each pair if possible to allow multiple species combinations"
+        )
+        alts_row.addWidget(self._alts_spin)
+        alts_row.addStretch()
+        layout.addLayout(alts_row)
+
+        # Maximum combinations (1..32,999). Disabled unless alternates > 0
+        max_row = QHBoxLayout()
+        max_lbl = QLabel("Maximum species combinations:")
+        max_row.addWidget(max_lbl)
+        self._max_spin = QSpinBox()
+        self._max_spin.setRange(1, 32999)  # strictly less than 33,000
+        self._max_spin.setValue(1)
+        self._max_spin.setEnabled(False)
+        self._max_spin.setToolTip("Upper limit on the product of choices across pairs. Disabled unless alternates > 0.")
+        max_row.addWidget(self._max_spin)
+        max_row.addStretch()
+        layout.addLayout(max_row)
+
+        # Enable/disable logic for max combinations
+        def _on_alts_changed(val: int):
+            try:
+                if val <= 0:
+                    self._max_spin.setValue(1)
+                    self._max_spin.setEnabled(False)
+                else:
+                    # Enable and set a sensible default if previously disabled or at 1
+                    was_enabled = self._max_spin.isEnabled()
+                    self._max_spin.setEnabled(True)
+                    if (not was_enabled) or self._max_spin.value() <= 1:
+                        self._max_spin.setValue(32)
+            except Exception:
+                pass
+        self._alts_spin.valueChanged.connect(_on_alts_changed)
 
         def mk_btn(text: str, choice: str, enabled: bool = True, tip: str | None = None) -> QPushButton:
             btn = QPushButton(text)
@@ -95,6 +139,20 @@ class AutoSelectOptionsDialog(QDialog):
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
         layout.addWidget(cancel)
+
+    @property
+    def num_alternates(self) -> int:
+        try:
+            return int(self._alts_spin.value())
+        except Exception:
+            return 0
+
+    @property
+    def max_combinations(self) -> int:
+        try:
+            return int(self._max_spin.value())
+        except Exception:
+            return 1
 
     def _pick(self, choice: str) -> None:
         self.choice = choice
