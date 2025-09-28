@@ -20,6 +20,7 @@ struct InputSpec {
     outgroup: String,
     cs_threshold: Option<u32>,
     emit_progress: Option<bool>,
+    min_out_ctrl_agreement: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -105,6 +106,9 @@ fn main() {
     let progress = Arc::new(AtomicUsize::new(0));
     let combos_arc = Arc::new(spec.combos);
     let outgroup = spec.outgroup.clone();
+    let mut min_agree = spec.min_out_ctrl_agreement.unwrap_or(1.0);
+    if min_agree < 0.0 { min_agree = 0.0; }
+    if min_agree > 1.0 { min_agree = 1.0; }
 
     let total_files = files.len();
     let results: Vec<ResultRow> = files
@@ -212,12 +216,15 @@ fn main() {
                     let clean_out: Vec<char> = out_aa.iter().copied().filter(|c| *c != '?' && *c != '-').collect();
 
                     if eligible_true {
-                        if !clean_ctrl.is_empty() && !clean_out.is_empty() {
-                            if let (Some(c_ctrl), Some(c_out)) = (is_uniform_non_gap(&clean_ctrl), is_uniform_non_gap(&clean_out)) {
-                                if c_ctrl == c_out {
+                        if let Some(out_res) = is_uniform_non_gap(&clean_out) {
+                            if !clean_ctrl.is_empty() {
+                                let matches: f64 = clean_ctrl.iter().filter(|c| **c == out_res).count() as f64;
+                                let total: f64 = clean_ctrl.len() as f64;
+                                let agree: f64 = if total > 0.0 { matches / total } else { 0.0 };
+                                if agree + f64::EPSILON >= min_agree {
                                     let mut cnt: HashMap<char, u32> = HashMap::new();
                                     for r in clean_conv.iter() { *cnt.entry(*r).or_insert(0) += 1; }
-                                    if cnt.iter().any(|(r, c)| *r != c_ctrl && *c >= 2) {
+                                    if cnt.iter().any(|(r, c)| *r != out_res && *c >= 2) {
                                         ccs += 1;
                                     }
                                 }

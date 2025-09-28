@@ -301,7 +301,7 @@ class PhenoThresholdDialog(QDialog):
 class OutgroupDialog(QDialog):
     """Dialog to pick an outgroup species."""
 
-    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None, show_two_pair_option: bool = False):
+    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None, show_two_pair_option: bool = False, default_agreement_pct: float | None = 100.0):
         super().__init__(parent)
         self.setWindowTitle("Select Outgroup Species")
         layout = QVBoxLayout(self)
@@ -324,6 +324,23 @@ class OutgroupDialog(QDialog):
                 "options on a line, generate variants for each option."
             )
             layout.addWidget(self._two_pair_check)
+        # Minimum outgroup-control agreement percentage (0–100%)
+        agree_row = QHBoxLayout()
+        agree_row.addWidget(QLabel("Minimum outgroup-control agreement (%):"))
+        self._agree_spin = QDoubleSpinBox()
+        self._agree_spin.setSuffix("%")
+        self._agree_spin.setRange(0.0, 100.0)
+        self._agree_spin.setDecimals(0)
+        self._agree_spin.setSingleStep(5.0)
+        try:
+            init_pct = float(default_agreement_pct if default_agreement_pct is not None else 100.0)
+        except Exception:
+            init_pct = 100.0
+        init_pct = max(0.0, min(100.0, init_pct))
+        self._agree_spin.setValue(init_pct)
+        agree_row.addWidget(self._agree_spin)
+        agree_row.addStretch()
+        layout.addLayout(agree_row)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
@@ -349,3 +366,11 @@ class OutgroupDialog(QDialog):
             return bool(self._two_pair_check and self._two_pair_check.isChecked())
         except Exception:
             return False
+
+    @property
+    def min_out_ctrl_agreement(self) -> float:
+        """Return minimum outgroup-control agreement as a fraction [0,1]."""
+        try:
+            return float(self._agree_spin.value()) / 100.0
+        except Exception:
+            return 1.0

@@ -3,6 +3,7 @@ from __future__ import annotations
 """A simple QGraphicsView-based viewer for phylogenetic trees."""
 
 from typing import Callable, Dict, Optional, List, Tuple
+import random
 import os
 
 from PySide6.QtWidgets import (

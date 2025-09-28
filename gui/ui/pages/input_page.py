@@ -429,7 +429,14 @@ class InputPage(BaseWizardPage):
             return
         # Preselect the last chosen outgroup if remembered and still present
         default_out = getattr(self.config, 'last_fast_scan_outgroup', '') or None
-        dlg = OutgroupDialog(species, self, default_selected=default_out, show_two_pair_option=True)
+        default_agree_pct = getattr(self.config, 'last_fast_scan_agree_pct', 100.0)
+        dlg = OutgroupDialog(
+            species,
+            self,
+            default_selected=default_out,
+            show_two_pair_option=True,
+            default_agreement_pct=default_agree_pct,
+        )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         outgroup = dlg.selected
@@ -438,9 +445,15 @@ class InputPage(BaseWizardPage):
             use_two_pair = bool(dlg.use_two_pair_combos)
         except Exception:
             use_two_pair = False
+        # Agreement threshold chosen in dialog (fraction 0..1)
+        try:
+            min_agree = float(getattr(dlg, 'min_out_ctrl_agreement', 1.0))
+        except Exception:
+            min_agree = 1.0
         # Remember for next Fast Scan within this session
         try:
             setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
+            setattr(self.config, 'last_fast_scan_agree_pct', float(min_agree) * 100.0)
         except Exception:
             pass
         progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
@@ -477,6 +490,7 @@ class InputPage(BaseWizardPage):
             response_dir=resp_dir,
             n_jobs=n_jobs,
             two_pair_combos=use_two_pair,
+            min_out_ctrl_agreement=min_agree,
         )
         progress.close()
         if not results:

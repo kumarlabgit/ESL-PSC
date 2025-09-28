@@ -133,6 +133,7 @@ def _scan_file_worker(
     fname: str,
     combos: List[Tuple[List[str], List[str]]],
     outgroup_species: str,
+    min_out_ctrl_agreement: float,
 ) -> Dict[str, float | int]:
     path = os.path.join(alignment_dir, fname)
     records = read_fasta(path)
@@ -236,19 +237,23 @@ def _scan_file_worker(
 
             # CCS detection (only meaningful if eligible_true)
             if eligible_true:
-                if (
-                    clean_ctrl
-                    and clean_out
-                    and len(set(clean_ctrl)) == 1
-                    and len(set(clean_out)) == 1
-                    and list(set(clean_ctrl))[0] == list(set(clean_out))[0]
-                ):
-                    ctrl_res = clean_ctrl[0]
-                    conv_counter = Counter(clean_conv)
-                    for res, cnt in conv_counter.items():
-                        if res != ctrl_res and cnt >= 2:
-                            ccs += 1
-                            break
+                # Require non-gap, non-missing outgroup residue and at least the
+                # configured fraction of control residues to match the outgroup.
+                if clean_out:
+                    out_uniform = list(set(clean_out))
+                    if len(out_uniform) == 1:
+                        out_res = out_uniform[0]
+                        if clean_ctrl:
+                            matches = sum(1 for r in clean_ctrl if r == out_res)
+                            total = len(clean_ctrl)
+                            agree = (matches / total) if total > 0 else 0.0
+                            if agree >= max(0.0, min(1.0, float(min_out_ctrl_agreement))):
+                                # Count CCS if any convergent residue != out_res occurs at least twice
+                                conv_counter = Counter(clean_conv)
+                                for res, cnt in conv_counter.items():
+                                    if res != out_res and cnt >= 2:
+                                        ccs += 1
+                                        break
 
             # Control-convergence detection (only meaningful if eligible_ctrl)
             if eligible_ctrl and clean_out and len(set(clean_out)) == 1:
@@ -313,6 +318,7 @@ def fast_scan_alignments(
     n_jobs: int | None = None,
     top_frac: float = 0.01,
     two_pair_combos: bool = False,
+    min_out_ctrl_agreement: float = 1.0,
 ) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -342,6 +348,19 @@ def fast_scan_alignments(
 
     # Try Rust backend if available
     rs_bin = _detect_fast_scan_rs()
+    # If fractional control-outgroup agreement is requested, prefer a freshly built
+    # target/release binary (newer) over any packaged bin/ version. If not found,
+    # fall back to Python to ensure correct semantics.
+    try:
+        if float(min_out_ctrl_agreement) != 1.0:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                rs_bin = cand
+            else:
+                rs_bin = None
+    except Exception:
+        rs_bin = None
     if rs_bin:
         try:
             # Single Rust invocation; if a progress callback is provided, we stream
@@ -353,6 +372,7 @@ def fast_scan_alignments(
                 combos,
                 outgroup_species,
                 cs_threshold=4,
+                min_out_ctrl_agreement=float(min_out_ctrl_agreement),
                 progress_cb=progress_cb,
                 total=total,
                 done_offset=0,
@@ -382,13 +402,13 @@ def fast_scan_alignments(
     # Serial or parallel path (Python)
     if n_jobs <= 1:
         for idx, fname in enumerate(files, 1):
-            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species)
+            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement))
             results.append(res)
             if progress_cb:
                 progress_cb(idx, total)
     else:
         with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species): fname for fname in files}
+            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement)): fname for fname in files}
             done = 0
             for fut in as_completed(future_map):
                 try:
@@ -471,6 +491,7 @@ def _run_fast_scan_rs(
     combos: List[Tuple[List[str], List[str]]],
     outgroup_species: str,
     cs_threshold: int = 4,
+    min_out_ctrl_agreement: float | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
     total: int | None = None,
     done_offset: int = 0,
@@ -488,6 +509,12 @@ def _run_fast_scan_rs(
         "cs_threshold": int(cs_threshold),
         "emit_progress": bool(progress_cb is not None and total),
     }
+    # Backward compatibility: only include the field if it differs from default 1.0
+    try:
+        if min_out_ctrl_agreement is not None and float(min_out_ctrl_agreement) != 1.0:
+            spec["min_out_ctrl_agreement"] = float(min_out_ctrl_agreement)
+    except Exception:
+        pass
     # Use a temporary file for stdout to avoid pipe backpressure while we read stderr for progress
     import tempfile
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:
