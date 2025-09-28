@@ -5,6 +5,7 @@
 1. [Description](#description)
 2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
 3. [Command Line Usage](#command-line-usage)
+   - [Fast Scan Rust CLI](#fast-scan-rust-cli)
 4. [Installation and Dependencies](#installation-and-dependencies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 6. [Input Data](#input-data)
@@ -133,6 +134,10 @@ Here is an example of how to run the script:
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
+
+### Fast Scan Rust CLI
+
+Looking for the high-performance fast scan backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 
