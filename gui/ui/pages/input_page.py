@@ -126,7 +126,7 @@ class InputPage(BaseWizardPage):
             "Alignment Directory:", 'directory',
             default_path=os.getcwd(),
             description=(
-                "Directory containing alignment files in FASTA format. Each file must have the .fas extension. "
+                "Directory containing alignment files in FASTA format."
                 "Sequences should be in 2-line FASTA format for best performance, but multi-line files are accepted and "
                 "will be converted, which may be slower. All sequences in a file must be aligned and contain only standard "
                 "amino acid and gap characters."
@@ -322,7 +322,7 @@ class InputPage(BaseWizardPage):
             self,
             "Select Alignment File",
             align_dir,
-            "FASTA Files (*.fas *.fasta *.fa)",
+            "FASTA Files (*.fas *.fasta *.fa *.faa)",
         )
         if not path:
             return

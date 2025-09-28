@@ -52,7 +52,7 @@ jobs:
           cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
           # Add Rust fast scan binary
-          cp fast_scan_rs/target/release/fast_scan_rs build/ESL-PSC.app/Contents/MacOS/bin/fast_scan_rs
+          cp fast_scan_rs/target/release/fast_scan_rs build/ESL-PSC.app/Contents/MacOS/bin/fast_scan_rs_mac
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Create DMG
         run: |

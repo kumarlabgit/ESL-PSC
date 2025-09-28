@@ -390,7 +390,7 @@ def parse_args_with_config(parser, raw_args=None):
     return args
 
 def is_fasta(file_name):
-    return file_name.endswith(('.fa','.fas','.fasta'))
+    return file_name.endswith(('.fa', '.fas', '.fasta', '.faa'))
 
 def file_lines_to_list(file_path):
     with open(file_path, 'r') as file:
@@ -577,15 +577,17 @@ def get_gene_names(dir_or_file_path):
     path is given, it is assumed to be an alignment directory and the gene
     names are taken from fasta file names. returns a list of gene names.'''
     if os.path.isdir(dir_or_file_path): # if a directory path is given
-        return [file[:-4] for file in os.listdir(dir_or_file_path)
-                if file.endswith('.fas')]
+        # Accept any recognized FASTA extension and strip the extension robustly
+        return [os.path.splitext(file)[0] for file in os.listdir(dir_or_file_path)
+                if is_fasta(file)]
     else: # must be a path file (text file)
         gene_name_list = []
         alignment_path_lines = file_lines_to_list(dir_or_file_path)
         # loop through lines in the path file and extract the file name
         for line in alignment_path_lines:
             gene_name = os.path.split(line)[1].strip()
-            gene_name_list.append(gene_name[:-4]) #remove the .fas
+            # Remove any supported FASTA extension using splitext
+            gene_name_list.append(os.path.splitext(gene_name)[0])
         return gene_name_list
         
 def get_seq_records_in_order(fasta_file, species_list):
@@ -638,7 +640,7 @@ def get_median_var_sites(alignment_dir):
     alignment_dir = os.path.abspath(alignment_dir)
     alignment_list = [
         os.path.join(alignment_dir, file)
-        for file in os.listdir(alignment_dir) if file.endswith('.fas')
+        for file in os.listdir(alignment_dir) if is_fasta(file)
     ]
     numbers_of_var_sites = []
     for alignment_path in alignment_list:
@@ -719,7 +721,7 @@ def make_path_file(alignments_dir):
     same folder. returns the path to the path file
     '''
     alignment_file_list = [file for file in os.listdir(alignments_dir)
-                           if file.endswith('.fas')]
+                           if is_fasta(file)]
     path_file_path = os.path.join(alignments_dir, 'paths.txt')
     with open(path_file_path, 'w') as file:
         file.write('\n'.join(alignment_file_list))

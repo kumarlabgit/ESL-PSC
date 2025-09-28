@@ -35,6 +35,9 @@ jobs:
         run: |
           ls -la deletion_canceler_rs/target/release/
           ls -la fast_scan_rs/target/release/
+      - name: Rename macOS fast_scan_rs for artifact
+        run: |
+          cp fast_scan_rs/target/release/fast_scan_rs fast_scan_rs/target/release/fast_scan_rs_mac
 
       - name: "Upload artifact: deletion_canceler (macOS)"
         uses: actions/upload-artifact@v4
@@ -49,7 +52,7 @@ jobs:
         with:
           name: fast_scan_rs-macos
           path: |
-            fast_scan_rs/target/release/fast_scan_rs
+            fast_scan_rs/target/release/fast_scan_rs_mac
           if-no-files-found: error
 
   build-windows:

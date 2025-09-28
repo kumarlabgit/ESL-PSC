@@ -17,6 +17,7 @@ from gui.core.fasta_io import read_fasta
 from esl_psc_cli.deletion_canceler import (
     parse_species_groups as cli_parse_species_groups,
 )
+from esl_psc_cli import esl_psc_functions as ecf
 
 
 def _parse_species_groups(path: str) -> List[tuple[List[str], List[str]]]:
@@ -95,7 +96,7 @@ def list_species(alignment_dir: str, max_no_new: int = 200) -> List[str]:
     species: set[str] = set()
     if not alignment_dir or not os.path.isdir(alignment_dir):
         return []
-    files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
+    files = sorted([f for f in os.listdir(alignment_dir) if ecf.is_fasta(f)])
     no_new_streak = 0
     for fname in files:
         fpath = os.path.join(alignment_dir, fname)
@@ -334,7 +335,7 @@ def fast_scan_alignments(
         Callback receiving ``(current, total)`` file counts.
     """
     combos = _parse_species_groups_two_pair(species_groups_file) if two_pair_combos else _parse_species_groups(species_groups_file)
-    files = sorted([f for f in os.listdir(alignment_dir) if f.endswith(".fas")])
+    files = sorted([f for f in os.listdir(alignment_dir) if ecf.is_fasta(f)])
     total = len(files)
     results: List[Dict[str, float | int]] = []
 
@@ -458,7 +459,11 @@ def _detect_fast_scan_rs() -> str | None:
         return env_path
     # Compute repo root from this file (editable/source check)
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    # 2) bin/fast_scan_rs relative to repo root (editable install)
+    # 2) bin/fast_scan_rs[_mac] relative to repo root (editable install)
+    if sys.platform == "darwin":
+        cand = os.path.join(repo_root, "bin", "fast_scan_rs_mac")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
     cand = os.path.join(repo_root, "bin", "fast_scan_rs")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
@@ -473,6 +478,11 @@ def _detect_fast_scan_rs() -> str | None:
     # 4) Packaged app path: bin/ next to the executable
     try:
         exe_dir = os.path.abspath(os.path.dirname(getattr(sys, 'executable', sys.argv[0])))
+        # Prefer mac-suffixed name on macOS bundles
+        if sys.platform == "darwin":
+            cand = os.path.join(exe_dir, "bin", "fast_scan_rs_mac")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
         cand = os.path.join(exe_dir, "bin", "fast_scan_rs")
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand

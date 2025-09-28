@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 from contextlib import redirect_stdout, redirect_stderr # noqa: F401
 from esl_psc_cli.esl_multimatrix import main as esl_main
+from esl_psc_cli import esl_psc_functions as ecf
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
@@ -209,7 +210,7 @@ class ESLWorker(QRunnable):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None
@@ -266,19 +267,15 @@ class ESLWorker(QRunnable):
                         elif self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                     except Exception:
                         self.pre_total_files = None
-                    return True  # suppress command line output
-
-                # Preprocess per-file progress
-                if line.startswith("Processing FASTA file"):
                     if getattr(self, "pre_total_files", None) is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None

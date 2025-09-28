@@ -155,8 +155,8 @@ def generate_gap_canceled_alignments(args, list_of_species_combos,
             if file_count % 1000 == 0:
                 print('scanning file number ' + str(file_count))
             records = []
-            if file_name[-3:] != 'fas':
-                continue # skip if not a fasta file
+            if not ecf.is_fasta(file_name):
+                continue # skip if not a fasta file (.fa, .fas, .fasta, .faa)
             # if using a subset of the genes in the input alignments skip others
             if limited_genes_list:
                 if file_name not in genes_to_cancel_set:

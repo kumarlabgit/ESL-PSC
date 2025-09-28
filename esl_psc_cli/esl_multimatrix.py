@@ -76,7 +76,7 @@ def validate_limited_genes_list(limited_list_path, alignments_dir):
     requested = {name for name in requested if name}  # drop empties
     total_requested = len(requested)
 
-    # Collect .fas file names present in alignments directory (non-recursive)
+    # Collect FASTA file names present in alignments directory (non-recursive)
     present = {f for f in os.listdir(alignments_dir) if ecf.is_fasta(f)}
 
     found = requested & present
@@ -85,7 +85,7 @@ def validate_limited_genes_list(limited_list_path, alignments_dir):
     if len(found) == 0:
         raise ValueError(
             "None of the genes listed in --limited_genes_list were found in the alignments directory. "
-            "Please confirm that the list contains only file names that exactly match .fas files in the directory."
+            "Please confirm that the list contains only file names that exactly match FASTA files (.fas, .fasta, .fa, .faa) in the directory."
         )
 
 
@@ -430,7 +430,7 @@ def main(raw_args=None):
     desc_text = '''This will run ESL integrations for many species combinations.
                 All necessary args for esl_integrator.py must be included to
                 specify how each integration run will be performed. Alignments
-                should be in 2-line FASTA format and file names end in ".fas".
+                should be in 2-line FASTA format; supported extensions: .fas, .fasta, .fa, .faa.
                 Multi-line FASTA files are accepted but may be slower.
                 If no species groups file is given, existing response matrices
                 must be given.  An * indicates required arguments. args can be
