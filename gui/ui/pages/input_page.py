@@ -609,6 +609,23 @@ class InputPage(BaseWizardPage):
     # ──────────────────────────────────────────────────────────────────────────
     # Internal helpers
     # ──────────────────────────────────────────────────────────────────────────
+    def _looks_like_tree_file(self, path: str) -> bool:
+        """Return True if the path has a common Newick/NEXUS tree file extension.
+
+        This is intentionally minimal to avoid overcomplicating validation.
+        """
+        try:
+            if not path:
+                return False
+            lower = path.lower()
+            tree_exts = (
+                ".nwk", ".newick", ".tree", ".tre", ".treefile", ".contree",
+                ".nh", ".nhx", ".dnd", ".nexus", ".nex",
+            )
+            return lower.endswith(tree_exts)
+        except Exception:
+            return False
+
     def _on_pheno_path_changed(self, path: str) -> None:
         """Set config path and detect phenotype type (binary vs continuous)."""
         setattr(self.config, 'species_phenotypes_file', path)
@@ -673,6 +690,30 @@ class InputPage(BaseWizardPage):
 
     def _on_species_groups_changed(self, path: str) -> None:
         """Update config when species groups file changes and reset preferred combo."""
+        # Reject tree files mistakenly selected as species groups
+        if path and self._looks_like_tree_file(path):
+            QMessageBox.critical(
+                self,
+                "Invalid Species Groups File",
+                (
+                    "The selected file appears to be a phylogenetic tree (Newick or NEXUS),\n"
+                    "not a species groups file.\n\n"
+                    "Please choose a text file with species groups (comma-separated species per line),\n"
+                    "or use the 'Create a Species Groups File Using a Newick Tree' button to generate one."
+                ),
+            )
+            # Clear the path in both the widget and config
+            try:
+                self.species_groups.set_path("")
+            except Exception:
+                pass
+            setattr(self.config, 'species_groups_file', "")
+            # Hide the count label and bail out
+            try:
+                self.groups_count_label.setVisible(False)
+            except Exception:
+                pass
+            return
         setattr(self.config, 'species_groups_file', path)
         self.config.preferred_groups_combo = None
         self.config.preferred_response_matrix = ""
@@ -778,6 +819,12 @@ class InputPage(BaseWizardPage):
         """
         if not path or not os.path.exists(path):
             return None
+        # Guard: if the file looks like a Newick/NEXUS tree, treat as invalid for groups
+        try:
+            if self._looks_like_tree_file(path):
+                return None
+        except Exception:
+            pass
         try:
             with open(path, encoding='utf-8', errors='ignore') as fh:
                 lines = [ln.strip() for ln in fh if ln.strip()]
