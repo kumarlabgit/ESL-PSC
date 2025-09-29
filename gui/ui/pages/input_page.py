@@ -537,6 +537,32 @@ class InputPage(BaseWizardPage):
             )
             return
 
+        # Warn if the tree appears unrooted. The tree does not have to be bifurcating, but it must be rooted.
+        try:
+            root = getattr(tree, "root", None)
+            rooted_attr = getattr(tree, "rooted", None)
+            rooted_flag = bool(rooted_attr) if rooted_attr is not None else False
+            base_children = len(root.clades) if root is not None and hasattr(root, "clades") else 0
+            # Prefer the rooted flag when available. If it's absent/None, fall back to a
+            # common heuristic: a top-level trifurcation (3+ children) typically indicates an unrooted tree.
+            unrooted_suspected = (
+                (rooted_attr is not None and not rooted_flag) or
+                (rooted_attr is None and base_children >= 3)
+            )
+            if unrooted_suspected:
+                QMessageBox.warning(
+                    self,
+                    "Unrooted Tree Detected",
+                    (
+                        "The loaded tree appears to be unrooted.\n\n"
+                        "A rooted tree is required to properly select valid contrast pairs.\n"
+                        "Please root your tree (e.g., midpoint or outgroup rooting) and reload."
+                    ),
+                )
+        except Exception:
+            # If detection fails for any reason, continue without blocking the viewer
+            pass
+
         phenos = {}
         pheno_path = getattr(self.config, "species_phenotypes_file", "")
         if pheno_path and os.path.exists(pheno_path):
