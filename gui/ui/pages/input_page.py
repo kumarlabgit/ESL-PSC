@@ -537,25 +537,27 @@ class InputPage(BaseWizardPage):
             )
             return
 
-        # Warn if the tree appears unrooted. The tree does not have to be bifurcating, but it must be rooted.
+        # Warn if the basal split is not a bifurcation (exactly two children).
+        # Ignore Bio.Phylo's rooted flag; instead, walk down any single-child wrappers
+        # and test the first node that branches into != 1 children.
         try:
-            root = getattr(tree, "root", None)
-            rooted_attr = getattr(tree, "rooted", None)
-            rooted_flag = bool(rooted_attr) if rooted_attr is not None else False
-            base_children = len(root.clades) if root is not None and hasattr(root, "clades") else 0
-            # Prefer the rooted flag when available. If it's absent/None, fall back to a
-            # common heuristic: a top-level trifurcation (3+ children) typically indicates an unrooted tree.
-            unrooted_suspected = (
-                (rooted_attr is not None and not rooted_flag) or
-                (rooted_attr is None and base_children >= 3)
-            )
-            if unrooted_suspected:
+            node = getattr(tree, "root", None)
+            # descend through unary chains that some exporters add as a wrapper
+            safety_counter = 0
+            while (
+                node is not None and hasattr(node, "clades") and isinstance(getattr(node, "clades", None), list)
+                and len(node.clades) == 1 and safety_counter < 1000
+            ):
+                node = node.clades[0]
+                safety_counter += 1
+            base_children = len(node.clades) if node is not None and hasattr(node, "clades") else 0
+            if base_children != 2:
                 QMessageBox.warning(
                     self,
-                    "Unrooted Tree Detected",
+                    "Rooting Warning",
                     (
-                        "The loaded tree appears to be unrooted.\n\n"
-                        "A rooted tree is required to properly select valid contrast pairs.\n"
+                        "The loaded tree does not appear to be properly rooted: the basal split is not a bifurcation.\n\n"
+                        "For selecting valid contrast pairs, the tree should have a single basal bifurcation.\n"
                         "Please root your tree (e.g., midpoint or outgroup rooting) and reload."
                     ),
                 )
