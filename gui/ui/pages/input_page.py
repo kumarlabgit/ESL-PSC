@@ -170,7 +170,7 @@ class InputPage(BaseWizardPage):
         self.groups_count_label = QLabel("number of species combos: —")
         self.groups_count_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.groups_count_label.setToolTip(
-            "Computed as 2^n where n = sum over all lines of (number of species per line − 1)."
+            "Computed as the product of the number of species listed on each line (choose one per line)."
         )
         # Hidden by default; becomes visible when a valid groups file is present
         self.groups_count_label.setVisible(False)
@@ -811,11 +811,13 @@ class InputPage(BaseWizardPage):
         setattr(self.config, 'alignments_dir', path)
 
     def _compute_species_combos_from_file(self, path: str) -> int | None:
-        """Compute number of combos as 2^n where n is the total alternates across lines.
+        """Compute number of species combos from a groups file.
 
-        For each non-empty line in the species groups file, split by comma and count the
-        number of species options on that line. The number of alternates is (len(options) - 1).
-        Sum alternates across all lines to obtain n, and return 2**n.
+        The groups file is structured as alternating convergent/control lines for each pair.
+        The total number of combinations is the product of the number of species listed
+        on each line (i.e., choose exactly one species from every line).
+
+        Returns None if the path is invalid or the file has an odd number of non-empty lines.
         """
         if not path or not os.path.exists(path):
             return None
@@ -830,16 +832,17 @@ class InputPage(BaseWizardPage):
                 lines = [ln.strip() for ln in fh if ln.strip()]
         except Exception:
             return None
-        n_alts = 0
+        # Must be an even number of non-empty lines (convergent/control pairs)
+        if not lines or (len(lines) % 2) != 0:
+            return None
+        product = 1
         for ln in lines:
             parts = [p.strip() for p in ln.split(',') if p.strip()]
+            # If any line has no species, treat as invalid
             if not parts:
-                continue
-            n_alts += max(0, len(parts) - 1)
-        try:
-            return 1 << int(n_alts)
-        except Exception:
-            return None
+                return None
+            product *= len(parts)
+        return product
 
     def _compute_response_matrices_count(self, dir_path: str) -> int | None:
         """Count the number of response matrix files (*.txt) in the directory."""
@@ -890,7 +893,7 @@ class InputPage(BaseWizardPage):
                 self.groups_count_label.setVisible(False)
             else:
                 self.groups_count_label.setText(f"number of species combos: {count:,}")
-                self.groups_count_label.setToolTip("Computed as 2^n where n = sum over all lines of (number of species per line − 1).")
+                self.groups_count_label.setToolTip("Computed as the product of the number of species listed on each line (choose one per line).")
                 self.groups_count_label.setVisible(True)
             # Hide the response label row in species-groups mode
             self.response_count_label.setVisible(False)
