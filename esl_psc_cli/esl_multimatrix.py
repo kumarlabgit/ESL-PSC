@@ -474,6 +474,12 @@ def main(raw_args=None):
     group.add_argument('--delete_preprocess',
                         help = 'Clear preprocess folders after each matrix run',
                         action = 'store_true', default = False)
+    group.add_argument('--preserve_canceled_alignments',
+                        help = (
+                            'Preserve the generated gap-canceled alignments folder at the end of the run. '\
+                            'By default, ESL-PSC will clean up the folder to save disk space.'
+                        ),
+                        action = 'store_true', default = False)
     group.add_argument('--make_null_models',
                         help = ('Make null response-flipped ESL-PSC models. '
                                 'must have an even number of pairs. All '
@@ -733,9 +739,11 @@ def main(raw_args=None):
         
 
     # 2) Generate Gap-canceled Alignments
+    generated_gap_canceled_alignments = False
     if not args.use_existing_alignments: # skip if using existing alignments
         # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
+        generated_gap_canceled_alignments = True
         # generate new alignments
         # Prefer the Rust deletion canceler on Linux, macOS, or Windows.
         # Use it when either a species_groups_file or a response_dir is provided.
@@ -838,10 +846,8 @@ def main(raw_args=None):
     cmd = ' '.join(shlex.quote(a) for a in sys.argv)
     print(f"\nRun command: {cmd}\n")
 
-    # print these paths so they don't get lost
+    # print these paths so they don't get lost (response dir now; gap-canceled dir reported at very end)
     print("\nResponse matrices directory:", response_dir)
-    print("\nGap-canceled alignments directory:",
-          args.canceled_alignments_dir)
     
     # call output functions which should generate output files
     if not args.no_genes_output:  # skip genes output if flag is true
@@ -879,6 +885,19 @@ def main(raw_args=None):
         ecf.continuous_pred_plot(preds_output_path,
                                  args.output_file_base_name,
                                  args.min_genes)
+
+    # Final report on gap-canceled alignments and optional cleanup
+    if generated_gap_canceled_alignments and not getattr(args, 'preserve_canceled_alignments', False):
+        try:
+            ecf.clear_existing_folder(args.canceled_alignments_dir)
+            print("\nGap-canceled alignments were cleaned up to save disk space.")
+        except Exception as e:
+            # If cleanup fails, at least report the directory path
+            print("\n[WARN] Failed to clean up gap-canceled alignments:", e)
+            print("Gap-canceled alignments directory:", args.canceled_alignments_dir)
+    else:
+        # Either using existing alignments or user requested to preserve
+        print("\nGap-canceled alignments directory:", args.canceled_alignments_dir)
 
 if __name__ == '__main__':
     main()

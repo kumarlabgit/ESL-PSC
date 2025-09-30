@@ -495,6 +495,19 @@ class ParametersPage(BaseWizardPage):
         # initial config value
         self.config.use_existing_preprocess = False
         
+        # Preserve gap-canceled alignments (default off: clean up to save disk space)
+        self.preserve_gap_aligns = QCheckBox("Preserve gap-canceled alignments after run")
+        self.preserve_gap_aligns.setToolTip(
+            "By default, ESL-PSC deletes the generated gap-canceled alignments folder at the end of a run "
+            "to avoid accumulating very large folders. Check to keep the folder for inspection or reuse."
+        )
+        self.preserve_gap_aligns.stateChanged.connect(
+            lambda s: setattr(self.config, 'preserve_canceled_alignments', s == 2)
+        )
+        del_cancel_layout.addWidget(self.preserve_gap_aligns)
+        # initial config value
+        self.config.preserve_canceled_alignments = getattr(self.config, 'preserve_canceled_alignments', False)
+        
         del_cancel_group.setLayout(del_cancel_layout)
         self.container_layout.addWidget(del_cancel_group)
 
@@ -939,6 +952,8 @@ class ParametersPage(BaseWizardPage):
         self.use_existing_alignments.setChecked(self.config.use_existing_alignments)
         self.canceled_alignments_selector.set_path(self.config.canceled_alignments_dir)
         self.canceled_alignments_selector.setVisible(self.config.use_existing_alignments)
+        if hasattr(self, 'preserve_gap_aligns'):
+            self.preserve_gap_aligns.setChecked(bool(getattr(self.config, 'preserve_canceled_alignments', False)))
 
         # Null models
         self.no_null_btn.setChecked(True)
@@ -1025,6 +1040,11 @@ class ParametersPage(BaseWizardPage):
         self._update_penalty_type(cfg.group_penalty_type)
         self._update_phenotype_names_state()
         self.update_output_options_state()
+        # Deletion-canceler: preserve gap-canceled alignments
+        if hasattr(self, 'preserve_gap_aligns'):
+            self.preserve_gap_aligns.blockSignals(True)
+            self.preserve_gap_aligns.setChecked(bool(getattr(cfg, 'preserve_canceled_alignments', False)))
+            self.preserve_gap_aligns.blockSignals(False)
 
     # Qt calls this each time the page becomes current
     def initializePage(self):

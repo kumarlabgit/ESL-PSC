@@ -41,6 +41,7 @@ def test_demo_run_smoke(tmp_path):
         "--output_dir", str(output_dir),
         "--use_logspace",
         "--num_log_points", "4",
+        "--preserve_canceled_alignments",
         "--show_selected_sites",
     ]
 

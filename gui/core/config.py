@@ -63,6 +63,8 @@ class ESLConfig:
 
     use_existing_alignments: bool = False
     canceled_alignments_dir: str = ""
+    # Preserve generated gap-canceled alignments at the end of run (default: False → cleanup)
+    preserve_canceled_alignments: bool = False
 
     
     # Use existing preprocess directories instead of re-processing alignments
@@ -156,6 +158,8 @@ class ESLConfig:
                         "--use_existing_alignments")
         if getattr(self, 'canceled_alignments_dir', ''):
             a += ["--canceled_alignments_dir", self.canceled_alignments_dir]
+        # Preserve gap-canceled alignments (by default they are cleaned up)
+        a += self._flag(getattr(self, 'preserve_canceled_alignments', False), "--preserve_canceled_alignments")
 
         a += self._flag(getattr(self, 'use_existing_preprocess', False), "--use_existing_preprocess")
         
