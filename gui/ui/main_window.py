@@ -389,7 +389,7 @@ class ESLWizard(QWizard):
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Configuration",
-            os.getcwd(),
+            os.path.join(os.getcwd(), "esl-psc_gui_config"),
             "JSON Files (*.json)"
         )
         if path:
