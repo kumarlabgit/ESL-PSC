@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
     QSpinBox,
+    QRadioButton,
+    QButtonGroup,
+    QFileDialog,
+    QLineEdit,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
@@ -299,13 +303,34 @@ class PhenoThresholdDialog(QDialog):
 
 
 class OutgroupDialog(QDialog):
-    """Dialog to pick an outgroup species."""
+    """Dialog to pick an outgroup species or use ancestral reconstruction."""
 
-    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None, show_two_pair_option: bool = False, default_agreement_pct: float | None = 100.0):
+    def __init__(self, species: Sequence[str], parent=None, default_selected: str | None = None, show_two_pair_option: bool = False, default_agreement_pct: float | None = 100.0, species_groups_file: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("Select Outgroup Species")
+        self._species_groups_file = species_groups_file
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Choose outgroup species:"))
+        
+        # Radio button group for outgroup method
+        method_label = QLabel("<b>Outgroup Method:</b>")
+        layout.addWidget(method_label)
+        
+        self._method_group = QButtonGroup(self)
+        self._use_species_radio = QRadioButton("Use single outgroup species")
+        self._use_ancestral_radio = QRadioButton("Use parsimony ancestral reconstruction")
+        self._use_species_radio.setChecked(True)
+        
+        self._method_group.addButton(self._use_species_radio, 0)
+        self._method_group.addButton(self._use_ancestral_radio, 1)
+        
+        layout.addWidget(self._use_species_radio)
+        layout.addWidget(self._use_ancestral_radio)
+        
+        # Species selection (for single species method)
+        species_label = QLabel("Choose outgroup species:")
+        layout.addWidget(species_label)
+        self._species_label = species_label
+        
         self._combo = QComboBox()
         self._combo.addItems(list(species))
         # Preselect default if provided and present in the list
@@ -314,6 +339,35 @@ class OutgroupDialog(QDialog):
             if idx >= 0:
                 self._combo.setCurrentIndex(idx)
         layout.addWidget(self._combo)
+        
+        # Tree file selection (for ancestral method)
+        tree_label = QLabel("Tree file (Newick/NEXUS):")
+        layout.addWidget(tree_label)
+        self._tree_label = tree_label
+        
+        tree_row = QHBoxLayout()
+        self._tree_path = QLineEdit()
+        self._tree_path.setPlaceholderText("Select tree file for ancestral reconstruction...")
+        self._tree_path.setReadOnly(True)
+        tree_row.addWidget(self._tree_path)
+        
+        self._tree_browse_btn = QPushButton("Browse...")
+        self._tree_browse_btn.clicked.connect(self._browse_tree)
+        tree_row.addWidget(self._tree_browse_btn)
+        
+        layout.addLayout(tree_row)
+        
+        # Validation label for tree
+        self._tree_validation_label = QLabel()
+        self._tree_validation_label.setWordWrap(True)
+        self._tree_validation_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+        layout.addWidget(self._tree_validation_label)
+        
+        # Connect radio buttons to update UI
+        self._use_species_radio.toggled.connect(self._update_method_ui)
+        
+        # Initial UI state
+        self._update_method_ui()
         # Option: use 2x2 combos derived from species groups (Fast Scan only)
         self._two_pair_check = None
         if show_two_pair_option:
@@ -374,3 +428,71 @@ class OutgroupDialog(QDialog):
             return float(self._agree_spin.value()) / 100.0
         except Exception:
             return 1.0
+    
+    @property
+    def use_ancestral_reconstruction(self) -> bool:
+        """Return True if ancestral reconstruction is selected."""
+        return self._use_ancestral_radio.isChecked()
+    
+    @property
+    def tree_file(self) -> str:
+        """Return path to tree file (empty if not using ancestral reconstruction)."""
+        return self._tree_path.text().strip()
+    
+    def _browse_tree(self) -> None:
+        """Open file dialog to select tree file."""
+        import os
+        start_dir = os.getcwd()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Tree File",
+            start_dir,
+            "Tree Files (*.nwk *.newick *.tree *.tre *.treefile *.contree *.nh *.nhx *.dnd *.nexus *.nex *.txt);;All Files (*)"
+        )
+        if path:
+            self._tree_path.setText(path)
+            self._validate_tree()
+    
+    def _validate_tree(self) -> None:
+        """Validate selected tree against species groups."""
+        tree_path = self._tree_path.text().strip()
+        if not tree_path:
+            self._tree_validation_label.setText("")
+            self._tree_validation_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+            return
+        
+        if not self._species_groups_file:
+            self._tree_validation_label.setText("⚠ Cannot validate: no species groups file loaded")
+            self._tree_validation_label.setStyleSheet("QLabel { color: orange; font-style: italic; }")
+            return
+        
+        try:
+            from gui.core.ancestral_reconstruction import validate_tree_for_fast_scan
+            valid, message = validate_tree_for_fast_scan(tree_path, self._species_groups_file)
+            if valid:
+                self._tree_validation_label.setText(f"✓ {message}")
+                self._tree_validation_label.setStyleSheet("QLabel { color: green; }")
+            else:
+                self._tree_validation_label.setText(f"✗ {message}")
+                self._tree_validation_label.setStyleSheet("QLabel { color: red; }")
+        except Exception as e:
+            self._tree_validation_label.setText(f"✗ Validation failed: {e}")
+            self._tree_validation_label.setStyleSheet("QLabel { color: red; }")
+    
+    def _update_method_ui(self) -> None:
+        """Update UI based on selected outgroup method."""
+        use_species = self._use_species_radio.isChecked()
+        
+        # Show/hide species controls
+        self._species_label.setVisible(use_species)
+        self._combo.setVisible(use_species)
+        
+        # Show/hide tree controls
+        self._tree_label.setVisible(not use_species)
+        self._tree_path.setVisible(not use_species)
+        self._tree_browse_btn.setVisible(not use_species)
+        self._tree_validation_label.setVisible(not use_species)
+        
+        # Validate tree if switching to ancestral mode
+        if not use_species:
+            self._validate_tree()

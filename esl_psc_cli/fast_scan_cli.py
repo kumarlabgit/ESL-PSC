@@ -60,8 +60,13 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--outgroup_species",
-        required=True,
-        help="Outgroup species identifier",
+        required=False,
+        help="Outgroup species identifier (required unless using --tree_file)",
+    )
+    parser.add_argument(
+        "--tree_file",
+        type=str,
+        help="Newick or NEXUS tree file for parsimony ancestral reconstruction",
     )
     parser.add_argument(
         "--two_pair_combos",
@@ -92,9 +97,23 @@ def main(argv=None) -> int:
     align_dir = os.path.abspath(args.alignments_dir)
     groups_path = os.path.abspath(args.species_groups_file)
     outgroup = args.outgroup_species
+    tree_file = args.tree_file
     two_pair = bool(args.two_pair_combos)
     min_agree = float(args.min_out_ctrl_agreement)
     top_frac = float(args.top_frac)
+    
+    # Validate that either outgroup or tree is provided
+    if not outgroup and not tree_file:
+        print("Error: must provide either --outgroup_species or --tree_file", file=sys.stderr)
+        return 2
+    if tree_file:
+        tree_file = os.path.abspath(tree_file)
+        if not os.path.isfile(tree_file):
+            print(f"Error: tree file not found: {tree_file}", file=sys.stderr)
+            return 2
+        # Set placeholder outgroup for ancestral mode
+        if not outgroup:
+            outgroup = "ANCESTRAL_MRCA"
 
     # Validate inputs
     if not os.path.isdir(align_dir):
@@ -119,14 +138,22 @@ def main(argv=None) -> int:
         print("Error: no valid species combos could be constructed from the groups file", file=sys.stderr)
         return 2
     n_combos = len(combos)
+    
+    # Collect analysis species for ancestral reconstruction
+    analysis_species = None
+    if tree_file:
+        analysis_species = set()
+        for conv, ctrl in combos:
+            analysis_species.update(conv)
+            analysis_species.update(ctrl)
 
     results: List[Dict]
     used_rust = False
 
     # Attempt Rust path unless disabled
     rs_bin = fs._detect_fast_scan_rs()
-    # If fractional agreement is requested, prefer a newer target build if present
-    if rs_bin and min_agree != 1.0:
+    # If fractional agreement or tree is requested, prefer a newer target build if present
+    if rs_bin and (min_agree != 1.0 or tree_file):
         try:
             repo_root = os.path.abspath(os.path.join(os.path.dirname(fs.__file__), "..", ".."))
             cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
@@ -151,6 +178,8 @@ def main(argv=None) -> int:
                 progress_cb=_print_progress,
                 total=len(files),
                 done_offset=0,
+                tree_file=tree_file,
+                analysis_species=analysis_species,
             )
             used_rust = True
             results = _postprocess_and_sort(results, n_combos, top_frac)
@@ -169,6 +198,7 @@ def main(argv=None) -> int:
                 progress_cb=_print_progress,
                 two_pair_combos=two_pair,
                 min_out_ctrl_agreement=min_agree,
+                tree_file=tree_file,
             )
     else:
         # Direct Python path (or forced)
@@ -180,6 +210,7 @@ def main(argv=None) -> int:
             progress_cb=_print_progress,
             two_pair_combos=two_pair,
             min_out_ctrl_agreement=min_agree,
+            tree_file=tree_file,
         )
 
     # Emit CSV output (required path)

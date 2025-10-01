@@ -436,10 +436,16 @@ class InputPage(BaseWizardPage):
             default_selected=default_out,
             show_two_pair_option=True,
             default_agreement_pct=default_agree_pct,
+            species_groups_file=groups_file,
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        outgroup = dlg.selected
+        
+        # Extract dialog choices
+        use_ancestral = dlg.use_ancestral_reconstruction
+        tree_file = dlg.tree_file if use_ancestral else None
+        outgroup = None if use_ancestral else dlg.selected
+        
         use_two_pair = False
         try:
             use_two_pair = bool(dlg.use_two_pair_combos)
@@ -450,12 +456,24 @@ class InputPage(BaseWizardPage):
             min_agree = float(getattr(dlg, 'min_out_ctrl_agreement', 1.0))
         except Exception:
             min_agree = 1.0
-        # Remember for next Fast Scan within this session
-        try:
-            setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
-            setattr(self.config, 'last_fast_scan_agree_pct', float(min_agree) * 100.0)
-        except Exception:
-            pass
+        
+        # Validate ancestral reconstruction inputs
+        if use_ancestral:
+            if not tree_file or not os.path.exists(tree_file):
+                QMessageBox.warning(self, "Fast Scan", "Please select a valid tree file for ancestral reconstruction.")
+                return
+            # Remember tree file for this session
+            try:
+                setattr(self.config, 'last_fast_scan_tree_file', tree_file)
+            except Exception:
+                pass
+        else:
+            # Remember for next Fast Scan within this session
+            try:
+                setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
+                setattr(self.config, 'last_fast_scan_agree_pct', float(min_agree) * 100.0)
+            except Exception:
+                pass
         progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
         progress.setWindowTitle("Fast Scan")
         progress.setAutoClose(True)
@@ -491,6 +509,7 @@ class InputPage(BaseWizardPage):
             n_jobs=n_jobs,
             two_pair_combos=use_two_pair,
             min_out_ctrl_agreement=min_agree,
+            tree_file=tree_file,
         )
         progress.close()
         if not results:

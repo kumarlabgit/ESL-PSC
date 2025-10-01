@@ -38,7 +38,10 @@ ESL-PSC's Python fast scan uses internally.
   "outgroup": "OutgroupSpecies",
   "cs_threshold": 4,
   "emit_progress": true,
-  "min_out_ctrl_agreement": 1.0
+  "min_out_ctrl_agreement": 1.0,
+  "tree_file": "path/to/tree.nwk",
+  "tree_json": { "name": null, "children": [...] },
+  "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"]
 }
 ```
 
@@ -60,6 +63,14 @@ ESL-PSC's Python fast scan uses internally.
 * `min_out_ctrl_agreement` (float in `[0,1]`, optional, default `1.0`): minimum
   fraction of control residues that must match the outgroup residue before a
   site is counted as convergent. Values outside the range are clamped.
+* `tree_file` (string, optional): path to a Newick or NEXUS tree file for
+  parsimony-based ancestral reconstruction. When provided with `analysis_species`,
+  the MRCA of analysis species is reconstructed and used as the outgroup.
+* `tree_json` (object, optional): pre-parsed tree structure (from Python/Biopython)
+  with schema `{"name": str | null, "children": [...]}`. Preferred over `tree_file`
+  when both are present.
+* `analysis_species` (list of strings, optional): species in the convergence analysis.
+  Required when using ancestral reconstruction to identify the MRCA node.
 
 ## Output format
 
@@ -93,7 +104,9 @@ The program prints a JSON array. Each element summarizes one alignment file:
 * `per_combo_diff`: per-combo difference between convergent and control CCS
   counts when both sides were eligible.
 
-## Direct usage example
+## Direct usage examples
+
+### Example 1: Single-species outgroup
 
 ```bash
 cat <<'JSON' | fast_scan_rs/target/release/fast_scan_rs > results.json
@@ -108,8 +121,26 @@ cat <<'JSON' | fast_scan_rs/target/release/fast_scan_rs > results.json
 JSON
 ```
 
+### Example 2: Parsimony ancestral reconstruction
+
+```bash
+cat <<'JSON' | fast_scan_rs/target/release/fast_scan_rs > results.json
+{
+  "alignment_dir": "photosynthesis_alignments",
+  "combos": [
+    {"conv": ["SpeciesA", "SpeciesB"], "ctrl": ["SpeciesC", "SpeciesD"]}
+  ],
+  "outgroup": "ANCESTRAL_MRCA",
+  "tree_file": "photo_tree.nwk",
+  "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"],
+  "emit_progress": true
+}
+JSON
+```
+
 The resulting `results.json` file contains the summarized statistics for each
-alignment processed by the binary.
+alignment processed by the binary. When using ancestral reconstruction, alignments
+where the MRCA is at the root (no outgroup context) are skipped.
 
 ## Integration with the Python CLI
 

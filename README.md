@@ -83,9 +83,6 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
   - Binary phenotypes: violin or KDE SPS plots remain available when a binary phenotype file is supplied.
   - Continuous phenotypes: select the new Phenotype vs SPS density plot (GUI checkbox or `--make_continuous_plot`).
 
-- Related improvements
-  - SPS plot controls are always visible on the Parameters page but are automatically disabled when not applicable (e.g., continuous mode or no phenotype file), keeping the UI consistent while preventing invalid choices.
-  - Fast Scan quality-of-life: an option in the Outgroup dialog to Use all two‑pair combos interprets a species groups file by generating all 2×2 pair combinations (including expansion for lines with multiple species).
 
 ### Running the GUI
 1. Ensure the GUI dependencies are installed:
@@ -138,6 +135,8 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 ### Fast Scan Rust CLI
 
 Looking for the high-performance fast scan backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
+
+**Parsimony-based ancestral reconstruction** is now available in Fast Scan via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Fast Scan will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Fast Scan Rust CLI README for examples.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 

@@ -10,10 +10,11 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Set, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from gui.core.fasta_io import read_fasta
+from gui.core.ancestral_reconstruction import _load_tree, clade_to_json
 from esl_psc_cli.deletion_canceler import (
     parse_species_groups as cli_parse_species_groups,
 )
@@ -135,6 +136,8 @@ def _scan_file_worker(
     combos: List[Tuple[List[str], List[str]]],
     outgroup_species: str,
     min_out_ctrl_agreement: float,
+    tree_file: str | None = None,
+    analysis_species: Set[str] | None = None,
 ) -> Dict[str, float | int]:
     path = os.path.join(alignment_dir, fname)
     records = read_fasta(path)
@@ -149,6 +152,46 @@ def _scan_file_worker(
             "cs_sites_ge_4": 0,
             "k_pairs": 0,
         }
+    
+    # Handle ancestral reconstruction if tree_file provided
+    if tree_file and analysis_species:
+        try:
+            from gui.core.ancestral_reconstruction import (
+                get_ancestral_outgroup_for_alignment,
+                AncestralReconstructionError
+            )
+            ancestral_seq, ancestral_id = get_ancestral_outgroup_for_alignment(
+                tree_file, species_seq, analysis_species
+            )
+            # Add ancestral sequence as the outgroup
+            species_seq[ancestral_id] = ancestral_seq
+            outgroup_species = ancestral_id
+        except AncestralReconstructionError:
+            # Skip this alignment if reconstruction fails (e.g., MRCA at root)
+            return {
+                "gene": os.path.splitext(fname)[0],
+                "avg_true": 0.0,
+                "avg_control": 0.0,
+                "diff": 0.0,
+                "variable_sites": 0,
+                "cs_sites_ge_4": 0,
+                "k_pairs": 0,
+                "skipped": True,
+                "skip_reason": "MRCA at root or reconstruction failed",
+            }
+        except Exception:
+            # Silently skip on other errors
+            return {
+                "gene": os.path.splitext(fname)[0],
+                "avg_true": 0.0,
+                "avg_control": 0.0,
+                "diff": 0.0,
+                "variable_sites": 0,
+                "cs_sites_ge_4": 0,
+                "k_pairs": 0,
+                "skipped": True,
+                "skip_reason": "Reconstruction error",
+            }
 
     # Use the maximum sequence length seen to be robust to minor length differences
     seq_len = max((len(s) for s in species_seq.values()), default=0)
@@ -313,13 +356,14 @@ def _scan_file_worker(
 def fast_scan_alignments(
     alignment_dir: str,
     species_groups_file: str,
-    outgroup_species: str,
+    outgroup_species: str | None,
     progress_cb: Callable[[int, int], None] | None = None,
     response_dir: str | None = None,
     n_jobs: int | None = None,
     top_frac: float = 0.01,
     two_pair_combos: bool = False,
     min_out_ctrl_agreement: float = 1.0,
+    tree_file: str | None = None,
 ) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -329,15 +373,28 @@ def fast_scan_alignments(
         Directory containing ``.fas`` alignment files.
     species_groups_file: str
         Path to species groups definition.
-    outgroup_species: str
-        Species to treat as the outgroup.
+    outgroup_species: str | None
+        Species to treat as the outgroup (None if using ancestral reconstruction).
     progress_cb: callable, optional
         Callback receiving ``(current, total)`` file counts.
+    tree_file: str | None
+        Path to tree file for ancestral reconstruction (if provided, outgroup_species is ignored).
     """
     combos = _parse_species_groups_two_pair(species_groups_file) if two_pair_combos else _parse_species_groups(species_groups_file)
     files = sorted([f for f in os.listdir(alignment_dir) if ecf.is_fasta(f)])
     total = len(files)
     results: List[Dict[str, float | int]] = []
+    
+    # Collect all analysis species from combos for ancestral reconstruction
+    analysis_species: Set[str] | None = None
+    if tree_file:
+        analysis_species = set()
+        for conv, ctrl in combos:
+            analysis_species.update(conv)
+            analysis_species.update(ctrl)
+        # Use a placeholder outgroup for workers (will be replaced by ancestral seq)
+        if not outgroup_species:
+            outgroup_species = "ANCESTRAL_MRCA"
 
     # Default n_jobs if not specified
     if n_jobs is None:
@@ -353,7 +410,8 @@ def fast_scan_alignments(
     # target/release binary (newer) over any packaged bin/ version. If not found,
     # fall back to Python to ensure correct semantics.
     try:
-        if float(min_out_ctrl_agreement) != 1.0:
+        if float(min_out_ctrl_agreement) != 1.0 or tree_file:
+            # For ancestral reconstruction or fractional agreement, use local build
             repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
             cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
@@ -362,6 +420,7 @@ def fast_scan_alignments(
                 rs_bin = None
     except Exception:
         rs_bin = None
+    
     if rs_bin:
         try:
             # Single Rust invocation; if a progress callback is provided, we stream
@@ -377,6 +436,8 @@ def fast_scan_alignments(
                 progress_cb=progress_cb,
                 total=total,
                 done_offset=0,
+                tree_file=tree_file,
+                analysis_species=analysis_species,
             )
             results = rs_results
             if len(combos) > 1:
@@ -403,13 +464,13 @@ def fast_scan_alignments(
     # Serial or parallel path (Python)
     if n_jobs <= 1:
         for idx, fname in enumerate(files, 1):
-            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement))
+            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species)
             results.append(res)
             if progress_cb:
                 progress_cb(idx, total)
     else:
         with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement)): fname for fname in files}
+            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species): fname for fname in files}
             done = 0
             for fut in as_completed(future_map):
                 try:
@@ -505,6 +566,8 @@ def _run_fast_scan_rs(
     progress_cb: Callable[[int, int], None] | None = None,
     total: int | None = None,
     done_offset: int = 0,
+    tree_file: str | None = None,
+    analysis_species: Set[str] | None = None,
 ) -> List[Dict[str, float | int]]:
     """Invoke the Rust fast_scan_rs binary and parse its JSON output.
 
@@ -525,6 +588,18 @@ def _run_fast_scan_rs(
             spec["min_out_ctrl_agreement"] = float(min_out_ctrl_agreement)
     except Exception:
         pass
+    # Add tree metadata for ancestral reconstruction. Prefer embedding the parsed
+    # tree (JSON) to avoid Rust-side parsing and any temp files.
+    if tree_file:
+        spec["tree_file"] = tree_file  # keep for backward-compat/fallback
+        try:
+            root = _load_tree(tree_file)
+            spec["tree_json"] = clade_to_json(root)
+        except Exception:
+            # If Python parsing fails, Rust may still try tree_file path
+            pass
+    if analysis_species:
+        spec["analysis_species"] = sorted(list(analysis_species))
     # Use a temporary file for stdout to avoid pipe backpressure while we read stderr for progress
     import tempfile
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:

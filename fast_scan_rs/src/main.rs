@@ -21,6 +21,9 @@ struct InputSpec {
     cs_threshold: Option<u32>,
     emit_progress: Option<bool>,
     min_out_ctrl_agreement: Option<f64>,
+    tree_file: Option<String>,  // Newick tree for ancestral reconstruction
+    analysis_species: Option<Vec<String>>,  // Species in analysis (for MRCA)
+    tree_json: Option<NodeJson>, // Parsed tree provided by Python (preferred)
 }
 
 #[derive(Serialize)]
@@ -69,6 +72,253 @@ fn is_uniform_non_gap(list: &[char]) -> Option<char> {
     None
 }
 
+// ===== Tree and Ancestral Reconstruction =====
+
+#[derive(Clone, Deserialize)]
+struct NodeJson {
+    name: Option<String>,
+    children: Vec<NodeJson>,
+}
+
+#[derive(Clone)]
+struct TreeNode {
+    name: Option<String>,
+    children: Vec<TreeNode>,
+}
+
+impl TreeNode {
+    fn new(name: Option<String>) -> Self {
+        TreeNode { name, children: vec![] }
+    }
+    
+    fn is_leaf(&self) -> bool {
+        self.children.is_empty()
+    }
+    
+    fn get_terminals(&self) -> Vec<String> {
+        if self.is_leaf() {
+            if let Some(name) = &self.name {
+                vec![name.clone()]
+            } else {
+                vec![]
+            }
+        } else {
+            self.children.iter().flat_map(|c| c.get_terminals()).collect()
+        }
+    }
+}
+
+fn tree_from_json(n: &NodeJson) -> TreeNode {
+    TreeNode {
+        name: n.name.clone(),
+        children: n.children.iter().map(tree_from_json).collect(),
+    }
+}
+
+fn parse_newick(text: &str) -> Option<TreeNode> {
+    let text = text.trim().trim_end_matches(';');
+    parse_newick_node(text).map(|(node, _)| node)
+}
+
+fn parse_newick_node(s: &str) -> Option<(TreeNode, &str)> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    
+    if s.starts_with('(') {
+        // Internal node with children
+        let s = &s[1..]; // Skip '('
+        let mut children = vec![];
+        let mut remaining = s;
+        
+        loop {
+            if let Some((child, rest)) = parse_newick_node(remaining) {
+                children.push(child);
+                remaining = rest.trim();
+                
+                if remaining.starts_with(',') {
+                    remaining = &remaining[1..];
+                } else if remaining.starts_with(')') {
+                    remaining = &remaining[1..];
+                    break;
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        
+        // Parse node label (optional) and branch length (optional)
+        let (name, remaining) = parse_node_label_and_length(remaining);
+        let mut node = TreeNode::new(name);
+        node.children = children;
+        Some((node, remaining))
+    } else {
+        // Leaf node
+        let (name, remaining) = parse_node_label_and_length(s);
+        Some((TreeNode::new(name), remaining))
+    }
+}
+
+fn parse_node_label_and_length(s: &str) -> (Option<String>, &str) {
+    let s = s.trim();
+    
+    // Find where label ends (at ',' or ')' or ':' or end)
+    let mut label_end = 0;
+    let mut in_name = true;
+    let chars: Vec<char> = s.chars().collect();
+    
+    for (i, &c) in chars.iter().enumerate() {
+        if c == ':' || c == ',' || c == ')' {
+            label_end = i;
+            in_name = false;
+            break;
+        }
+    }
+    
+    if in_name {
+        label_end = chars.len();
+    }
+    
+    let label = if label_end > 0 {
+        Some(s[..label_end].trim().to_string())
+    } else {
+        None
+    };
+    
+    // Skip branch length if present (after ':')
+    let mut remaining = &s[label_end..];
+    if remaining.starts_with(':') {
+        // Find end of branch length
+        if let Some(pos) = remaining[1..].find(|c| c == ',' || c == ')') {
+            remaining = &remaining[pos + 1..];
+        } else {
+            remaining = "";
+        }
+    }
+    
+    (label, remaining)
+}
+
+fn prune_tree(node: &TreeNode, keep_species: &[String]) -> TreeNode {
+    if node.is_leaf() {
+        // Keep leaf if in keep_species
+        if let Some(name) = &node.name {
+            if keep_species.contains(name) {
+                return node.clone();
+            }
+        }
+        // Return empty node (will be removed)
+        TreeNode::new(None)
+    } else {
+        // Recursively prune children
+        let mut pruned_children: Vec<TreeNode> = node.children
+            .iter()
+            .map(|c| prune_tree(c, keep_species))
+            .filter(|c| !c.children.is_empty() || c.name.is_some())
+            .collect();
+        
+        // Collapse single-child nodes
+        while pruned_children.len() == 1 && !pruned_children[0].is_leaf() {
+            let child = pruned_children.remove(0);
+            pruned_children = child.children;
+        }
+        
+        let mut result = TreeNode::new(node.name.clone());
+        result.children = pruned_children;
+        result
+    }
+}
+
+fn find_mrca<'a>(node: &'a TreeNode, species: &[String]) -> Option<&'a TreeNode> {
+    let terminals = node.get_terminals();
+    let has_all = species.iter().all(|s| terminals.contains(s));
+    
+    if !has_all {
+        return None;
+    }
+    
+    // Check if any child contains all species
+    for child in &node.children {
+        if let Some(mrca) = find_mrca(child, species) {
+            return Some(mrca);
+        }
+    }
+    
+    // This node is the MRCA
+    Some(node)
+}
+
+fn reconstruct_ancestral(node: &TreeNode, sequences: &HashMap<String, String>, seq_len: usize) -> String {
+    let mut ancestral = String::new();
+    
+    for pos in 0..seq_len {
+        // Downpass: compute state sets for each node
+        let state_set = downpass(node, sequences, pos);
+        
+        // Uppass: choose states (start at root)
+        let anc_char = if !state_set.is_empty() {
+            // Pick first state (lexicographic order)
+            let mut chars: Vec<char> = state_set.into_iter().collect();
+            chars.sort();
+            chars[0]
+        } else {
+            '?'
+        };
+        
+        ancestral.push(anc_char);
+    }
+    
+    ancestral
+}
+
+fn downpass(node: &TreeNode, sequences: &HashMap<String, String>, pos: usize) -> Vec<char> {
+    if node.is_leaf() {
+        // Leaf: return observed state
+        if let Some(name) = &node.name {
+            if let Some(seq) = sequences.get(name) {
+                let ch = get_char(seq, pos);
+                if ch != '-' && ch != '?' {
+                    return vec![ch];
+                }
+            }
+        }
+        return vec![];
+    }
+    
+    // Internal node: combine children
+    let child_sets: Vec<Vec<char>> = node.children
+        .iter()
+        .map(|c| downpass(c, sequences, pos))
+        .filter(|s| !s.is_empty())
+        .collect();
+    
+    if child_sets.is_empty() {
+        return vec![];
+    }
+    
+    // Find intersection
+    let mut result: Vec<char> = child_sets[0].clone();
+    for set in &child_sets[1..] {
+        result.retain(|c| set.contains(c));
+    }
+    
+    if result.is_empty() {
+        // Union
+        for set in &child_sets {
+            for &c in set {
+                if !result.contains(&c) {
+                    result.push(c);
+                }
+            }
+        }
+    }
+    
+    result
+}
+
 fn main() {
     // Read JSON from stdin
     let mut buf = String::new();
@@ -109,6 +359,21 @@ fn main() {
     let mut min_agree = spec.min_out_ctrl_agreement.unwrap_or(1.0);
     if min_agree < 0.0 { min_agree = 0.0; }
     if min_agree > 1.0 { min_agree = 1.0; }
+    
+    // Build the tree once for this run. Prefer JSON supplied by Python.
+    let tree_root = if let Some(ref j) = spec.tree_json {
+        Some(tree_from_json(j))
+    } else if let Some(ref tree_path) = spec.tree_file {
+        if let Ok(tree_text) = fs::read_to_string(tree_path) {
+            parse_newick(&tree_text)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let tree_arc = Arc::new(tree_root);
+    let analysis_species_arc = Arc::new(spec.analysis_species.clone().unwrap_or_default());
 
     let total_files = files.len();
     let results: Vec<ResultRow> = files
@@ -165,7 +430,46 @@ fn main() {
             let mut per_combo_true: Vec<Option<f64>> = vec![None; combos_arc.len()];
             let mut per_combo_diff: Vec<Option<f64>> = vec![None; combos_arc.len()];
 
-            let out_seq = species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new());
+            // Compute outgroup sequence (either from alignment or ancestral reconstruction)
+            let out_seq = if let Some(ref tree) = *tree_arc {
+                // Ancestral reconstruction
+                if !analysis_species_arc.is_empty() {
+                    // Get species present in this alignment
+                    let alignment_species: Vec<String> = species_seq.keys()
+                        .filter(|s| analysis_species_arc.contains(s))
+                        .cloned()
+                        .collect();
+                    
+                    if alignment_species.is_empty() {
+                        String::new()  // Skip if no analysis species
+                    } else {
+                        // Prune tree to alignment species
+                        let mut all_species_in_alignment: Vec<String> = species_seq.keys().cloned().collect();
+                        all_species_in_alignment.sort();
+                        let pruned = prune_tree(tree, &all_species_in_alignment);
+                        
+                        // Find MRCA of analysis species
+                        if let Some(mrca) = find_mrca(&pruned, &alignment_species) {
+                            // Check if MRCA is at root (would mean no outgroup)
+                            let mrca_terminals = mrca.get_terminals();
+                            let pruned_terminals = pruned.get_terminals();
+                            if mrca_terminals.len() == pruned_terminals.len() {
+                                String::new()  // Skip - MRCA at root
+                            } else {
+                                // Reconstruct ancestral sequence at MRCA
+                                reconstruct_ancestral(mrca, &species_seq, seq_len)
+                            }
+                        } else {
+                            String::new()  // Skip if MRCA not found
+                        }
+                    }
+                } else {
+                    species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new())
+                }
+            } else {
+                // Use provided outgroup species
+                species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new())
+            };
 
             for (combo_idx, combo) in combos_arc.iter().enumerate() {
                 let pairs_len = std::cmp::min(combo.conv.len(), combo.ctrl.len());
