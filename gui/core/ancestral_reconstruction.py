@@ -405,12 +405,69 @@ def _get_parent(tree: Clade, child: Clade) -> Optional[Clade]:
     return None
 
 
+def reconstruct_ancestral_sequence_with_sets(
+    tree: Clade,
+    sequences: Dict[str, str],
+    mrca: Clade
+) -> Tuple[str, List[Set[str]]]:
+    """Reconstruct ancestral sequence at MRCA using Fitch parsimony, returning state sets.
+    
+    Parameters
+    ----------
+    tree : Clade
+        Root of tree
+    sequences : Dict[str, str]
+        Map of species name to sequence
+    mrca : Clade
+        MRCA node to reconstruct
+        
+    Returns
+    -------
+    Tuple[str, List[Set[str]]]
+        (ancestral_sequence, state_sets_per_position)
+        ancestral_sequence: representative sequence (lexicographically first when ambiguous)
+        state_sets_per_position: list of possible residue sets for each position
+        
+    Raises
+    ------
+    AncestralReconstructionError
+        If reconstruction fails
+    """
+    if not sequences:
+        raise AncestralReconstructionError("No sequences provided for reconstruction")
+    
+    # Determine alignment length
+    seq_lengths = [len(s) for s in sequences.values()]
+    if not seq_lengths:
+        raise AncestralReconstructionError("All sequences are empty")
+    
+    max_length = max(seq_lengths)
+    
+    # Reconstruct position by position
+    ancestral_seq = []
+    mrca_state_sets = []
+    for pos in range(max_length):
+        # Downpass
+        state_sets = fitch_parsimony_downpass(tree, sequences, pos)
+        # Uppass
+        assignments = fitch_parsimony_uppass(tree, state_sets)
+        # Get MRCA's assignment and possible states
+        residue = assignments.get(mrca, '?')
+        mrca_set = state_sets.get(mrca, set())
+        ancestral_seq.append(residue)
+        mrca_state_sets.append(mrca_set)
+    
+    return ''.join(ancestral_seq), mrca_state_sets
+
+
 def reconstruct_ancestral_sequence(
     tree: Clade,
     sequences: Dict[str, str],
     mrca: Clade
 ) -> str:
     """Reconstruct ancestral sequence at MRCA using Fitch parsimony.
+    
+    Legacy wrapper that returns only the representative sequence.
     
     Parameters
     ----------
@@ -431,28 +488,7 @@ def reconstruct_ancestral_sequence(
     AncestralReconstructionError
         If reconstruction fails
     """
-    if not sequences:
-        raise AncestralReconstructionError("No sequences provided for reconstruction")
-    
-    # Determine alignment length
-    seq_lengths = [len(s) for s in sequences.values()]
-    if not seq_lengths:
-        raise AncestralReconstructionError("All sequences are empty")
-    
-    max_length = max(seq_lengths)
-    
-    # Reconstruct position by position
-    ancestral_seq = []
-    for pos in range(max_length):
-        # Downpass
-        state_sets = fitch_parsimony_downpass(tree, sequences, pos)
-        # Uppass
-        assignments = fitch_parsimony_uppass(tree, state_sets)
-        # Get MRCA's assignment
-        residue = assignments.get(mrca, '?')
-        ancestral_seq.append(residue)
-    
-    return ''.join(ancestral_seq)
+    return reconstruct_ancestral_sequence_with_sets(tree, sequences, mrca)[0]
 
 
 @lru_cache(maxsize=8)

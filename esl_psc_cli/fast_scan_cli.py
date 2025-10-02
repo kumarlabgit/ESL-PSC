@@ -69,6 +69,11 @@ def main(argv=None) -> int:
         help="Newick or NEXUS tree file for parsimony ancestral reconstruction",
     )
     parser.add_argument(
+        "--require_unambiguous_mrca",
+        action="store_true",
+        help="Require unambiguous ancestral residues (exclude ambiguous sites from CCS detection)",
+    )
+    parser.add_argument(
         "--two_pair_combos",
         action="store_true",
         help="Interpret species groups by generating all 2x2 pair combos",
@@ -99,6 +104,7 @@ def main(argv=None) -> int:
     outgroup = args.outgroup_species
     tree_file = args.tree_file
     two_pair = bool(args.two_pair_combos)
+    require_unamb = bool(args.require_unambiguous_mrca)
     min_agree = float(args.min_out_ctrl_agreement)
     top_frac = float(args.top_frac)
     
@@ -180,6 +186,7 @@ def main(argv=None) -> int:
                 done_offset=0,
                 tree_file=tree_file,
                 analysis_species=analysis_species,
+                require_unambiguous_mrca=require_unamb,
             )
             used_rust = True
             results = _postprocess_and_sort(results, n_combos, top_frac)
@@ -199,6 +206,7 @@ def main(argv=None) -> int:
                 two_pair_combos=two_pair,
                 min_out_ctrl_agreement=min_agree,
                 tree_file=tree_file,
+                require_unambiguous_mrca=require_unamb,
             )
     else:
         # Direct Python path (or forced)
@@ -211,6 +219,7 @@ def main(argv=None) -> int:
             two_pair_combos=two_pair,
             min_out_ctrl_agreement=min_agree,
             tree_file=tree_file,
+            require_unambiguous_mrca=require_unamb,
         )
 
     # Emit CSV output (required path)

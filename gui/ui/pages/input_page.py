@@ -457,6 +457,9 @@ class InputPage(BaseWizardPage):
         except Exception:
             min_agree = 1.0
         
+        # Require unambiguous MRCA flag
+        require_unamb_mrca = dlg.require_unambiguous_mrca()
+        
         # Validate ancestral reconstruction inputs
         if use_ancestral:
             if not tree_file or not os.path.exists(tree_file):
@@ -510,6 +513,7 @@ class InputPage(BaseWizardPage):
             two_pair_combos=use_two_pair,
             min_out_ctrl_agreement=min_agree,
             tree_file=tree_file,
+            require_unambiguous_mrca=require_unamb_mrca,
         )
         progress.close()
         if not results:

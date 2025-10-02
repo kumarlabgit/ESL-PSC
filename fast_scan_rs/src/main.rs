@@ -24,6 +24,7 @@ struct InputSpec {
     tree_file: Option<String>,  // Newick tree for ancestral reconstruction
     analysis_species: Option<Vec<String>>,  // Species in analysis (for MRCA)
     tree_json: Option<NodeJson>, // Parsed tree provided by Python (preferred)
+    require_unambiguous_mrca: Option<bool>, // Require single-residue MRCA (default false)
 }
 
 #[derive(Serialize)]
@@ -251,17 +252,23 @@ fn find_mrca<'a>(node: &'a TreeNode, species: &[String]) -> Option<&'a TreeNode>
     Some(node)
 }
 
-fn reconstruct_ancestral(node: &TreeNode, sequences: &HashMap<String, String>, seq_len: usize) -> String {
+/// Reconstruct ancestral sequences, returning both a representative sequence
+/// and the full state sets for ambiguous positions.
+fn reconstruct_ancestral_with_sets(
+    node: &TreeNode,
+    sequences: &HashMap<String, String>,
+    seq_len: usize
+) -> (String, Vec<Vec<char>>) {
     let mut ancestral = String::new();
+    let mut state_sets = Vec::new();
     
     for pos in 0..seq_len {
         // Downpass: compute state sets for each node
         let state_set = downpass(node, sequences, pos);
         
-        // Uppass: choose states (start at root)
+        // Pick representative (lexicographically first) for the ancestral sequence string
         let anc_char = if !state_set.is_empty() {
-            // Pick first state (lexicographic order)
-            let mut chars: Vec<char> = state_set.into_iter().collect();
+            let mut chars: Vec<char> = state_set.clone().into_iter().collect();
             chars.sort();
             chars[0]
         } else {
@@ -269,18 +276,24 @@ fn reconstruct_ancestral(node: &TreeNode, sequences: &HashMap<String, String>, s
         };
         
         ancestral.push(anc_char);
+        state_sets.push(state_set);
     }
     
-    ancestral
+    (ancestral, state_sets)
+}
+
+/// Legacy wrapper for backward compatibility
+fn reconstruct_ancestral(node: &TreeNode, sequences: &HashMap<String, String>, seq_len: usize) -> String {
+    reconstruct_ancestral_with_sets(node, sequences, seq_len).0
 }
 
 fn downpass(node: &TreeNode, sequences: &HashMap<String, String>, pos: usize) -> Vec<char> {
     if node.is_leaf() {
-        // Leaf: return observed state
+        // Leaf: return observed state (treat X/x as missing like - and ?)
         if let Some(name) = &node.name {
             if let Some(seq) = sequences.get(name) {
                 let ch = get_char(seq, pos);
-                if ch != '-' && ch != '?' {
+                if ch != '-' && ch != '?' && ch != 'X' && ch != 'x' {
                     return vec![ch];
                 }
             }
@@ -360,6 +373,8 @@ fn main() {
     if min_agree < 0.0 { min_agree = 0.0; }
     if min_agree > 1.0 { min_agree = 1.0; }
     
+    let require_unambiguous_mrca = spec.require_unambiguous_mrca.unwrap_or(false);
+    
     // Build the tree once for this run. Prefer JSON supplied by Python.
     let tree_root = if let Some(ref j) = spec.tree_json {
         Some(tree_from_json(j))
@@ -430,8 +445,8 @@ fn main() {
             let mut per_combo_true: Vec<Option<f64>> = vec![None; combos_arc.len()];
             let mut per_combo_diff: Vec<Option<f64>> = vec![None; combos_arc.len()];
 
-            // Compute outgroup sequence (either from alignment or ancestral reconstruction)
-            let out_seq = if let Some(ref tree) = *tree_arc {
+            // Compute outgroup sequence and MRCA state sets (for ancestral reconstruction)
+            let (out_seq, mrca_state_sets): (String, Vec<Vec<char>>) = if let Some(ref tree) = *tree_arc {
                 // Ancestral reconstruction
                 if !analysis_species_arc.is_empty() {
                     // Get species present in this alignment
@@ -441,7 +456,7 @@ fn main() {
                         .collect();
                     
                     if alignment_species.is_empty() {
-                        String::new()  // Skip if no analysis species
+                        (String::new(), vec![])  // Skip if no analysis species
                     } else {
                         // Prune tree to alignment species
                         let mut all_species_in_alignment: Vec<String> = species_seq.keys().cloned().collect();
@@ -454,22 +469,27 @@ fn main() {
                             let mrca_terminals = mrca.get_terminals();
                             let pruned_terminals = pruned.get_terminals();
                             if mrca_terminals.len() == pruned_terminals.len() {
-                                String::new()  // Skip - MRCA at root
+                                (String::new(), vec![])  // Skip - MRCA at root
                             } else {
-                                // Reconstruct ancestral sequence at MRCA
-                                reconstruct_ancestral(mrca, &species_seq, seq_len)
+                                // Reconstruct ancestral sequence at MRCA with state sets
+                                reconstruct_ancestral_with_sets(mrca, &species_seq, seq_len)
                             }
                         } else {
-                            String::new()  // Skip if MRCA not found
+                            (String::new(), vec![])  // Skip if MRCA not found
                         }
                     }
                 } else {
-                    species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new())
+                    let seq = species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new());
+                    (seq, vec![])
                 }
             } else {
                 // Use provided outgroup species
-                species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new())
+                let seq = species_seq.get(&outgroup).cloned().unwrap_or_else(|| String::new());
+                (seq, vec![])
             };
+            
+            let use_mrca_sets = !mrca_state_sets.is_empty();
+            let require_unamb = require_unambiguous_mrca;
 
             for (combo_idx, combo) in combos_arc.iter().enumerate() {
                 let pairs_len = std::cmp::min(combo.conv.len(), combo.ctrl.len());
@@ -515,20 +535,37 @@ fn main() {
                         }
                     }
 
-                    let clean_conv: Vec<char> = conv_ns.iter().copied().filter(|c| *c != '?' && *c != '-').collect();
-                    let clean_ctrl: Vec<char> = ctrl_ns.iter().copied().filter(|c| *c != '?' && *c != '-').collect();
-                    let clean_out: Vec<char> = out_aa.iter().copied().filter(|c| *c != '?' && *c != '-').collect();
+                    let clean_conv: Vec<char> = conv_ns.iter().copied().filter(|c| *c != '?' && *c != '-' && *c != 'X' && *c != 'x').collect();
+                    let clean_ctrl: Vec<char> = ctrl_ns.iter().copied().filter(|c| *c != '?' && *c != '-' && *c != 'X' && *c != 'x').collect();
+                    let clean_out: Vec<char> = out_aa.iter().copied().filter(|c| *c != '?' && *c != '-' && *c != 'X' && *c != 'x').collect();
 
                     if eligible_true {
-                        if let Some(out_res) = is_uniform_non_gap(&clean_out) {
+                        // Get MRCA possible states for this position (if using ancestral reconstruction)
+                        let mrca_set: Vec<char> = if use_mrca_sets && pos < mrca_state_sets.len() {
+                            mrca_state_sets[pos].clone()
+                        } else if !clean_out.is_empty() {
+                            vec![clean_out[0]]  // Single outgroup residue
+                        } else {
+                            vec![]  // No valid outgroup
+                        };
+                        
+                        // Skip if MRCA is ambiguous and user requires unambiguous
+                        if !mrca_set.is_empty() && !(require_unamb && mrca_set.len() > 1) {
                             if !clean_ctrl.is_empty() {
-                                let matches: f64 = clean_ctrl.iter().filter(|c| **c == out_res).count() as f64;
+                                // Check if controls match any MRCA possible state
+                                let ctrl_mrca_matches: Vec<char> = clean_ctrl.iter()
+                                    .copied()
+                                    .filter(|c| mrca_set.contains(c))
+                                    .collect();
+                                let matches: f64 = ctrl_mrca_matches.len() as f64;
                                 let total: f64 = clean_ctrl.len() as f64;
                                 let agree: f64 = if total > 0.0 { matches / total } else { 0.0 };
+                                
                                 if agree + f64::EPSILON >= min_agree {
+                                    // Count CCS: convergent share a residue NOT in MRCA set
                                     let mut cnt: HashMap<char, u32> = HashMap::new();
                                     for r in clean_conv.iter() { *cnt.entry(*r).or_insert(0) += 1; }
-                                    if cnt.iter().any(|(r, c)| *r != out_res && *c >= 2) {
+                                    if cnt.iter().any(|(r, c)| !mrca_set.contains(r) && *c >= 2) {
                                         ccs += 1;
                                     }
                                 }
@@ -537,11 +574,23 @@ fn main() {
                     }
 
                     if eligible_ctrl {
-                        if let Some(out_res) = is_uniform_non_gap(&clean_out) {
-                            if !clean_conv.is_empty() && clean_conv.iter().all(|r| *r == out_res) {
+                        // Get MRCA possible states for this position (if using ancestral reconstruction)
+                        let mrca_set: Vec<char> = if use_mrca_sets && pos < mrca_state_sets.len() {
+                            mrca_state_sets[pos].clone()
+                        } else if !clean_out.is_empty() {
+                            vec![clean_out[0]]  // Single outgroup residue
+                        } else {
+                            vec![]  // No valid outgroup
+                        };
+                        
+                        // Skip if MRCA is ambiguous and user requires unambiguous
+                        if !mrca_set.is_empty() && !(require_unamb && mrca_set.len() > 1) {
+                            // Check if all convergent match any MRCA possible state
+                            if !clean_conv.is_empty() && clean_conv.iter().all(|r| mrca_set.contains(r)) {
                                 let mut cnt: HashMap<char, u32> = HashMap::new();
                                 for r in clean_ctrl.iter() { *cnt.entry(*r).or_insert(0) += 1; }
-                                if cnt.iter().any(|(r, c)| *r != out_res && *c >= 2) {
+                                // Control convergence: control share a residue NOT in MRCA set
+                                if cnt.iter().any(|(r, c)| !mrca_set.contains(r) && *c >= 2) {
                                     ctrl_conv += 1;
                                 }
                             }

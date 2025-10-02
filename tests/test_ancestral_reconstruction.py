@@ -15,6 +15,7 @@ from gui.core.ancestral_reconstruction import (
     fitch_parsimony_downpass,
     fitch_parsimony_uppass,
     reconstruct_ancestral_sequence,
+    reconstruct_ancestral_sequence_with_sets,
     get_ancestral_outgroup_for_alignment,
     validate_tree_for_fast_scan,
     AncestralReconstructionError,
@@ -373,6 +374,76 @@ def test_fitch_parsimony_longer_sequence():
     assert ancestral_seq[5] in {"C", "G"}
     # Position 6: A everywhere
     assert ancestral_seq[6] == "A"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New tests: MRCA state-set behavior and X/x handling
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_mrca_sets_ambiguous_no_count_under_tolerant():
+    """When MRCA set is ambiguous and includes both control and convergent residues,
+    tolerant set-based logic must NOT count the site as convergent.
+
+    Tree: ((A,B),(C,D))root
+    Sequences at position 0: A=B=G, C=D=A -> MRCA set {A,G}
+    Controls=C,D=A (in MRCA set), Convergents=A,B=G (also in MRCA set) -> no count.
+    """
+    tree = create_simple_tree()  # ((A,B),(C,D))root
+    sequences = {"A":"G", "B":"G", "C":"A", "D":"A"}
+    # Reconstruct with sets
+    # Wrap to full sequences of length 1
+    rep, sets = reconstruct_ancestral_sequence_with_sets(tree, sequences, tree)
+    assert len(sets) == 1
+    mrca_set = sets[0]
+    assert mrca_set == {"A", "G"}
+    # Emulate tolerant gating
+    ctrl = ["A","A"]
+    conv = ["G","G"]
+    min_agree = 1.0
+    agree = sum(1 for r in ctrl if r in mrca_set) / len(ctrl)
+    assert agree >= min_agree
+    # Convergent derived must be NOT in MRCA set to count; here it is in the set
+    assert all(r in mrca_set for r in conv)
+    counted = any((r not in mrca_set) for r in conv) and conv.count(conv[0]) >= 2
+    assert not counted
+
+
+def test_mrca_sets_unambiguous_counts_when_derived_not_in_set():
+    """When MRCA is unambiguous (e.g., {A}) and convergents share G, count CCS.
+
+    Tree: ((A,B),(C,D))root
+    Sequences: A=B=G; C=D=A -> MRCA set {A}; controls match A; convergents share G not in set -> count.
+    """
+    tree = create_simple_tree()
+    sequences = {"A":"G", "B":"G", "C":"A", "D":"A"}
+    rep, sets = reconstruct_ancestral_sequence_with_sets(tree, sequences, tree)
+    mrca_set = sets[0]
+    # Note: In this topology, the MRCA set is actually {A,G};
+    # simulate an unambiguous scenario by changing D to A and C to A and add an outgroup E=A to drive parsimony to A.
+    from Bio.Phylo.BaseTree import Clade
+    E = Clade(name="E")
+    new_root = Clade(name="root", clades=[tree, E])  # add E=A as outgroup
+    sequences2 = {"A":"G", "B":"G", "C":"A", "D":"A", "E":"A"}
+    rep2, sets2 = reconstruct_ancestral_sequence_with_sets(new_root, sequences2, new_root)
+    mrca_set2 = sets2[0]
+    assert mrca_set2 == {"A"}
+    ctrl = ["A","A"]
+    conv = ["G","G"]
+    agree = sum(1 for r in ctrl if r in mrca_set2) / len(ctrl)
+    assert agree >= 1.0
+    # Count since convergent residue not in MRCA set
+    assert all(r not in mrca_set2 for r in conv)
+    assert conv.count("G") >= 2
+
+
+def test_x_is_treated_as_missing_in_downpass():
+    """Ensure X/x at tips are treated as missing and do not appear in MRCA sets."""
+    tree = create_simple_tree()
+    sequences = {"A":"X", "B":"G", "C":"A", "D":"A"}
+    rep, sets = reconstruct_ancestral_sequence_with_sets(tree, sequences, tree)
+    mrca_set = sets[0]
+    # X should not be in MRCA set
+    assert "X" not in mrca_set
 
 
 # ─────────────────────────────────────────────────────────────────────────────

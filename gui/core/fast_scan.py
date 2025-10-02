@@ -138,6 +138,7 @@ def _scan_file_worker(
     min_out_ctrl_agreement: float,
     tree_file: str | None = None,
     analysis_species: Set[str] | None = None,
+    require_unambiguous_mrca: bool = False,
 ) -> Dict[str, float | int]:
     path = os.path.join(alignment_dir, fname)
     records = read_fasta(path)
@@ -154,18 +155,31 @@ def _scan_file_worker(
         }
     
     # Handle ancestral reconstruction if tree_file provided
+    mrca_state_sets: List[Set[str]] | None = None
     if tree_file and analysis_species:
         try:
             from gui.core.ancestral_reconstruction import (
-                get_ancestral_outgroup_for_alignment,
-                AncestralReconstructionError
+                _load_tree as parse_tree,
+                get_terminal_names,
+                prune_tree,
+                find_mrca,
+                is_mrca_at_root,
+                reconstruct_ancestral_sequence_with_sets,
+                AncestralReconstructionError,
             )
-            ancestral_seq, ancestral_id = get_ancestral_outgroup_for_alignment(
-                tree_file, species_seq, analysis_species
-            )
-            # Add ancestral sequence as the outgroup
-            species_seq[ancestral_id] = ancestral_seq
-            outgroup_species = ancestral_id
+            # Parse and prune tree
+            full_tree = parse_tree(tree_file)
+            alignment_species = set(species_seq.keys())
+            pruned_tree = prune_tree(full_tree, alignment_species)
+            # Restrict analysis species to those present
+            analysis_in_alignment = set(analysis_species) & alignment_species
+            if not analysis_in_alignment:
+                raise AncestralReconstructionError("None of the analysis species found in this alignment")
+            mrca = find_mrca(pruned_tree, analysis_in_alignment)
+            if is_mrca_at_root(pruned_tree, mrca):
+                raise AncestralReconstructionError("MRCA at root; no outgroup context")
+            # Reconstruct and capture MRCA state sets per position
+            _, mrca_state_sets = reconstruct_ancestral_sequence_with_sets(pruned_tree, species_seq, mrca)
         except AncestralReconstructionError:
             # Skip this alignment if reconstruction fails (e.g., MRCA at root)
             return {
@@ -274,38 +288,43 @@ def _scan_file_worker(
                     if r != '-' and cc_counts.get(r, 0) == 1:
                         lst[i] = '?'
 
-            # Clean lists for checks
-            clean_conv = [x for x in conv_ns if x not in ('?', '-')]
-            clean_ctrl = [x for x in ctrl_ns if x not in ('?', '-')]
-            clean_out = [x for x in out_aa if x not in ('?', '-')]
+            # Clean lists for checks (treat X/x as missing like '?'/'-')
+            clean_conv = [x for x in conv_ns if x not in ('?', '-', 'X', 'x')]
+            clean_ctrl = [x for x in ctrl_ns if x not in ('?', '-', 'X', 'x')]
+            clean_out = [x for x in out_aa if x not in ('?', '-', 'X', 'x')]
+
+            # Determine MRCA set for this position
+            if mrca_state_sets is not None and pos < len(mrca_state_sets):
+                mrca_set = set(mrca_state_sets[pos])
+            else:
+                # Fall back to single outgroup residue if uniform
+                mrca_set = set([clean_out[0]]) if len(set(clean_out)) == 1 else set()
+
+            # Enforce unambiguous requirement if requested
+            if require_unambiguous_mrca and len(mrca_set) > 1:
+                mrca_set = set()
 
             # CCS detection (only meaningful if eligible_true)
-            if eligible_true:
-                # Require non-gap, non-missing outgroup residue and at least the
-                # configured fraction of control residues to match the outgroup.
-                if clean_out:
-                    out_uniform = list(set(clean_out))
-                    if len(out_uniform) == 1:
-                        out_res = out_uniform[0]
-                        if clean_ctrl:
-                            matches = sum(1 for r in clean_ctrl if r == out_res)
-                            total = len(clean_ctrl)
-                            agree = (matches / total) if total > 0 else 0.0
-                            if agree >= max(0.0, min(1.0, float(min_out_ctrl_agreement))):
-                                # Count CCS if any convergent residue != out_res occurs at least twice
-                                conv_counter = Counter(clean_conv)
-                                for res, cnt in conv_counter.items():
-                                    if res != out_res and cnt >= 2:
-                                        ccs += 1
-                                        break
+            if eligible_true and mrca_set:
+                if clean_ctrl:
+                    # Fraction of control residues that match any MRCA possible state
+                    matches = sum(1 for r in clean_ctrl if r in mrca_set)
+                    total = len(clean_ctrl)
+                    agree = (matches / total) if total > 0 else 0.0
+                    if agree >= max(0.0, min(1.0, float(min_out_ctrl_agreement))):
+                        # Count CCS if any convergent residue not in MRCA set occurs at least twice
+                        conv_counter = Counter(clean_conv)
+                        for res, cnt in conv_counter.items():
+                            if res not in mrca_set and cnt >= 2:
+                                ccs += 1
+                                break
 
             # Control-convergence detection (only meaningful if eligible_ctrl)
-            if eligible_ctrl and clean_out and len(set(clean_out)) == 1:
-                out_res = clean_out[0]
-                if clean_conv and all(r == out_res for r in clean_conv):
+            if eligible_ctrl and mrca_set:
+                if clean_conv and all(r in mrca_set for r in clean_conv):
                     ctrl_counter = Counter(clean_ctrl)
                     for res, cnt in ctrl_counter.items():
-                        if res != out_res and cnt >= 2:
+                        if res not in mrca_set and cnt >= 2:
                             ctrl_conv += 1
                             break
 
@@ -364,6 +383,7 @@ def fast_scan_alignments(
     two_pair_combos: bool = False,
     min_out_ctrl_agreement: float = 1.0,
     tree_file: str | None = None,
+    require_unambiguous_mrca: bool = False,
 ) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -438,6 +458,7 @@ def fast_scan_alignments(
                 done_offset=0,
                 tree_file=tree_file,
                 analysis_species=analysis_species,
+                require_unambiguous_mrca=require_unambiguous_mrca,
             )
             results = rs_results
             if len(combos) > 1:
@@ -464,13 +485,13 @@ def fast_scan_alignments(
     # Serial or parallel path (Python)
     if n_jobs <= 1:
         for idx, fname in enumerate(files, 1):
-            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species)
+            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species, require_unambiguous_mrca)
             results.append(res)
             if progress_cb:
                 progress_cb(idx, total)
     else:
         with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species): fname for fname in files}
+            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species, require_unambiguous_mrca): fname for fname in files}
             done = 0
             for fut in as_completed(future_map):
                 try:
@@ -568,6 +589,7 @@ def _run_fast_scan_rs(
     done_offset: int = 0,
     tree_file: str | None = None,
     analysis_species: Set[str] | None = None,
+    require_unambiguous_mrca: bool = False,
 ) -> List[Dict[str, float | int]]:
     """Invoke the Rust fast_scan_rs binary and parse its JSON output.
 
@@ -600,6 +622,8 @@ def _run_fast_scan_rs(
             pass
     if analysis_species:
         spec["analysis_species"] = sorted(list(analysis_species))
+    if require_unambiguous_mrca:
+        spec["require_unambiguous_mrca"] = True
     # Use a temporary file for stdout to avoid pipe backpressure while we read stderr for progress
     import tempfile
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:

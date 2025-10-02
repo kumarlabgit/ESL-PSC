@@ -395,6 +395,17 @@ class OutgroupDialog(QDialog):
         agree_row.addWidget(self._agree_spin)
         agree_row.addStretch()
         layout.addLayout(agree_row)
+        
+        # Require unambiguous MRCA checkbox (for ancestral mode)
+        self._require_unamb_check = QCheckBox("Require unambiguous ancestral residues")
+        self._require_unamb_check.setToolTip(
+            "When checked, sites with ambiguous ancestral states (multiple equally parsimonious residues)\n"
+            "are excluded from CCS detection. By default (unchecked), ambiguous sites are evaluated\n"
+            "using the set of possible ancestral states."
+        )
+        self._require_unamb_check.setChecked(False)
+        layout.addWidget(self._require_unamb_check)
+        
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
@@ -492,7 +503,16 @@ class OutgroupDialog(QDialog):
         self._tree_path.setVisible(not use_species)
         self._tree_browse_btn.setVisible(not use_species)
         self._tree_validation_label.setVisible(not use_species)
+        # Show 'require unambiguous' only for ancestral mode
+        try:
+            self._require_unamb_check.setVisible(not use_species)
+        except Exception:
+            pass
         
         # Validate tree if switching to ancestral mode
         if not use_species:
             self._validate_tree()
+    
+    def require_unambiguous_mrca(self) -> bool:
+        """Return whether user requires unambiguous ancestral residues."""
+        return self._require_unamb_check.isChecked()

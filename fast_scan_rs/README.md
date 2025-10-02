@@ -71,6 +71,12 @@ ESL-PSC's Python fast scan uses internally.
   when both are present.
 * `analysis_species` (list of strings, optional): species in the convergence analysis.
   Required when using ancestral reconstruction to identify the MRCA node.
+* `require_unambiguous_mrca` (boolean, optional, default `false`): when true, sites
+  where ancestral reconstruction yields multiple equally parsimonious residues are
+  excluded from CCS detection. By default (false), such ambiguous sites are evaluated
+  using the set of possible ancestral states: a site counts as convergent if controls
+  match any possible ancestral state while convergent species share a derived residue
+  not in the ancestral set.
 
 ## Output format
 
