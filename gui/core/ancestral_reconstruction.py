@@ -619,6 +619,29 @@ def validate_tree_for_fast_scan(
     try:
         # Parse tree
         tree = parse_tree(tree_path)
+        
+        # Basal bifurcation check (mirror InputPage.open_newick_tree)
+        # Descend through any single-child wrappers from the root and require
+        # that the first branching node has exactly two children. This avoids
+        # relying on Bio.Phylo's rooted metadata.
+        try:
+            node = tree
+            safety_counter = 0
+            while (
+                node is not None and hasattr(node, "clades") and isinstance(getattr(node, "clades", None), list)
+                and len(node.clades) == 1 and safety_counter < 1000
+            ):
+                node = node.clades[0]
+                safety_counter += 1
+            base_children = len(node.clades) if node is not None and hasattr(node, "clades") else 0
+            if base_children != 2:
+                return False, (
+                    "The tree does not appear to be properly rooted: the basal split is not a bifurcation. "
+                    "Please root your tree (e.g., midpoint or outgroup rooting) before running Fast Scan."
+                )
+        except Exception:
+            # If detection fails, do not block; continue with other validations
+            pass
         tree_species = get_terminal_names(tree)
         
         # Parse species groups
