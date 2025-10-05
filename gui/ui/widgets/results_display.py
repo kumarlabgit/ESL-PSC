@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QSizePolicy, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMessageBox,
     QLabel, QHeaderView, QPushButton, QHBoxLayout,
-    QComboBox, QDialogButtonBox, QFileDialog, QListWidget
+    QComboBox, QDialogButtonBox, QFileDialog, QListWidget, QProgressDialog
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
@@ -449,12 +449,22 @@ class PredictionMetricsDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
+        # Progress dialog with coarse steps to keep UI responsive
+        total_steps = 1 + 1 + 1 + 1 + 4 + 4 + 1  # csv, sps cast, rmse rank, filter, 4 row-level, 4 species-level, per-species table
+        prog = QProgressDialog("Computing metrics…", "Cancel", 0, total_steps, self)
+        prog.setWindowTitle("Computing Metrics")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.setMinimumDuration(200)
+        step = 0
+        prog.setValue(step); QGuiApplication.processEvents()
+
         try:
             df = pd.read_csv(csv_path)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to read predictions file:\n{csv_path}\n\n{e}")
             self.close()
             return
+        step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         # Validate required columns
         required = {"species", "SPS"}
@@ -468,16 +478,18 @@ class PredictionMetricsDialog(QDialog):
             return
 
         # Coerce types
-        df = df.copy()
+        df_all = df.copy()
         # SPS as float and clip to [-1, 1] (as done in plot code)
-        df["SPS"] = pd.to_numeric(df["SPS"], errors="coerce").clip(lower=-1, upper=1)
+        df_all["SPS"] = pd.to_numeric(df_all["SPS"], errors="coerce").clip(lower=-1, upper=1)
+        step += 1; prog.setValue(step); QGuiApplication.processEvents()
         # input_RMSE may be 'NA' for some rows – coerce to numeric
-        if "input_RMSE" in df.columns:
-            df["input_RMSE"] = pd.to_numeric(df["input_RMSE"], errors="coerce")
+        if "input_RMSE" in df_all.columns:
+            df_all["input_RMSE"] = pd.to_numeric(df_all["input_RMSE"], errors="coerce")
             # Percentile rank for MFS filtering (same approach as plots)
-            df["RMSE_Rank"] = df["input_RMSE"].rank(pct=True)
+            df_all["RMSE_Rank"] = df_all["input_RMSE"].rank(pct=True)
         else:
-            df["RMSE_Rank"] = float("nan")
+            df_all["RMSE_Rank"] = float("nan")
+        step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         # true_phenotype presence and binary-only enforcement
         if "true_phenotype" not in df.columns:
@@ -490,8 +502,10 @@ class PredictionMetricsDialog(QDialog):
             return
 
         # Normalize phenotype and filter to labeled binary rows (±1)
-        tp = pd.to_numeric(df["true_phenotype"], errors="coerce")
-        bin_mask = tp.isin([-1, 1]) & df["SPS"].notna()
+        tp = pd.to_numeric(df_all["true_phenotype"], errors="coerce")
+        # Store numeric phenotype for later display/aggregation
+        df_all["tp_num"] = tp
+        bin_mask = tp.isin([-1, 1]) & df_all["SPS"].notna()
         if bin_mask.sum() == 0:
             QMessageBox.information(
                 self,
@@ -500,8 +514,9 @@ class PredictionMetricsDialog(QDialog):
             )
             self.close()
             return
-        df = df.loc[bin_mask].copy()
-        df["true_phenotype"] = tp.loc[bin_mask].astype(int)
+        df_bin = df_all.loc[bin_mask].copy()
+        df_bin["true_phenotype"] = tp.loc[bin_mask].astype(int)
+        step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         # Define subsets
         def mask_all(_df: pd.DataFrame) -> pd.Series:
@@ -517,10 +532,10 @@ class PredictionMetricsDialog(QDialog):
             return (_df["RMSE_Rank"] < 0.25) & _df["RMSE_Rank"].notna()
 
         subsets = [
-            ("All models", mask_all(df)),
-            ("MFS bottom 5%", mask_mfs5(df)),
-            ("MFS bottom 10%", mask_mfs10(df)),
-            ("MFS bottom 25%", mask_mfs25(df)),
+            ("All models", mask_all(df_all)),
+            ("MFS bottom 5%", mask_mfs5(df_all)),
+            ("MFS bottom 10%", mask_mfs10(df_all)),
+            ("MFS bottom 25%", mask_mfs25(df_all)),
         ]
 
         # Helper metrics
@@ -574,7 +589,11 @@ class PredictionMetricsDialog(QDialog):
         ]
         rows_summary = []
         for label, m in subsets:
-            work = df.loc[m]
+            if prog.wasCanceled():
+                self.close(); return
+            # Use only labeled rows within the subset mask
+            m_on_bin = m.reindex(df_bin.index, fill_value=False)
+            work = df_bin.loc[m_on_bin]
             acc, tpr, tnr, bal = _acc_tpr_tnr_bal(work)
             auc_rows = _roc_auc(work["true_phenotype"], work["SPS"]) if len(work) else float("nan")
             rows_summary.append([
@@ -586,6 +605,7 @@ class PredictionMetricsDialog(QDialog):
                 bal,
                 auc_rows,
             ])
+            step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         self.rows_table = QTableWidget(len(rows_summary), len(rows_cols))
         self.rows_table.setHorizontalHeaderLabels(rows_cols)
@@ -610,6 +630,23 @@ class PredictionMetricsDialog(QDialog):
         self.rows_table.resizeColumnsToContents()
         layout.addWidget(QLabel("Row-level metrics"))
         layout.addWidget(self.rows_table)
+        # Fix rows table height so per-species can expand
+        try:
+            self.rows_table.resizeRowsToContents()
+            # Give rows a little extra room (+6 px)
+            try:
+                vh = self.rows_table.verticalHeader()
+                baseline = vh.defaultSectionSize() + 6
+                for r in range(self.rows_table.rowCount()):
+                    self.rows_table.setRowHeight(r, max(self.rows_table.rowHeight(r), baseline))
+            except Exception:
+                pass
+            fix_h = self.rows_table.horizontalHeader().height() + self.rows_table.verticalHeader().length() + 6
+            self.rows_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.rows_table.setMinimumHeight(fix_h)
+            self.rows_table.setMaximumHeight(fix_h)
+        except Exception:
+            pass
 
         # Build species-mean summary table (includes Accuracy/Balanced Acc)
         sp_cols = [
@@ -623,7 +660,11 @@ class PredictionMetricsDialog(QDialog):
         ]
         sp_summary = []
         for label, m in subsets:
-            work = df.loc[m]
+            if prog.wasCanceled():
+                self.close(); return
+            # Use only labeled rows within the subset mask
+            m_on_bin = m.reindex(df_bin.index, fill_value=False)
+            work = df_bin.loc[m_on_bin]
             sp_group = work.groupby("species", dropna=True)
             mean_sps = sp_group["SPS"].mean()
             sp_label = sp_group["true_phenotype"].first()
@@ -659,6 +700,7 @@ class PredictionMetricsDialog(QDialog):
                 bal,
                 auc_species,
             ])
+            step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         self.species_summary_table = QTableWidget(len(sp_summary), len(sp_cols))
         self.species_summary_table.setHorizontalHeaderLabels(sp_cols)
@@ -683,6 +725,23 @@ class PredictionMetricsDialog(QDialog):
         self.species_summary_table.resizeColumnsToContents()
         layout.addWidget(QLabel("Species-mean metrics"))
         layout.addWidget(self.species_summary_table)
+        # Fix species-summary table height
+        try:
+            self.species_summary_table.resizeRowsToContents()
+            # Give rows a little extra room (+6 px)
+            try:
+                vh2 = self.species_summary_table.verticalHeader()
+                baseline2 = vh2.defaultSectionSize() + 6
+                for r in range(self.species_summary_table.rowCount()):
+                    self.species_summary_table.setRowHeight(r, max(self.species_summary_table.rowHeight(r), baseline2))
+            except Exception:
+                pass
+            fix_h2 = self.species_summary_table.horizontalHeader().height() + self.species_summary_table.verticalHeader().length() + 6
+            self.species_summary_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.species_summary_table.setMinimumHeight(fix_h2)
+            self.species_summary_table.setMaximumHeight(fix_h2)
+        except Exception:
+            pass
 
         # Per-species table with subset selector
         chooser_row = QHBoxLayout()
@@ -700,37 +759,62 @@ class PredictionMetricsDialog(QDialog):
         self.species_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.species_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.species_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.species_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.species_table)
 
         subset_map = {label: mask for (label, mask) in subsets}
 
         def build_species_table(which: str):
             m = subset_map.get(which, subsets[0][1])
-            work = df.loc[m]
+            # For per-species table, include all rows in subset regardless of labeling
+            work = df_all.loc[m]
             if work.empty:
                 self.species_table.clear()
                 self.species_table.setRowCount(0)
                 self.species_table.setColumnCount(0)
                 return
-            grp = work.groupby("species", dropna=True)["SPS"]
-            stats = grp.agg(
+            # Aggregations per species
+            grp_all = work.groupby("species", dropna=True)
+            sps_grp = grp_all["SPS"]
+            stats = sps_grp.agg(
                 mean_sps="mean",
                 q25=lambda s: float(np.nanpercentile(s, 25)) if len(s) else float("nan"),
                 q75=lambda s: float(np.nanpercentile(s, 75)) if len(s) else float("nan"),
                 n_rows="count",
-            ).reset_index()
+            )
+            # True phenotype per species: use numeric tp_num (may be NaN for unlabeled)
+            sp_true = grp_all["tp_num"].first()
+            # Sign-match fraction per species: compute only on labeled rows
+            m_on_bin_all = m.reindex(df_bin.index, fill_value=False)
+            work_bin_subset = df_bin.loc[m_on_bin_all]
+            grp_bin = work_bin_subset.groupby("species", dropna=True)
+            try:
+                match_frac = grp_bin.apply(lambda g: float(((g["SPS"] > 0) == (g["true_phenotype"] > 0)).mean()) if len(g) else float("nan"))
+            except Exception:
+                match_frac = pd.Series(dtype=float)
+            stats = stats.reset_index()
             stats["IQR"] = stats["q75"] - stats["q25"]
+            stats = stats.merge(sp_true.rename("true_pheno"), left_on="species", right_index=True, how="left")
+            if not match_frac.empty:
+                stats = stats.merge(match_frac.rename("sign_match_frac"), left_on="species", right_index=True, how="left")
+            else:
+                stats["sign_match_frac"] = float("nan")
 
-            cols = ["Species", "Mean SPS", "IQR", "N rows"]
+            cols = ["Species", "True Phenotype", "Mean SPS", "IQR", "N rows", "Sign Match Frac"]
             self.species_table.setRowCount(len(stats))
             self.species_table.setColumnCount(len(cols))
             self.species_table.setHorizontalHeaderLabels(cols)
             for r_idx, row in stats.iterrows():
                 self.species_table.setItem(r_idx, 0, QTableWidgetItem(str(row["species"])))
-                self.species_table.setItem(r_idx, 1, QTableWidgetItem(f"{row['mean_sps']:.5f}"))
+                # True phenotype (±1) if available
+                tp_val = row.get("true_pheno", float("nan"))
+                self.species_table.setItem(r_idx, 1, QTableWidgetItem("" if pd.isna(tp_val) else str(int(tp_val))))
+                self.species_table.setItem(r_idx, 2, QTableWidgetItem(f"{row['mean_sps']:.5f}"))
                 iqr_val = row["IQR"]
-                self.species_table.setItem(r_idx, 2, QTableWidgetItem("" if pd.isna(iqr_val) else f"{iqr_val:.5f}"))
-                self.species_table.setItem(r_idx, 3, QTableWidgetItem(str(int(row["n_rows"]))))
+                self.species_table.setItem(r_idx, 3, QTableWidgetItem("" if pd.isna(iqr_val) else f"{iqr_val:.5f}"))
+                self.species_table.setItem(r_idx, 4, QTableWidgetItem(str(int(row["n_rows"]))))
+                smf = row.get("sign_match_frac", float("nan"))
+                self.species_table.setItem(r_idx, 5, QTableWidgetItem("" if pd.isna(smf) else f"{smf:.0%}"))
             self.species_table.resizeColumnsToContents()
 
             # Attach latest stats for export
@@ -741,8 +825,21 @@ class PredictionMetricsDialog(QDialog):
             build_species_table(which)
 
         def export_current_table():
+            # Build default path/name: per-species_predictions_<subset>_<preds_base>.csv
+            preds_dir = os.path.dirname(self._csv_path)
+            preds_base = os.path.splitext(os.path.basename(self._csv_path))[0]
+            subset_label = self.subset_combo.currentText()
+            token_map = {
+                "All models": "all_models",
+                "MFS bottom 5%": "5pct_mfs",
+                "MFS bottom 10%": "10pct_mfs",
+                "MFS bottom 25%": "25pct_mfs",
+            }
+            token = token_map.get(subset_label, "all_models")
+            default_name = f"per-species_predictions_{token}_{preds_base}.csv"
+            default_path = os.path.join(preds_dir, default_name)
             path, _ = QFileDialog.getSaveFileName(
-                self, "Save Species Metrics", os.getcwd(), "CSV Files (*.csv)"
+                self, "Save Species Metrics", default_path, "CSV Files (*.csv)"
             )
             if not path:
                 return
@@ -751,8 +848,8 @@ class PredictionMetricsDialog(QDialog):
                 if stats is None:
                     return
                 # Save compact columns
-                out = stats[["species", "mean_sps", "q25", "q75", "IQR", "n_rows"]].copy()
-                out.columns = ["species", "mean_sps", "q25", "q75", "iqr", "n_rows"]
+                out = stats[["species", "true_pheno", "mean_sps", "q25", "q75", "IQR", "n_rows", "sign_match_frac"]].copy()
+                out.columns = ["species", "true_phenotype", "mean_sps", "q25", "q75", "iqr", "n_rows", "sign_match_frac"]
                 out.to_csv(path, index=False)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not save CSV:\n{e}")
@@ -761,19 +858,23 @@ class PredictionMetricsDialog(QDialog):
         export_btn.clicked.connect(export_current_table)
         # Build initial table
         build_species_table(self.subset_combo.currentText())
+        step += 1; prog.setValue(step); QGuiApplication.processEvents()
 
         # Reasonable size
         self.resize(900, 720)
         # Initialization finished successfully
         self._ready = True
+        try:
+            prog.close()
+        except Exception:
+            pass
 
     @staticmethod
     def show_dialog(csv_path: str, config, parent=None):
         dialog = PredictionMetricsDialog(csv_path, config, parent)
-        # Show only if initialization succeeded
-        if getattr(dialog, "_ready", False):
-            dialog.show()
-            _open_dialogs.append(dialog)
+        # Show immediately; progress dialog manages compute feedback
+        dialog.show()
+        _open_dialogs.append(dialog)
 
 
 class GeneRanksDialog(QWidget):
