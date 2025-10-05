@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.config import ESLConfig
-from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog
+from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
 
 __all__ = [
     "select_and_show_existing_output",
@@ -76,6 +76,7 @@ class _ExistingOutputDialog(QDialog):
         self._cont_path: Optional[str] = self._find_cont_plot()
         self._gene_ranks_path: Optional[str] = self._find_gene_ranks()
         self._sites_path: Optional[str] = self._find_selected_sites()
+        self._preds_path: Optional[str] = self._find_predictions_csv()
 
         self._sps_btn = QPushButton("Show SPS Plot")
         if self._sps_path:
@@ -116,6 +117,20 @@ class _ExistingOutputDialog(QDialog):
         self._gene_btn.clicked.connect(self._show_gene_ranks)
         btn_layout.addWidget(self._gene_btn)
 
+        # Prediction Metrics button (binary phenotypes only)
+        self._metrics_btn = QPushButton("Show Prediction Metrics")
+        if self._preds_path and getattr(cfg, 'species_pheno_is_binary', False) and not getattr(cfg, 'use_continuous_phenotypes', False) and not getattr(cfg, 'response_matrices_are_continuous', False):
+            self._metrics_btn.setToolTip("Open prediction accuracy metrics for this run")
+        else:
+            self._metrics_btn.setEnabled(False)
+            self._metrics_btn.setToolTip("No predictions file found or phenotypes are not binary")
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(self._metrics_btn)
+            eff.setOpacity(0.4)
+            self._metrics_btn.setGraphicsEffect(eff)
+        self._metrics_btn.clicked.connect(self._show_metrics)
+        btn_layout.addWidget(self._metrics_btn)
+
         btn_layout.addStretch()
 
         self.resize(520, 180)
@@ -149,6 +164,11 @@ class _ExistingOutputDialog(QDialog):
         cand = os.path.join(self._output_dir, f"{base}_selected_sites.csv")
         return cand if os.path.exists(cand) else None
 
+    def _find_predictions_csv(self) -> Optional[str]:
+        base = self._cfg.output_file_base_name
+        cand = os.path.join(self._output_dir, f"{base}_species_predictions.csv")
+        return cand if os.path.exists(cand) else None
+
     # ------------------------------------------------------------------
     # Slots
     # ------------------------------------------------------------------
@@ -175,6 +195,12 @@ class _ExistingOutputDialog(QDialog):
             )
         else:
             QMessageBox.information(self, "Unavailable", "No gene-ranks file found for this run.")
+
+    def _show_metrics(self):  # pragma: no cover – UI slot
+        if self._preds_path and getattr(self._cfg, 'species_pheno_is_binary', False) and not getattr(self._cfg, 'use_continuous_phenotypes', False) and not getattr(self._cfg, 'response_matrices_are_continuous', False):
+            PredictionMetricsDialog.show_dialog(self._preds_path, self._cfg, parent=self)
+        else:
+            QMessageBox.information(self, "Unavailable", "Metrics require predictions CSV and binary phenotypes.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

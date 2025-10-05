@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
-    SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog
+    SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
 )
 
 class RunPage(BaseWizardPage):
@@ -74,10 +74,14 @@ class RunPage(BaseWizardPage):
         self.gene_btn = QPushButton("Show Top Gene Ranks")
         self.gene_btn.hide()
         self.gene_btn.clicked.connect(self.show_gene_ranks)
+        self.metrics_btn = QPushButton("Show Prediction Metrics")
+        self.metrics_btn.hide()
+        self.metrics_btn.clicked.connect(self.show_prediction_metrics)
         self.results_layout.addStretch()
         self.results_layout.addWidget(self.sps_btn)
         self.results_layout.addWidget(self.cont_btn)
         self.results_layout.addWidget(self.gene_btn)
+        self.results_layout.addWidget(self.metrics_btn)
         container_layout.addLayout(self.results_layout)
 
         # Progress Bars GroupBox
@@ -141,6 +145,7 @@ class RunPage(BaseWizardPage):
         self.sps_plot_path = None
         self.gene_ranks_path = None
         self.selected_sites_path = None
+        self.predictions_csv_path = None
         # Timestamp for run start, to filter out stale artifacts from prior runs
         self._run_start_time = None
     
@@ -268,6 +273,7 @@ class RunPage(BaseWizardPage):
             self.cont_plot_path = None
             self.gene_ranks_path = None
             self.selected_sites_path = None
+            self.predictions_csv_path = None
 
             # Create and configure worker
             self.worker = ESLWorker(args)
@@ -342,6 +348,14 @@ class RunPage(BaseWizardPage):
         else:
             QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")
 
+    def show_prediction_metrics(self):
+        """Open metrics dialog for predictions when available (binary only)."""
+        if self.predictions_csv_path and os.path.exists(self.predictions_csv_path):
+            # Launch as a dialog with this page as parent for stacking
+            PredictionMetricsDialog.show_dialog(self.predictions_csv_path, self.config, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The species predictions file could not be found.")
+
 
     def analysis_finished(self, exit_code):
         """Handle analysis completion."""
@@ -394,6 +408,15 @@ class RunPage(BaseWizardPage):
             sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
             if getattr(self.config, "show_selected_sites", False) and os.path.exists(sites_path):
                 self.selected_sites_path = sites_path
+
+            # Prediction Metrics (requires predictions CSV and binary phenotypes)
+            preds_path = os.path.abspath(os.path.join(out_dir, f"{base}_species_predictions.csv"))
+            self.metrics_btn.hide()
+            if not getattr(self.config, "no_pred_output", False) and os.path.exists(preds_path):
+                # Only enable metrics for binary phenotype mode
+                if getattr(self.config, "species_pheno_is_binary", False) and not getattr(self.config, "use_continuous_phenotypes", False) and not getattr(self.config, 'response_matrices_are_continuous', False):
+                    self.predictions_csv_path = preds_path
+                    self.metrics_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_output("\n🛑 Analysis was stopped.")
