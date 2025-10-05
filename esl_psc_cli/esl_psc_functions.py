@@ -106,8 +106,11 @@ def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
     return bad_lines
 
 def detect_pheno_file_type(file_path: str) -> str:
-    """Return 'binary' if all numeric values are exactly -1 or 1, otherwise
+    """Return 'binary' if all numeric values are in {-1, 0, 1}; otherwise
     return 'continuous'. Blank lines are ignored. Raises on IO errors.
+
+    Note: 0 is treated as "no phenotype assigned" and does not imply
+    continuous data.
     """
     has_values = False
     header_skipped = False
@@ -130,7 +133,7 @@ def detect_pheno_file_type(file_path: str) -> str:
                         continue
                     return "continuous"
                 has_values = True
-                if val not in (-1.0, 1.0):
+                if val not in (-1.0, 0.0, 1.0):
                     return "continuous"
     except Exception:
         # If unreadable, default to continuous

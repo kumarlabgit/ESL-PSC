@@ -30,7 +30,7 @@ def get_esl_args(parser = None):
     group.add_argument('--esl_main_dir', help = help_txt, type = str,
                        required = False)
     help_txt = '''The full path to the species phenotypes file with lines of
-    the form <species>,<value>. The value may be binary (-1 or 1) or a
+    the form <species>,<value>. The value may be binary (-1, 0, or 1; where 0 means unassigned) or a
     continuous numeric value. Any species that is not in the phenotype file
     will not be included in the predictions output even if it was in the
     prediction alignments. If the phenotype file is not included, all species
@@ -464,7 +464,7 @@ def generate_predictions_output(esl_run_list, output_path, phenofile = None):
         # read the file
         ph_type = ecf.detect_pheno_file_type(phenofile)
         all_species_pheno_dict = ecf.get_pheno_dict(phenofile)
-        # If the phenotype file is binary, emit integer labels -1/1; otherwise, preserve continuous values
+        # If the phenotype file is binary, emit integer labels -1/0/1; otherwise, preserve continuous values
         if ph_type == 'binary':
             all_species_pheno_dict = {sp: int(v) for sp, v in all_species_pheno_dict.items()}
     else:
@@ -482,7 +482,12 @@ def generate_predictions_output(esl_run_list, output_path, phenofile = None):
                 # also, if there is a phenotype file (phenofile != None)
                 # then if the species is not in the pheno file exclude it
                 continue 
-            true_pheno = str(all_species_pheno_dict[species]) # get true pheno
+            # For binary phenotypes, treat 0 as unassigned and leave the field blank
+            if ph_type == 'binary':
+                v = all_species_pheno_dict[species]
+                true_pheno = '' if v == 0 else str(v)
+            else:
+                true_pheno = str(all_species_pheno_dict[species])
             # construct output line
             line = [run.run_family.species_combo_tag, # species used
                     str(run.lambda1), # lambda 1

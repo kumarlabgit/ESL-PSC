@@ -265,7 +265,7 @@ class InputPage(BaseWizardPage):
             default_path=os.getcwd(),
             description=(
                 "Optional: comma-separated file with species phenotypes. "
-                "First column is species ID, second column is phenotype value (-1/1 binary or float for continuous). "
+                "First column is species ID, second column is phenotype value (-1/0/1 for binary; 0 means unassigned; or float for continuous). "
                 "If omitted, the predictions output will not include a true phenotype column."
             ),
         )
@@ -614,7 +614,7 @@ class InputPage(BaseWizardPage):
                 QMessageBox.warning(
                     self,
                     "Phenotypes Error",
-                    f"Failed to parse phenotypes file (supports -1/1 or continuous floats):\n{exc}",
+                    f"Failed to parse phenotypes file (supports -1/0/1 with 0 meaning unassigned, or continuous floats):\n{exc}",
                 )
 
         self._tree_window = TreeViewer(
@@ -684,7 +684,7 @@ class InputPage(BaseWizardPage):
                         # ignore header or malformed rows
                         continue
                     has_value = True
-                    if val not in (-1.0, 1.0):
+                    if val not in (-1.0, 0.0, 1.0):
                         is_binary = False
                         break
             if has_value and is_binary:

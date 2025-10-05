@@ -147,7 +147,7 @@ class TreeViewer(QWidget):
         pheno_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         pheno_btn.setToolTip(
             "Load a CSV file that maps species names (as they appear in the tree) "
-            "to trait values. Supports binary (-1/1) and continuous floats for gradient coloring."
+            "to trait values. Supports binary (-1/0/1; 0 means unassigned) and continuous floats for gradient coloring."
         )
         pheno_btn.clicked.connect(self._select_phenotypes)
 
@@ -415,8 +415,8 @@ class TreeViewer(QWidget):
             return
         self._pheno_min = min(vals)
         self._pheno_max = max(vals)
-        # Continuous if any value is not exactly -1 or 1
-        self._continuous_pheno = any(v not in (1.0, -1.0) for v in vals)
+        # Continuous if any value is not exactly in {-1, 0, 1}
+        self._continuous_pheno = any(v not in (1.0, 0.0, -1.0) for v in vals)
         # Maintain a sorted list for percentile-based coloring when continuous
         if self._continuous_pheno:
             self._pheno_sorted = sorted(vals)
