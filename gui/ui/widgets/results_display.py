@@ -524,6 +524,9 @@ class PredictionMetricsDialog(QDialog):
             return True
 
         is_binary_like = _is_binary_like(valid_tp.to_numpy())
+        # Remember whether the true phenotypes are binary-like ({-1,0,1}).
+        # We will only display Pearson correlations when phenotypes are continuous.
+        self._tp_is_binary = is_binary_like
         threshold_mode = False
         if not use_continuous_predictions and not is_binary_like:
             threshold_mode = True
@@ -608,7 +611,8 @@ class PredictionMetricsDialog(QDialog):
             extra_lines.append(
                 f"Applied thresholds: ≤ {lower:.3f} classified as Control (-1), ≥ {upper:.3f} as Convergent (+1)."
             )
-        if math.isfinite(self._pearson_all) and not math.isnan(self._pearson_all):
+        # Only show Pearson correlation summary when phenotypes are continuous
+        if (not getattr(self, "_tp_is_binary", False)) and math.isfinite(self._pearson_all) and not math.isnan(self._pearson_all):
             extra_lines.append(
                 f"Pearson correlation between SPS and phenotype values: {self._pearson_all:.3f}."
             )
@@ -753,7 +757,12 @@ class PredictionMetricsDialog(QDialog):
         df_bin = df_all.loc[bin_mask].copy()
         df_bin["true_phenotype"] = tp_binary.loc[bin_mask].astype(int)
 
-        row_cols = ["Subset", "N rows", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC", "Pearson r"]
+        # Include Pearson r column for binary/threshold metrics only if underlying phenotypes are continuous
+        include_pearson = not getattr(self, "_tp_is_binary", False)
+
+        row_cols = ["Subset", "N rows", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC"]
+        if include_pearson:
+            row_cols.append("Pearson r")
         rows_summary: list[dict[str, object]] = []
         for label, mask in subsets:
             if prog.wasCanceled():
@@ -763,19 +772,18 @@ class PredictionMetricsDialog(QDialog):
             work = df_bin.loc[m_on_bin]
             acc, tpr, tnr, bal = self._acc_tpr_tnr_bal(work)
             auc_rows = self._roc_auc(work["true_phenotype"], work["SPS"]) if len(work) else float("nan")
-            pearson = self._pearson_for_mask(df_all, mask)
-            rows_summary.append(
-                {
-                    "Subset": label,
-                    "N rows": int(len(work)),
-                    "Accuracy": acc,
-                    "TPR": tpr,
-                    "TNR": tnr,
-                    "Balanced Acc": bal,
-                    "AUROC": auc_rows,
-                    "Pearson r": pearson,
-                }
-            )
+            row = {
+                "Subset": label,
+                "N rows": int(len(work)),
+                "Accuracy": acc,
+                "TPR": tpr,
+                "TNR": tnr,
+                "Balanced Acc": bal,
+                "AUROC": auc_rows,
+            }
+            if include_pearson:
+                row["Pearson r"] = self._pearson_for_mask(df_all, mask)
+            rows_summary.append(row)
             step = self._advance_progress(prog, step)
 
         self.rows_table = QTableWidget(len(rows_summary), len(row_cols))
@@ -801,7 +809,9 @@ class PredictionMetricsDialog(QDialog):
         except Exception:
             pass
 
-        sp_cols = ["Subset", "N species", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC", "Pearson r"]
+        sp_cols = ["Subset", "N species", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC"]
+        if include_pearson:
+            sp_cols.append("Pearson r")
         sp_summary: list[dict[str, object]] = []
         for label, mask in subsets:
             if prog.wasCanceled():
@@ -830,30 +840,30 @@ class PredictionMetricsDialog(QDialog):
             else:
                 acc = tpr = tnr = bal = float("nan")
                 auc_species = float("nan")
-            mask_all = mask & df_all["SPS"].notna() & df_all["tp_original"].notna()
-            work_all = df_all.loc[mask_all]
-            pearson_species = float("nan")
-            if not work_all.empty:
-                species_means = work_all.groupby("species", dropna=True).agg(
-                    pred=("SPS", "mean"), true=("tp_original", "mean")
-                )
-                if len(species_means) >= 2:
-                    try:
-                        pearson_species = float(species_means["pred"].corr(species_means["true"]))
-                    except Exception:
-                        pearson_species = float("nan")
-            sp_summary.append(
-                {
-                    "Subset": label,
-                    "N species": n_species,
-                    "Accuracy": acc,
-                    "TPR": tpr,
-                    "TNR": tnr,
-                    "Balanced Acc": bal,
-                    "AUROC": auc_species,
-                    "Pearson r": pearson_species,
-                }
-            )
+            row = {
+                "Subset": label,
+                "N species": n_species,
+                "Accuracy": acc,
+                "TPR": tpr,
+                "TNR": tnr,
+                "Balanced Acc": bal,
+                "AUROC": auc_species,
+            }
+            if include_pearson:
+                mask_all = mask & df_all["SPS"].notna() & df_all["tp_original"].notna()
+                work_all = df_all.loc[mask_all]
+                pearson_species = float("nan")
+                if not work_all.empty:
+                    species_means = work_all.groupby("species", dropna=True).agg(
+                        pred=("SPS", "mean"), true=("tp_original", "mean")
+                    )
+                    if len(species_means) >= 2:
+                        try:
+                            pearson_species = float(species_means["pred"].corr(species_means["true"]))
+                        except Exception:
+                            pearson_species = float("nan")
+                row["Pearson r"] = pearson_species
+            sp_summary.append(row)
             step = self._advance_progress(prog, step)
 
         self.species_summary_table = QTableWidget(len(sp_summary), len(sp_cols))
