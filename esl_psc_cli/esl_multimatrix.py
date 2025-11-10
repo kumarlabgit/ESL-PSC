@@ -622,6 +622,10 @@ def main(raw_args=None):
         raise ValueError("must give either response_dir or species_groups_file")
     # we now have a response_file_list and a response_dir with the files in it
 
+    if getattr(args, 'species_pheno_path', None):
+        ecf.ensure_pheno_species_overlap(args.species_pheno_path,
+                                         list_of_species_combos)
+
     # ---- Checkpoint handling (moved up – happens *before* any heavy work) ----
     resume_mode = False
     cp_obj = None

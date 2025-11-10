@@ -105,6 +105,83 @@ def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
         bad_lines.append(f"[IO ERROR] {exc}")
     return bad_lines
 
+
+def _phenotype_species_lists(file_path: str):
+    """Return (raw_names, stripped_names) from a phenotype file.
+
+    ``raw_names`` preserves the literal text as it appears before the first
+    comma, whereas ``stripped_names`` removes surrounding quotes/apostrophes
+    and collapses extra whitespace so we can detect quoting mismatches.
+    """
+    raw_names = []
+    stripped_names = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2:
+                    continue
+                species = parts[0]
+                if not species:
+                    continue
+                normalized = species.strip().strip('"').strip("'")
+                if normalized.lower() == "species":
+                    # Treat CSV headers such as "species","value" as metadata.
+                    continue
+                raw_names.append(species)
+                stripped_names.append(normalized)
+    except Exception:
+        return [], []
+    return raw_names, stripped_names
+
+
+def ensure_pheno_species_overlap(file_path: str, list_of_species_combos):
+    """Ensure that at least one species in *file_path* overlaps the combos.
+
+    Raises ValueError with a descriptive guidance message if no overlap is
+    found. This catches cases where the phenotype file was exported with
+    quoted identifiers or belongs to a different dataset entirely.
+    """
+    if not list_of_species_combos:
+        return
+
+    reference_species = set(chain.from_iterable(list_of_species_combos))
+    if not reference_species:
+        return
+
+    raw_names, stripped_names = _phenotype_species_lists(file_path)
+    if not raw_names:
+        return
+
+    raw_overlap = reference_species.intersection(raw_names)
+    if raw_overlap:
+        return
+
+    stripped_overlap = reference_species.intersection(stripped_names)
+    sample_pheno = ", ".join(stripped_names[:5]) if stripped_names else "<none>"
+    sample_reference = ", ".join(sorted(reference_species)[:5])
+
+    if stripped_overlap:
+        example = next(iter(stripped_overlap))
+        raise ValueError(
+            "The species phenotype file '{file}' appears to wrap species IDs in quotes "
+            "(e.g., \"{example}\"), but the species groups/alignments use unquoted names. "
+            "Remove the quotes (or re-export the CSV without quoted identifiers) so the "
+            "names match.\nSample phenotype entries: {pheno}\nSample species group entries: {groups}"
+            .format(file=file_path, example=example, pheno=sample_pheno, groups=sample_reference)
+        )
+
+    raise ValueError(
+        "No species in the phenotype file '{file}' overlap with the species listed in the "
+        "response matrices/species groups. This usually means the phenotype file belongs to a "
+        "different dataset or the species identifiers were modified.\n"
+        "Sample phenotype entries: {pheno}\nSample species group entries: {groups}"
+        .format(file=file_path, pheno=sample_pheno, groups=sample_reference)
+    )
+
 def detect_pheno_file_type(file_path: str) -> str:
     """Return 'binary' if all numeric values are in {-1, 0, 1}; otherwise
     return 'continuous'. Blank lines are ignored. Raises on IO errors.
