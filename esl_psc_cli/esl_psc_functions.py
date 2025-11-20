@@ -452,6 +452,13 @@ def parse_args_with_config(parser, raw_args=None):
         setattr(args, 'species_pheno_is_binary', False)
         setattr(args, 'species_pheno_is_continuous', False)
 
+    # show_selected_sites requires that gene ranks are being written
+    if getattr(args, 'no_genes_output', False) and getattr(args, 'show_selected_sites', False):
+        raise ValueError(
+            "The option --show_selected_sites requires gene ranks output and "
+            "cannot be used together with --no_genes_output."
+        )
+
     # Check for relative paths and adjust them to be absolute
     path_args = [
         'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir',

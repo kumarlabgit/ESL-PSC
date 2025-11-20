@@ -177,6 +177,7 @@ class ParametersPage(BaseWizardPage):
         self.both_outputs_btn.setChecked(True)  # Default selection
         # Ensure mutually exclusive default favors 'Both outputs'
         self.genes_only_btn.setChecked(False)
+        self.both_outputs_btn.toggled.connect(self._update_show_selected_sites_state)
         self.output_options_group.addButton(self.both_outputs_btn)
         both_outputs_layout.addWidget(self.both_outputs_btn)
         both_outputs_layout.addStretch()
@@ -189,8 +190,11 @@ class ParametersPage(BaseWizardPage):
             lambda checked: setattr(self.config, 'no_pred_output', checked)
         )
         self.genes_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.genes_only_btn.toggled.connect(self._update_show_selected_sites_state)
         self.preds_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.preds_only_btn.toggled.connect(self._update_show_selected_sites_state)
         self.both_outputs_btn.toggled.connect(self._update_phenotype_names_state)
+        self.both_outputs_btn.toggled.connect(self._update_show_selected_sites_state)
         
         # Add more spacing after the output options
         output_layout.addSpacing(15)  # Increased spacing
@@ -1288,3 +1292,14 @@ class ParametersPage(BaseWizardPage):
             self.pheno_label.setStyleSheet("")
             self.pheno_name1.setStyleSheet("")
             self.pheno_name2.setStyleSheet("")
+    
+    def _update_show_selected_sites_state(self):
+        if not hasattr(self, 'show_selected_sites'):
+            return
+        preds_only = hasattr(self, 'preds_only_btn') and self.preds_only_btn.isChecked()
+        if preds_only:
+            if self.show_selected_sites.isChecked():
+                self.show_selected_sites.setChecked(False)
+            self.show_selected_sites.setEnabled(False)
+        else:
+            self.show_selected_sites.setEnabled(True)

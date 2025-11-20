@@ -1,4 +1,5 @@
 """Input-selection page of the ESL-PSC wizard."""
+from __future__ import annotations
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
