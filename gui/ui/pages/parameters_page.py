@@ -1301,5 +1301,11 @@ class ParametersPage(BaseWizardPage):
             if self.show_selected_sites.isChecked():
                 self.show_selected_sites.setChecked(False)
             self.show_selected_sites.setEnabled(False)
+            self.show_selected_sites.setToolTip(
+                "Requires generating gene ranks output; not available when only species predictions are generated."
+            )
         else:
             self.show_selected_sites.setEnabled(True)
+            self.show_selected_sites.setToolTip(
+                "If checked, include an additional output file with selected sites and their highest position score."
+            )
