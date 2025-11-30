@@ -694,6 +694,49 @@ def main(raw_args=None):
                 ] + [f"    {ln}" for ln in bad_lines]
                 raise ValueError("\n".join(msg))
 
+        # --- Windows MAX_PATH guard for preprocess outputs -----------------
+        # The preprocess step writes files like
+        #   <esl_inputs_outputs_dir>/<base>_combo_N/feature_mapping_<base>_combo_N.txt
+        # which can exceed Windows MAX_PATH with long base/output dirs.
+        # Estimate worst-case length and fail fast with a clear message.
+        if os.name == 'nt':
+            base_dir = os.path.abspath(args.esl_inputs_outputs_dir)
+            sep_len = len(os.sep)
+            base_name = str(getattr(args, 'output_file_base_name', 'esl_psc'))
+            num_combos = max(1, len(list_of_species_combos))
+            max_combo_digits = len(str(num_combos))  # upper bound for N-1
+            combo_name_len = len('combo_') + max_combo_digits
+            preprocess_name_len = len(base_name) + 1 + combo_name_len  # "<base>_combo_N"
+
+            # Directory path length for the preprocess folder itself
+            target_dir_len = len(base_dir) + sep_len + preprocess_name_len
+
+            # Longest child we create is "feature_mapping_" + preprocess_name + ".txt"
+            longest_prefix_len = len('feature_mapping_')
+            child_path_len = (
+                target_dir_len +
+                sep_len +
+                longest_prefix_len +
+                preprocess_name_len +
+                len('.txt')
+            )
+
+            # Use a conservative threshold to leave headroom for native APIs
+            MAX_SAFE_WINDOWS_PATH = 240
+            if target_dir_len >= MAX_SAFE_WINDOWS_PATH or child_path_len >= MAX_SAFE_WINDOWS_PATH:
+                details = [
+                    f"  Target directory (est): {target_dir_len} chars",
+                    f"  Longest output file (est): {child_path_len} chars",
+                    f"  Base output name: '{base_name}'",
+                    f"  Outputs dir: '{base_dir}'",
+                ]
+                msg = [
+                    "Preprocess output paths are too long for Windows (max safe ~240 characters).",
+                    *details,
+                    "Please shorten --output_dir or --output_file_base_name, or enable long paths on this system.",
+                ]
+                raise ValueError("\n".join(msg))
+
         # write the configuration snapshot now (skip when resuming)
         run_cfg_path = os.path.join(
             args.output_dir,
