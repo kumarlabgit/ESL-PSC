@@ -34,7 +34,12 @@ class CandidatePair:
     convergent: str
     control: str
     distance: float
-    descendants: set[str] = field(default_factory=set)
+    # MRCA clade for the original boundary transition that produced this candidate.
+    #
+    # NOTE: This is intentionally stored instead of a precomputed set of descendant
+    # leaf names. Materializing descendant sets for every candidate can become
+    # quadratic in both time and memory for large trees.
+    ancestor: Clade | None = None
 
 
 def auto_select_pairs(viewer: "TreeViewer") -> None:
@@ -141,42 +146,30 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         viewer._show_seq_lengths = True
         viewer._update_seq_length_annotations()
 
-    # Avoid overlapping with existing pairs: exclude current descendants
-    existing_desc: set[str] = set()
-    for pair in viewer._pairs:
-        # Be robust if a previously added pair references a species not in the
-        # currently loaded tree (e.g., after loading a new tree or groups file).
-        conv_leaf = next(viewer._tree.find_clades(name=pair.convergent), None)
-        ctrl_leaf = next(viewer._tree.find_clades(name=pair.control), None)
-        if conv_leaf is None or ctrl_leaf is None:
-            # Skip invalid pairs instead of crashing; the auto-selector will
-            # still proceed using only valid state. We avoid mutating
-            # viewer._pairs here to keep this action non-destructive.
-            continue
-        anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
-        for leaf in anc.get_terminals():
-            existing_desc.add(leaf.name or "")
-
     # Build candidates from adjacent phenotype transitions across tips
     candidates: List[CandidatePair] = []
     prev_name: str | None = None
     prev_pheno = None
+    prev_leaf: Clade | None = None
     # Choose phenotype source for algorithm (temporary mapping for continuous)
     pheno_for_algo: Dict[str, int] = temp_mapping if temp_mapping is not None else viewer._phenotypes  # type: ignore[assignment]
     for leaf in viewer._tree.get_terminals():
         name = leaf.name or ""
-        if name in existing_desc:
-            continue
         ph = pheno_for_algo.get(name)
         if ph not in (1, -1):
             continue
         if prev_name is not None and ph != prev_pheno:
             if prev_pheno == 1:
                 conv, ctrl = prev_name, name
+                conv_leaf, ctrl_leaf = prev_leaf, leaf
             else:
                 conv, ctrl = name, prev_name
-            conv_leaf = next(viewer._tree.find_clades(name=conv))
-            ctrl_leaf = next(viewer._tree.find_clades(name=ctrl))
+                conv_leaf, ctrl_leaf = leaf, prev_leaf
+            if conv_leaf is None or ctrl_leaf is None:
+                prev_name = name
+                prev_pheno = ph
+                prev_leaf = leaf
+                continue
             anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
             # Robust distance: if branch lengths missing, fall back to node count
             try:
@@ -185,10 +178,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 conv_path = viewer._path_to(anc, conv_leaf)
                 ctrl_path = viewer._path_to(anc, ctrl_leaf)
                 dist = float(len(conv_path) + len(ctrl_path))
-            desc = {l.name or "" for l in anc.get_terminals()}
-            candidates.append(CandidatePair(conv, ctrl, dist, desc))
+            candidates.append(CandidatePair(conv, ctrl, dist, ancestor=anc))
         prev_name = name
         prev_pheno = ph
+        prev_leaf = leaf
 
     # Candidate ordering: ALWAYS use the default (shortest-distance-first)
     # strategy to maximize the number of non-overlapping pairs. The chosen
@@ -310,11 +303,16 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         for idx, c in enumerate(candidates):
             # Collect eligible leaves under this ancestor
             try:
-                conv_leaf = next(viewer._tree.find_clades(name=c.convergent))
-                ctrl_leaf = next(viewer._tree.find_clades(name=c.control))
-                anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                anc = c.ancestor
             except Exception:
-                continue
+                anc = None
+            if anc is None:
+                try:
+                    conv_leaf = next(viewer._tree.find_clades(name=c.convergent))
+                    ctrl_leaf = next(viewer._tree.find_clades(name=c.control))
+                    anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
+                except Exception:
+                    continue
 
             convs: List[str] = []
             ctrls: List[str] = []
@@ -407,10 +405,26 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
     added: List[PairInfo] = []
     # Keep scored alternates so we can enforce a global max-combos cap by removing worst first
     alt_scores: List[Tuple[int, str, str, float]] = []  # (pair_index_in_added, role, name, score) role in {"conv","ctrl"}
-    invalid: set[str] = set(existing_desc)
-    while candidates:
-        cand = candidates.pop(0)
-        if cand.descendants & invalid:
+    # Track clades that must not overlap with newly selected candidates. In a
+    # rooted tree, overlap between two clades implies one is an ancestor of the
+    # other, so we can check ancestry rather than materializing terminal sets.
+    blocked: List[Clade] = []
+    for p in viewer._pairs:
+        try:
+            conv_leaf = next(viewer._tree.find_clades(name=p.convergent))
+            ctrl_leaf = next(viewer._tree.find_clades(name=p.control))
+            blocked.append(viewer._tree.common_ancestor(conv_leaf, ctrl_leaf))
+        except Exception:
+            continue
+
+    def overlaps_blocked(anc: Clade) -> bool:
+        for b in blocked:
+            if viewer._is_descendant(b, anc) or viewer._is_descendant(anc, b):
+                return True
+        return False
+
+    for cand in candidates:
+        if cand.ancestor is not None and overlaps_blocked(cand.ancestor):
             continue
         pair = viewer._resolve_pair(cand, method, pheno_for_algo)
         # Optionally compute alternates for this pair
@@ -518,8 +532,8 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                         alt_scores.append((idx_in_added, "ctrl", n, s))
 
         added.append(pair)
-        invalid.update(cand.descendants)
-        candidates = [c for c in candidates if not (c.descendants & invalid)]
+        if cand.ancestor is not None:
+            blocked.append(cand.ancestor)
 
     if len(viewer._pairs) + len(added) < 2:
         QMessageBox.warning(
@@ -563,4 +577,3 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         viewer._apply_pairs()
 
 # ------------------------------------------------------------------
-
