@@ -5,7 +5,8 @@ from typing import Dict, List, Tuple, TYPE_CHECKING
 
 import random
 
-from PySide6.QtWidgets import QMessageBox, QDialog
+from PySide6.QtWidgets import QApplication, QMessageBox, QDialog, QProgressDialog
+from PySide6.QtCore import Qt
 from Bio.Phylo.Newick import Clade
 
 from gui.ui.widgets.dialogs import (
@@ -146,6 +147,13 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         viewer._show_seq_lengths = True
         viewer._update_seq_length_annotations()
 
+    progress = QProgressDialog("Auto-selecting contrast pairs...", "Cancel", 0, 0, viewer)
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
+    progress.setMinimumDuration(0)  # show immediately for large trees
+    progress.setValue(0)
+    progress.show()
+    QApplication.processEvents()
+
     # Build candidates from adjacent phenotype transitions across tips
     candidates: List[CandidatePair] = []
     prev_name: str | None = None
@@ -153,10 +161,19 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
     prev_leaf: Clade | None = None
     # Choose phenotype source for algorithm (temporary mapping for continuous)
     pheno_for_algo: Dict[str, int] = temp_mapping if temp_mapping is not None else viewer._phenotypes  # type: ignore[assignment]
-    for leaf in viewer._tree.get_terminals():
+    terminals = list(viewer._tree.get_terminals())
+    progress.setLabelText("Scanning tree for phenotype transitions...")
+    progress.setRange(0, len(terminals))
+    for i, leaf in enumerate(terminals, start=1):
         name = leaf.name or ""
         ph = pheno_for_algo.get(name)
         if ph not in (1, -1):
+            if i % 250 == 0:
+                progress.setValue(i)
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    progress.close()
+                    return
             continue
         if prev_name is not None and ph != prev_pheno:
             if prev_pheno == 1:
@@ -169,6 +186,12 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 prev_name = name
                 prev_pheno = ph
                 prev_leaf = leaf
+                if i % 250 == 0:
+                    progress.setValue(i)
+                    QApplication.processEvents()
+                    if progress.wasCanceled():
+                        progress.close()
+                        return
                 continue
             anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
             # Robust distance: if branch lengths missing, fall back to node count
@@ -182,6 +205,13 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         prev_name = name
         prev_pheno = ph
         prev_leaf = leaf
+        if i % 250 == 0:
+            progress.setValue(i)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                progress.close()
+                return
+    progress.setValue(len(terminals))
 
     # Candidate ordering: ALWAYS use the default (shortest-distance-first)
     # strategy to maximize the number of non-overlapping pairs. The chosen
@@ -193,7 +223,11 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         # Ensure sequence lengths are available. Prompt for an alignments
         # directory if needed, since composite uses lengths for gating.
         if not viewer._alignments_dir and not viewer._prompt_alignment_dir():
+            progress.close()
             return
+        # Alignment scanning shows its own progress dialog; hide this one to
+        # avoid stacking dialogs.
+        progress.hide()
         # Gather lengths over the thresholded set when in continuous mode to reduce IO
         if viewer._continuous_pheno and temp_mapping is not None:
             backup = viewer._phenotypes
@@ -204,9 +238,14 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 viewer._phenotypes = backup
         else:
             viewer._ensure_sequence_lengths()
+        progress.show()
         # Optionally annotate labels with lengths like the 'longest' method
         viewer._show_seq_lengths = True
         viewer._update_seq_length_annotations()
+
+        progress.setLabelText("Scoring composite candidates...")
+        progress.setRange(0, len(candidates))
+        progress.setValue(0)
 
         # -----------------------------
         # Global precomputations
@@ -301,6 +340,12 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         # Store all duo scores so we can rank alternates later
         viewer._composite_per_duo: Dict[Tuple[str, str], List[Tuple[str, str, float, float, float, float]]] = {}
         for idx, c in enumerate(candidates):
+            if idx % 5 == 0:
+                progress.setValue(idx)
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    progress.close()
+                    return
             # Collect eligible leaves under this ancestor
             try:
                 anc = c.ancestor
@@ -308,8 +353,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 anc = None
             if anc is None:
                 try:
-                    conv_leaf = next(viewer._tree.find_clades(name=c.convergent))
-                    ctrl_leaf = next(viewer._tree.find_clades(name=c.control))
+                    conv_leaf = viewer._leaf(c.convergent)
+                    ctrl_leaf = viewer._leaf(c.control)
+                    if conv_leaf is None or ctrl_leaf is None:
+                        continue
                     anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
                 except Exception:
                     continue
@@ -372,8 +419,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
 
                     # Distance for tie-breaking
                     try:
-                        a_leaf = next(viewer._tree.find_clades(name=a))
-                        b_leaf = next(viewer._tree.find_clades(name=b))
+                        a_leaf = viewer._leaf(a)
+                        b_leaf = viewer._leaf(b)
+                        if a_leaf is None or b_leaf is None:
+                            raise RuntimeError("missing leaf")
                     except Exception:
                         dist = float("inf")
                     else:
@@ -411,8 +460,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
     blocked: List[Clade] = []
     for p in viewer._pairs:
         try:
-            conv_leaf = next(viewer._tree.find_clades(name=p.convergent))
-            ctrl_leaf = next(viewer._tree.find_clades(name=p.control))
+            conv_leaf = viewer._leaf(p.convergent)
+            ctrl_leaf = viewer._leaf(p.control)
+            if conv_leaf is None or ctrl_leaf is None:
+                continue
             blocked.append(viewer._tree.common_ancestor(conv_leaf, ctrl_leaf))
         except Exception:
             continue
@@ -423,15 +474,26 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 return True
         return False
 
-    for cand in candidates:
+    progress.setLabelText("Selecting non-overlapping pairs...")
+    progress.setRange(0, len(candidates))
+    progress.setValue(0)
+    for idx, cand in enumerate(candidates, start=1):
+        if idx % 10 == 0:
+            progress.setValue(idx)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                progress.close()
+                return
         if cand.ancestor is not None and overlaps_blocked(cand.ancestor):
             continue
         pair = viewer._resolve_pair(cand, method, pheno_for_algo)
         # Optionally compute alternates for this pair
         if num_alternates > 0:
             try:
-                conv_leaf = next(viewer._tree.find_clades(name=pair.convergent))
-                ctrl_leaf = next(viewer._tree.find_clades(name=pair.control))
+                conv_leaf = viewer._leaf(pair.convergent)
+                ctrl_leaf = viewer._leaf(pair.control)
+                if conv_leaf is None or ctrl_leaf is None:
+                    raise RuntimeError("missing leaf")
                 anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
             except Exception:
                 anc = None
@@ -534,6 +596,8 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         added.append(pair)
         if cand.ancestor is not None:
             blocked.append(cand.ancestor)
+    progress.setValue(len(candidates))
+    progress.close()
 
     if len(viewer._pairs) + len(added) < 2:
         QMessageBox.warning(

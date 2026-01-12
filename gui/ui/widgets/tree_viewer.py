@@ -275,6 +275,9 @@ class TreeViewer(QWidget):
         self._disabled_species: set[str] = set()
         self._species_pair_map: Dict[str, int] = {}
         self._label_items: Dict[str, QGraphicsTextItem] = {}
+        # Cache leaf clades by name to avoid repeated O(n) tree scans via
+        # Bio.Phylo's find_clades in tight loops (pair application, auto-select).
+        self._leaf_by_name: Dict[str, Clade] = {}
 
         self._pair_labels: List[QGraphicsTextItem] = []
         self._selection_rect: QGraphicsRectItem | None = None
@@ -971,6 +974,20 @@ class TreeViewer(QWidget):
         return path
 
     # ------------------------------------------------------------------
+    def _leaf(self, name: str) -> Clade | None:
+        """Return the terminal clade with the given name, using a cache when possible."""
+        if not name:
+            return None
+        leaf = self._leaf_by_name.get(name)
+        if leaf is not None:
+            return leaf
+        # Fallback: scan the tree (should be rare once cache is populated)
+        try:
+            return next(self._tree.find_clades(name=name), None)
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     def _is_descendant(self, ancestor: Clade, node: Clade) -> bool:
         while node is not None and node is not ancestor:
             node = self._parent_map.get(node)
@@ -982,8 +999,10 @@ class TreeViewer(QWidget):
         def ancestor_for(pair: PairInfo) -> Clade | None:
             conv, ctrl = pair.convergent, pair.control
             try:
-                conv_leaf = next(self._tree.find_clades(name=conv))
-                ctrl_leaf = next(self._tree.find_clades(name=ctrl))
+                conv_leaf = self._leaf(conv)
+                ctrl_leaf = self._leaf(ctrl)
+                if conv_leaf is None or ctrl_leaf is None:
+                    return None
                 return self._tree.common_ancestor(conv_leaf, ctrl_leaf)
             except Exception:
                 return None
@@ -1048,6 +1067,15 @@ class TreeViewer(QWidget):
             self._current_role = None
             self._current_first = None
             self._leaf_names_snapshot = current
+            # Refresh leaf-name cache in case the underlying tree was swapped
+            try:
+                self._leaf_by_name = {}
+                for leaf in self._tree.get_terminals():
+                    nm = leaf.name or ""
+                    if nm and nm not in self._leaf_by_name:
+                        self._leaf_by_name[nm] = leaf
+            except Exception:
+                self._leaf_by_name = {}
             return True
         return False
 
@@ -1059,8 +1087,10 @@ class TreeViewer(QWidget):
         """
         def anc_y(pair: PairInfo) -> float:
             try:
-                conv_leaf = next(self._tree.find_clades(name=pair.convergent))
-                ctrl_leaf = next(self._tree.find_clades(name=pair.control))
+                conv_leaf = self._leaf(pair.convergent)
+                ctrl_leaf = self._leaf(pair.control)
+                if conv_leaf is None or ctrl_leaf is None:
+                    return 0.0
                 anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
                 return float(self._node_pos.get(anc, (0.0, 0.0))[1])
             except Exception:
@@ -1106,8 +1136,8 @@ class TreeViewer(QWidget):
         self._purge_invalid_pairs()
         for idx, pair in enumerate(self._pairs, start=1):
             conv_name, ctrl_name = pair.convergent, pair.control
-            conv_leaf = next(self._tree.find_clades(name=conv_name), None)
-            ctrl_leaf = next(self._tree.find_clades(name=ctrl_name), None)
+            conv_leaf = self._leaf(conv_name)
+            ctrl_leaf = self._leaf(ctrl_name)
             if conv_leaf is None or ctrl_leaf is None:
                 # Skip invalid pair entries that reference names not present
                 # on the current tree instead of crashing.
@@ -1173,7 +1203,7 @@ class TreeViewer(QWidget):
             # draw alternate paths
             cc_edges = set(conv_path + ctrl_path)
             for alt_name in pair.conv_alts:
-                alt_leaf = next(self._tree.find_clades(name=alt_name), None)
+                alt_leaf = self._leaf(alt_name)
                 if alt_leaf is None:
                     continue
                 full_path = self._path_to(ancestor, alt_leaf)
@@ -1218,7 +1248,7 @@ class TreeViewer(QWidget):
                     self._alt_boxes.append(box)
 
             for alt_name in pair.ctrl_alts:
-                alt_leaf = next(self._tree.find_clades(name=alt_name), None)
+                alt_leaf = self._leaf(alt_name)
                 if alt_leaf is None:
                     continue
                 full_path = self._path_to(ancestor, alt_leaf)
@@ -1882,8 +1912,10 @@ class TreeViewer(QWidget):
 
     # ------------------------------------------------------------------
     def _resolve_pair(self, cand: CandidatePair, method: str, pheno_map: Optional[Dict[str, int]] = None) -> PairInfo:
-        conv_leaf = next(self._tree.find_clades(name=cand.convergent))
-        ctrl_leaf = next(self._tree.find_clades(name=cand.control))
+        conv_leaf = self._leaf(cand.convergent)
+        ctrl_leaf = self._leaf(cand.control)
+        if conv_leaf is None or ctrl_leaf is None:
+            return PairInfo(cand.convergent, cand.control)
         anc = self._tree.common_ancestor(conv_leaf, ctrl_leaf)
 
         # Use provided phenotype mapping if present (e.g., thresholded continuous),
@@ -1935,8 +1967,10 @@ class TreeViewer(QWidget):
         lengths are unavailable or invalid.
         """
         try:
-            a_leaf = next(self._tree.find_clades(name=a_name))
-            b_leaf = next(self._tree.find_clades(name=b_name))
+            a_leaf = self._leaf(a_name)
+            b_leaf = self._leaf(b_name)
+            if a_leaf is None or b_leaf is None:
+                return float("inf")
         except Exception:
             return float("inf")
         # Try patristic (branch-length) distance
@@ -2008,6 +2042,7 @@ class TreeViewer(QWidget):
         pen = QPen(self._line_color)
         self._parent_map = {}
         self._node_pos = {}
+        self._leaf_by_name = {}
         for clade in tree.find_clades(order="preorder"):
             x_parent, y_parent = scaled_x(clade), y_pos.get(clade, 0)
             self._node_pos[clade] = (x_parent, y_parent)
@@ -2030,6 +2065,9 @@ class TreeViewer(QWidget):
             line = self.scene.addLine(x_leaf, y_leaf, x_max_scaled, y_leaf, pen)
             self._branch_lines[(leaf, None)] = [line]
             self._node_pos[leaf] = (x_leaf, y_leaf)
+            nm = leaf.name or ""
+            if nm and nm not in self._leaf_by_name:
+                self._leaf_by_name[nm] = leaf
             label = HoverLabelItem(leaf.name or "")
             label.species_name = leaf.name or ""
             # Use gradient/binary color mapping; default black when missing
