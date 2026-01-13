@@ -2,12 +2,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 
 def test_auto_pairs_cli_smoke(tmp_path):
-    pytest.importorskip("Bio")
-
     project_root = Path(__file__).parent.parent
     tree_file = project_root / "photo_tree.nwk"
     pheno_file = project_root / "photo_species_phenotypes.txt"
