@@ -43,6 +43,15 @@ def parse_tree(tree_path: str) -> Clade:
         raise AncestralReconstructionError(f"Tree file not found: {tree_path}")
     
     try:
+        def _looks_like_single_label_newick(s: str) -> bool:
+            # Allow a single-leaf tree like "A;" (rare but technically Newick).
+            # Reject arbitrary prose like "this is not a tree".
+            import re
+            s = s.strip()
+            if s.endswith(";"):
+                s = s[:-1].strip()
+            return bool(re.fullmatch(r"[A-Za-z0-9_.-]+", s))
+
         # Try NEXUS first if extension suggests it
         ext = os.path.splitext(tree_path)[1].lower()
         if ext in {'.nexus', '.nex'}:
@@ -51,10 +60,26 @@ def parse_tree(tree_path: str) -> Clade:
         
         # Check file content for NEXUS header
         with open(tree_path, 'r', encoding='utf-8', errors='ignore') as f:
-            first_line = f.readline().strip()
-            if first_line.upper().startswith('#NEXUS'):
+            text = f.read()
+            first_nonempty = ""
+            for line in text.splitlines():
+                if line.strip():
+                    first_nonempty = line.strip()
+                    break
+            if first_nonempty.upper().startswith('#NEXUS'):
                 tree = Phylo.read(tree_path, 'nexus')
                 return tree.root
+
+            # Quick sanity check for Newick-like content. Biopython will happily
+            # parse arbitrary text as a one-leaf "tree" (leaf label), which is
+            # not useful for Fast Scan and breaks expectations in tests.
+            stripped = text.strip()
+            if not stripped:
+                raise AncestralReconstructionError("Failed to parse tree file: empty file")
+            # If there is no Newick punctuation, only allow a strict single-label tree.
+            if not any(ch in stripped for ch in ("(", ")", ",", ":")):
+                if not _looks_like_single_label_newick(stripped):
+                    raise AncestralReconstructionError("Failed to parse tree file: not valid Newick or NEXUS")
         
         # Default to Newick
         tree = Phylo.read(tree_path, 'newick')
@@ -107,38 +132,53 @@ def prune_tree(tree: Clade, keep_species: Set[str]) -> Clade:
         If no species from keep_species are found in tree
     """
     import copy
-    
-    # Deep copy to avoid modifying original
-    pruned = copy.deepcopy(tree)
-    
-    # Get all terminals in the copied tree
-    terminals = get_terminal_names(pruned)
-    
-    # Check that at least some species are present
-    present = terminals & keep_species
-    if not present:
+
+    # Deep copy to avoid modifying original.
+    # We then prune recursively so internal nodes that become terminal (e.g. "CD")
+    # are dropped unless explicitly kept as a species label.
+    root = copy.deepcopy(tree)
+
+    def _prune_rec(node: Clade) -> Optional[Clade]:
+        if node.is_terminal():
+            return node if (node.name in keep_species) else None
+
+        kept_children: List[Clade] = []
+        for child in list(getattr(node, "clades", []) or []):
+            kept = _prune_rec(child)
+            if kept is not None:
+                kept_children.append(kept)
+
+        node.clades = kept_children
+
+        # If an internal node ends up with no kept descendants, drop it (unless
+        # its label is explicitly being used as a "species" identifier).
+        if not node.clades:
+            return node if (node.name in keep_species) else None
+
+        # Collapse chains of single-child internal nodes to keep trees small and
+        # avoid internal labels becoming terminals.
+        if node.name not in keep_species:
+            while (not node.is_terminal()) and len(node.clades) == 1 and node.name not in keep_species:
+                child = node.clades[0]
+                # Preserve branch length sums if present.
+                if getattr(node, "branch_length", None) is not None:
+                    if getattr(child, "branch_length", None) is None:
+                        child.branch_length = node.branch_length
+                    else:
+                        child.branch_length += node.branch_length
+                node = child
+
+        return node
+
+    pruned = _prune_rec(root)
+    if pruned is None:
+        terminals = get_terminal_names(tree)
         raise AncestralReconstructionError(
             f"None of the requested species found in tree. "
             f"Requested: {sorted(keep_species)[:5]}..., "
             f"Tree has: {sorted(terminals)[:5]}..."
         )
-    
-    # Remove terminals not in keep_species
-    to_remove = terminals - keep_species
-    for name in to_remove:
-        for terminal in list(pruned.get_terminals()):
-            if terminal.name == name:
-                # Find parent and remove this terminal
-                path = pruned.get_path(terminal)
-                if len(path) >= 2:
-                    parent = path[-2]
-                    parent.clades = [c for c in parent.clades if c != terminal]
-                break
-    
-    # Remove empty internal nodes and collapse single-child nodes
-    _remove_empty_nodes(pruned, keep_species)
-    _collapse_single_child_nodes(pruned)
-    
+
     return pruned
 
 
@@ -270,13 +310,13 @@ def is_mrca_at_root(tree: Clade, mrca: Clade) -> bool:
     bool
         True if MRCA is the root (after unwrapping single-child ancestors)
     """
-    # Unwrap any single-child wrappers from root to first branching node
-    current = tree
-    while not current.is_terminal() and len(current.clades) == 1:
-        current = current.clades[0]
-    
-    # Check if MRCA is the first real branching node (the effective root)
-    return current == mrca
+    # A robust check for "no outgroup exists": if the MRCA spans all terminals
+    # in the (possibly pruned) tree, then there are no terminals outside the
+    # MRCA subtree.
+    try:
+        return get_terminal_names(tree) == get_terminal_names(mrca)
+    except Exception:
+        return tree == mrca
 
 
 def fitch_parsimony_downpass(
@@ -408,7 +448,9 @@ def _get_parent(tree: Clade, child: Clade) -> Optional[Clade]:
 def reconstruct_ancestral_sequence_with_sets(
     tree: Clade,
     sequences: Dict[str, str],
-    mrca: Clade
+    mrca: Clade,
+    *,
+    compute_representative: bool = True,
 ) -> Tuple[str, List[Set[str]]]:
     """Reconstruct ancestral sequence at MRCA using Fitch parsimony, returning state sets.
     
@@ -426,6 +468,7 @@ def reconstruct_ancestral_sequence_with_sets(
     Tuple[str, List[Set[str]]]
         (ancestral_sequence, state_sets_per_position)
         ancestral_sequence: representative sequence (lexicographically first when ambiguous)
+            when ``compute_representative=True``; otherwise placeholder '?' chars.
         state_sets_per_position: list of possible residue sets for each position
         
     Raises
@@ -449,10 +492,12 @@ def reconstruct_ancestral_sequence_with_sets(
     for pos in range(max_length):
         # Downpass
         state_sets = fitch_parsimony_downpass(tree, sequences, pos)
-        # Uppass
-        assignments = fitch_parsimony_uppass(tree, state_sets)
-        # Get MRCA's assignment and possible states
-        residue = assignments.get(mrca, '?')
+        if compute_representative:
+            # Uppass only needed when callers request a single-residue ancestral sequence.
+            assignments = fitch_parsimony_uppass(tree, state_sets)
+            residue = assignments.get(mrca, '?')
+        else:
+            residue = '?'
         mrca_set = state_sets.get(mrca, set())
         ancestral_seq.append(residue)
         mrca_state_sets.append(mrca_set)

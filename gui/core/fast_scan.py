@@ -139,6 +139,7 @@ def _scan_file_worker(
     tree_file: str | None = None,
     analysis_species: Set[str] | None = None,
     require_unambiguous_mrca: bool = False,
+    compute_mrca_representative: bool = False,
 ) -> Dict[str, float | int]:
     path = os.path.join(alignment_dir, fname)
     records = read_fasta(path)
@@ -179,7 +180,12 @@ def _scan_file_worker(
             if is_mrca_at_root(pruned_tree, mrca):
                 raise AncestralReconstructionError("MRCA at root; no outgroup context")
             # Reconstruct and capture MRCA state sets per position
-            _, mrca_state_sets = reconstruct_ancestral_sequence_with_sets(pruned_tree, species_seq, mrca)
+            _, mrca_state_sets = reconstruct_ancestral_sequence_with_sets(
+                pruned_tree,
+                species_seq,
+                mrca,
+                compute_representative=compute_mrca_representative,
+            )
         except AncestralReconstructionError:
             # Skip this alignment if reconstruction fails (e.g., MRCA at root)
             return {
@@ -384,6 +390,7 @@ def fast_scan_alignments(
     min_out_ctrl_agreement: float = 1.0,
     tree_file: str | None = None,
     require_unambiguous_mrca: bool = False,
+    compute_mrca_representative: bool = False,
 ) -> List[Dict[str, float | int]]:
     """Scan all alignments and compute convergence metrics per gene.
 
@@ -459,6 +466,7 @@ def fast_scan_alignments(
                 tree_file=tree_file,
                 analysis_species=analysis_species,
                 require_unambiguous_mrca=require_unambiguous_mrca,
+                compute_mrca_representative=compute_mrca_representative,
             )
             results = rs_results
             if len(combos) > 1:
@@ -485,13 +493,37 @@ def fast_scan_alignments(
     # Serial or parallel path (Python)
     if n_jobs <= 1:
         for idx, fname in enumerate(files, 1):
-            res = _scan_file_worker(alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species, require_unambiguous_mrca)
+            res = _scan_file_worker(
+                alignment_dir,
+                fname,
+                combos,
+                outgroup_species,
+                float(min_out_ctrl_agreement),
+                tree_file,
+                analysis_species,
+                require_unambiguous_mrca,
+                compute_mrca_representative,
+            )
             results.append(res)
             if progress_cb:
                 progress_cb(idx, total)
     else:
         with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-            future_map = {ex.submit(_scan_file_worker, alignment_dir, fname, combos, outgroup_species, float(min_out_ctrl_agreement), tree_file, analysis_species, require_unambiguous_mrca): fname for fname in files}
+            future_map = {
+                ex.submit(
+                    _scan_file_worker,
+                    alignment_dir,
+                    fname,
+                    combos,
+                    outgroup_species,
+                    float(min_out_ctrl_agreement),
+                    tree_file,
+                    analysis_species,
+                    require_unambiguous_mrca,
+                    compute_mrca_representative,
+                ): fname
+                for fname in files
+            }
             done = 0
             for fut in as_completed(future_map):
                 try:
@@ -590,6 +622,7 @@ def _run_fast_scan_rs(
     tree_file: str | None = None,
     analysis_species: Set[str] | None = None,
     require_unambiguous_mrca: bool = False,
+    compute_mrca_representative: bool = False,
 ) -> List[Dict[str, float | int]]:
     """Invoke the Rust fast_scan_rs binary and parse its JSON output.
 
@@ -624,6 +657,8 @@ def _run_fast_scan_rs(
         spec["analysis_species"] = sorted(list(analysis_species))
     if require_unambiguous_mrca:
         spec["require_unambiguous_mrca"] = True
+    if compute_mrca_representative:
+        spec["compute_mrca_representative"] = True
     # Use a temporary file for stdout to avoid pipe backpressure while we read stderr for progress
     import tempfile
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:

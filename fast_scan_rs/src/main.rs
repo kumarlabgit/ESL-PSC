@@ -25,6 +25,7 @@ struct InputSpec {
     analysis_species: Option<Vec<String>>,  // Species in analysis (for MRCA)
     tree_json: Option<NodeJson>, // Parsed tree provided by Python (preferred)
     require_unambiguous_mrca: Option<bool>, // Require single-residue MRCA (default false)
+    compute_mrca_representative: Option<bool>, // Compute representative MRCA sequence (default false)
 }
 
 #[derive(Serialize)]
@@ -282,6 +283,133 @@ fn reconstruct_ancestral_with_sets(
     (ancestral, state_sets)
 }
 
+fn node_key(node: &TreeNode) -> usize {
+    node as *const TreeNode as usize
+}
+
+fn sort_dedup(mut v: Vec<char>) -> Vec<char> {
+    if v.len() > 1 {
+        v.sort();
+        v.dedup();
+    }
+    v
+}
+
+fn downpass_collect(
+    node: &TreeNode,
+    sequences: &HashMap<String, String>,
+    pos: usize,
+    out_sets: &mut HashMap<usize, Vec<char>>,
+) -> Vec<char> {
+    let key = node_key(node);
+    if node.is_leaf() {
+        let set = if let Some(name) = &node.name {
+            if let Some(seq) = sequences.get(name) {
+                let ch = get_char(seq, pos);
+                if ch != '-' && ch != '?' && ch != 'X' && ch != 'x' {
+                    vec![ch]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        };
+        out_sets.insert(key, set.clone());
+        return set;
+    }
+
+    let mut child_sets: Vec<Vec<char>> = Vec::new();
+    for c in &node.children {
+        let s = downpass_collect(c, sequences, pos, out_sets);
+        if !s.is_empty() {
+            child_sets.push(s);
+        }
+    }
+    if child_sets.is_empty() {
+        out_sets.insert(key, vec![]);
+        return vec![];
+    }
+
+    let mut result = child_sets[0].clone();
+    for set in &child_sets[1..] {
+        result.retain(|c| set.contains(c));
+    }
+    if result.is_empty() {
+        // Union
+        for set in &child_sets {
+            for &c in set {
+                if !result.contains(&c) {
+                    result.push(c);
+                }
+            }
+        }
+    }
+    let result = sort_dedup(result);
+    out_sets.insert(key, result.clone());
+    result
+}
+
+fn uppass_assign(
+    node: &TreeNode,
+    parent_state: Option<char>,
+    sets: &HashMap<usize, Vec<char>>,
+    out_assign: &mut HashMap<usize, char>,
+) {
+    let key = node_key(node);
+    let node_set = sets.get(&key).cloned().unwrap_or_default();
+    let state = if node_set.is_empty() {
+        '?'
+    } else if let Some(p) = parent_state {
+        if node_set.contains(&p) {
+            p
+        } else {
+            *node_set.iter().min().unwrap()
+        }
+    } else {
+        *node_set.iter().min().unwrap()
+    };
+    out_assign.insert(key, state);
+    for c in &node.children {
+        uppass_assign(c, Some(state), sets, out_assign);
+    }
+}
+
+/// Reconstruct the MRCA representative sequence using a Fitch uppass, while
+/// also returning the MRCA downpass state sets per position.
+///
+/// This matches the Python implementation semantics:
+/// - downpass computes state sets
+/// - root assignment picks lexicographically-first state
+/// - children inherit parent state if it is in their set, else pick lexicographically-first
+fn reconstruct_mrca_with_sets(
+    root: &TreeNode,
+    mrca_key: usize,
+    sequences: &HashMap<String, String>,
+    seq_len: usize,
+    compute_representative: bool,
+) -> (String, Vec<Vec<char>>) {
+    let mut ancestral = String::new();
+    let mut mrca_state_sets: Vec<Vec<char>> = Vec::new();
+    for pos in 0..seq_len {
+        let mut sets: HashMap<usize, Vec<char>> = HashMap::new();
+        let _root_set = downpass_collect(root, sequences, pos, &mut sets);
+
+        let anc_char = if compute_representative {
+            let mut assign: HashMap<usize, char> = HashMap::new();
+            uppass_assign(root, None, &sets, &mut assign);
+            assign.get(&mrca_key).copied().unwrap_or('?')
+        } else {
+            '?'
+        };
+        ancestral.push(anc_char);
+        mrca_state_sets.push(sets.get(&mrca_key).cloned().unwrap_or_default());
+    }
+    (ancestral, mrca_state_sets)
+}
+
 /// Legacy wrapper for backward compatibility
 fn reconstruct_ancestral(node: &TreeNode, sequences: &HashMap<String, String>, seq_len: usize) -> String {
     reconstruct_ancestral_with_sets(node, sequences, seq_len).0
@@ -374,6 +502,7 @@ fn main() {
     if min_agree > 1.0 { min_agree = 1.0; }
     
     let require_unambiguous_mrca = spec.require_unambiguous_mrca.unwrap_or(false);
+    let compute_mrca_representative = spec.compute_mrca_representative.unwrap_or(false);
     
     // Build the tree once for this run. Prefer JSON supplied by Python.
     let tree_root = if let Some(ref j) = spec.tree_json {
@@ -471,8 +600,16 @@ fn main() {
                             if mrca_terminals.len() == pruned_terminals.len() {
                                 (String::new(), vec![])  // Skip - MRCA at root
                             } else {
-                                // Reconstruct ancestral sequence at MRCA with state sets
-                                reconstruct_ancestral_with_sets(mrca, &species_seq, seq_len)
+                                // Reconstruct MRCA representative using uppass on the full pruned tree
+                                // (matches Python), while keeping downpass state sets for MRCA.
+                                let mk = node_key(mrca);
+                                reconstruct_mrca_with_sets(
+                                    &pruned,
+                                    mk,
+                                    &species_seq,
+                                    seq_len,
+                                    compute_mrca_representative,
+                                )
                             }
                         } else {
                             (String::new(), vec![])  // Skip if MRCA not found
@@ -661,5 +798,46 @@ fn main() {
             eprintln!("serialization error: {}", e);
             std::process::exit(3);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mrca_assignment_prefers_parent_state_like_python() {
+        // root has children: mrca_subtree (A,B) and outgroup E.
+        // At pos 0:
+        // - MRCA downpass set is {A,T} (A leaf=A, B leaf=T)
+        // - outgroup is T
+        // => root set intersection is {T}, so root assignment is T
+        // Python uppass would assign MRCA = T (inherit parent), not A (lexicographic min at MRCA).
+        let mrca = TreeNode {
+            name: Some("AB".to_string()),
+            children: vec![
+                TreeNode::new(Some("A".to_string())),
+                TreeNode::new(Some("B".to_string())),
+            ],
+        };
+        let root = TreeNode {
+            name: Some("root".to_string()),
+            children: vec![
+                mrca.clone(),
+                TreeNode::new(Some("E".to_string())),
+            ],
+        };
+
+        let mut seqs: HashMap<String, String> = HashMap::new();
+        seqs.insert("A".to_string(), "A".to_string());
+        seqs.insert("B".to_string(), "T".to_string());
+        seqs.insert("E".to_string(), "T".to_string());
+
+        // Find MRCA node reference in this constructed tree (first child).
+        let mrca_ref = &root.children[0];
+        let mk = node_key(mrca_ref);
+        let (rep, sets) = reconstruct_mrca_with_sets(&root, mk, &seqs, 1, true);
+        assert_eq!(rep, "T");
+        assert_eq!(sort_dedup(sets[0].clone()), vec!['A', 'T']);
     }
 }

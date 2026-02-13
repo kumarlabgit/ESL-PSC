@@ -74,6 +74,11 @@ def main(argv=None) -> int:
         help="Require unambiguous ancestral residues (exclude ambiguous sites from CCS detection)",
     )
     parser.add_argument(
+        "--compute_mrca_representative",
+        action="store_true",
+        help="Compute a single representative ancestral residue sequence (disabled by default; not needed for set-based CCS logic).",
+    )
+    parser.add_argument(
         "--two_pair_combos",
         action="store_true",
         help="Interpret species groups by generating all 2x2 pair combos",
@@ -105,6 +110,7 @@ def main(argv=None) -> int:
     tree_file = args.tree_file
     two_pair = bool(args.two_pair_combos)
     require_unamb = bool(args.require_unambiguous_mrca)
+    compute_rep = bool(args.compute_mrca_representative)
     min_agree = float(args.min_out_ctrl_agreement)
     top_frac = float(args.top_frac)
     
@@ -187,6 +193,7 @@ def main(argv=None) -> int:
                 tree_file=tree_file,
                 analysis_species=analysis_species,
                 require_unambiguous_mrca=require_unamb,
+                compute_mrca_representative=compute_rep,
             )
             used_rust = True
             results = _postprocess_and_sort(results, n_combos, top_frac)
@@ -207,6 +214,7 @@ def main(argv=None) -> int:
                 min_out_ctrl_agreement=min_agree,
                 tree_file=tree_file,
                 require_unambiguous_mrca=require_unamb,
+                compute_mrca_representative=compute_rep,
             )
     else:
         # Direct Python path (or forced)
@@ -220,6 +228,7 @@ def main(argv=None) -> int:
             min_out_ctrl_agreement=min_agree,
             tree_file=tree_file,
             require_unambiguous_mrca=require_unamb,
+            compute_mrca_representative=compute_rep,
         )
 
     # Emit CSV output (required path)
