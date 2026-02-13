@@ -6,16 +6,95 @@ A graphical interface for running ESL-PSC analyses with an intuitive wizard.
 """
 import sys
 import os
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt
+import signal
 from gui.core.logging_utils import setup_logging
-from gui.ui.main_window import MainWindow
+import traceback
+
+_NON_WINDOW_QT_PLATFORMS = {"offscreen", "minimal", "minimalegl", "linuxfb", "vnc"}
+
+
+def _stderr(msg: str) -> None:
+    """Write directly to stderr (not routed through GUI debug logging)."""
+    sys.__stderr__.write(msg + "\n")
+    sys.__stderr__.flush()
+
+
+def _normalize_qt_platform_env():
+    """Prefer a real GUI backend when a display is available."""
+    platform = (os.environ.get("QT_QPA_PLATFORM") or "").strip().lower()
+    if not platform:
+        return
+
+    has_display = bool(os.environ.get("DISPLAY"))
+    has_wayland = bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("WAYLAND_SOCKET"))
+    if has_display or has_wayland:
+        if platform in {"offscreen", "minimal", "minimalegl", "linuxfb", "vnc"}:
+            os.environ.pop("QT_QPA_PLATFORM", None)
+            print(
+                f"Cleared QT_QPA_PLATFORM={platform} because a display is available; "
+                "using default windowed Qt backend."
+            )
+
+
+def _enforce_windowed_platform(app) -> None:
+    """Abort early if Qt selected a non-window backend unexpectedly."""
+    if os.environ.get("ESL_PSC_ALLOW_HEADLESS_GUI", "0") == "1":
+        return
+
+    platform_name = ""
+    screen_count = 0
+    try:
+        from PySide6.QtGui import QGuiApplication
+        platform_name = (QGuiApplication.platformName() or "").strip().lower()
+        screen_count = len(QGuiApplication.screens())
+    except Exception:
+        return
+
+    if platform_name in _NON_WINDOW_QT_PLATFORMS:
+        _stderr(
+            "Qt selected a non-window platform backend "
+            f"('{platform_name}'), so the GUI cannot be shown."
+        )
+        _stderr(
+            "Check your display session and environment variables: "
+            "DISPLAY, WAYLAND_DISPLAY, QT_QPA_PLATFORM."
+        )
+        _stderr(
+            "If you intentionally want headless behavior for debugging, set "
+            "ESL_PSC_ALLOW_HEADLESS_GUI=1."
+        )
+        try:
+            app.quit()
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Refusing to run GUI on non-window Qt platform '{platform_name}'."
+        )
+
+    if screen_count == 0:
+        _stderr("Qt started but reports zero screens; GUI cannot be displayed.")
+        _stderr(
+            "Verify your desktop session (DISPLAY/WAYLAND_DISPLAY) and retry."
+        )
+        try:
+            app.quit()
+        except Exception:
+            pass
+        raise RuntimeError("Qt reports zero screens.")
+
+
 def main():
     # Delay GUI import until after logging setup to ensure debug prints are redirected
     """Main entry point for the ESL-PSC GUI application."""
     # Initialize application-wide logging and patch print() for GUI modules
     setup_logging()
+    _normalize_qt_platform_env()
+
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtGui import QIcon
+    from PySide6.QtCore import Qt, QTimer
+    from gui.ui.main_window import MainWindow
+
     print("Starting ESL-PSC GUI...")
     print(f"Python executable: {sys.executable}")
     print(f"Working directory: {os.getcwd()}")
@@ -35,6 +114,7 @@ def main():
         # Create application instance
         print("Creating QApplication...")
         app = QApplication(sys.argv)
+        _enforce_windowed_platform(app)
         print("QApplication created")
 
         # ──────────────────────────────────────────────────────────────────
@@ -55,6 +135,12 @@ def main():
         app.setApplicationName("ESL-PSC Wizard")
         app.setApplicationVersion("0.1.0")
         app.setOrganizationName("ESL-PSC")
+
+        # Make Ctrl+C terminate the Qt event loop when launched from a terminal.
+        signal.signal(signal.SIGINT, lambda *_: app.quit())
+        sigint_timer = QTimer()
+        sigint_timer.timeout.connect(lambda: None)
+        sigint_timer.start(200)
         
         # If we are running inside a packaged (Nuitka) build, kick off a
         # background warm-up run of the CLI helper.  This forces the one-file
@@ -95,20 +181,22 @@ def main():
         sys.exit(app.exec())
         
     except Exception as e:
-        print(f"FATAL ERROR: {str(e)}")
-        import traceback
+        _stderr(f"FATAL ERROR: {str(e)}")
         traceback.print_exc()
         
-        # Try to show error in a message box if possible
+        # Try to show error in a message box only when a visible GUI is available.
         try:
-
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Icon.Critical)
-            msg.setText("Fatal Error")
-            msg.setInformativeText(str(e))
-            msg.setDetailedText(traceback.format_exc())
-            msg.setWindowTitle("ESL-PSC GUI Error")
-            msg.exec()
+            from PySide6.QtGui import QGuiApplication
+            platform_name = (QGuiApplication.platformName() or "").strip().lower()
+            has_screen = bool(QGuiApplication.primaryScreen())
+            if has_screen and platform_name not in _NON_WINDOW_QT_PLATFORMS:
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Icon.Critical)
+                msg.setText("Fatal Error")
+                msg.setInformativeText(str(e))
+                msg.setDetailedText(traceback.format_exc())
+                msg.setWindowTitle("ESL-PSC GUI Error")
+                msg.exec()
         except:
             pass  # If we can't show the error in a GUI, we've already printed it
             

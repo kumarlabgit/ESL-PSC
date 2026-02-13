@@ -95,6 +95,11 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
    python -m gui.main
    ```
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
+   If you see an error about the `xcb` platform plugin needing
+   `libxcb-cursor0`, install the system package first:
+   ```bash
+   sudo apt install libxcb-cursor0
+   ```
 
 ### Additional dependencies
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
@@ -339,5 +344,4 @@ the plot should look like this:
 If you use this software in your research, please cite our paper:
 
 John B. Allard, Sudip Sharma, Ravi Patel, Maxwell Sanderford, Koichiro Tamura, Slobodan Vucetic, Glenn S. Gerhard & Sudhir Kumar. Evolutionary sparse learning reveals the shared genetic basis of convergent traits. Nature Communications 16, 3217 (2025). https://doi.org/10.1038/s41467-025-58428-8
-
 
