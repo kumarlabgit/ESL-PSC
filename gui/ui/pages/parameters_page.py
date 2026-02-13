@@ -43,6 +43,10 @@ class ParametersPage(BaseWizardPage):
 
         # Store references to widgets that might be accessed after deletion
         self.widgets_initialized = False
+        # Session-only flag: once user edits log-grid points in advanced mode,
+        # hidden-mode auto defaults stop changing it until app restart.
+        self._manual_num_log_points_override = False
+        self._suppress_num_log_points_manual_tracking = False
         
         # Create scroll area
         scroll = QScrollArea()
@@ -66,6 +70,15 @@ class ParametersPage(BaseWizardPage):
         layout = self.layout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(scroll)
+
+        # "Advanced options" toggle: keep the main flow uncluttered.
+        # This hides entire sections that are rarely needed for typical runs.
+        self.show_advanced_chk = QCheckBox("Show advanced options")
+        self.show_advanced_chk.setToolTip(
+            "Show rarely-used settings (deletion canceler details, hyperparameters, null models)."
+        )
+        self.show_advanced_chk.toggled.connect(self._set_advanced_visible)
+        self.container_layout.addWidget(self.show_advanced_chk)
         
         # ===== Output Options =====
         output_group = QGroupBox("Output Options")
@@ -409,7 +422,7 @@ class ParametersPage(BaseWizardPage):
         self.container_layout.addWidget(output_group)
         
         # ===== Deletion Canceler Options =====
-        del_cancel_group = QGroupBox("Deletion Canceler Options")
+        self.del_cancel_group = QGroupBox("Deletion Canceler Options")
         del_cancel_layout = QVBoxLayout()
         
         # Add explanatory text
@@ -512,11 +525,11 @@ class ParametersPage(BaseWizardPage):
         # initial config value
         self.config.preserve_canceled_alignments = getattr(self.config, 'preserve_canceled_alignments', False)
         
-        del_cancel_group.setLayout(del_cancel_layout)
-        self.container_layout.addWidget(del_cancel_group)
+        self.del_cancel_group.setLayout(del_cancel_layout)
+        self.container_layout.addWidget(self.del_cancel_group)
 
         # ===== Hyperparameters Section =====
-        hyper_group = QGroupBox("Hyperparameters")
+        self.hyper_group = QGroupBox("Hyperparameters")
         hyper_layout = QFormLayout()
         # Ensure the form rows themselves stay left-aligned instead of centering in the
         # available space.  Using AlignLeft keeps the widgets flush with the left
@@ -664,12 +677,14 @@ class ParametersPage(BaseWizardPage):
         self.linear_btn.toggled.connect(self._update_grid_type_view)
         
         # Connect spinbox changes to update config
-        self.num_log_points.valueChanged.connect(
-            lambda v: setattr(self.config, 'num_points', int(v)) if self.logspace_btn.isChecked() else None
-        )
+        self.num_log_points.valueChanged.connect(self._on_num_log_points_changed)
         self.lambda_step.valueChanged.connect(
             lambda v: setattr(self.config, 'num_points', float(v)) if self.linear_btn.isChecked() else None
         )
+        # In non-advanced mode, output mode drives log-point defaults.
+        self.genes_only_btn.toggled.connect(self._on_output_mode_toggled_for_points)
+        self.preds_only_btn.toggled.connect(self._on_output_mode_toggled_for_points)
+        self.both_outputs_btn.toggled.connect(self._on_output_mode_toggled_for_points)
         
         # Set initial values
         self.num_log_points.setValue(20)  # Default for log grid
@@ -779,12 +794,12 @@ class ParametersPage(BaseWizardPage):
         )
         hyper_layout.addRow("Max Iterations:", self.maxiter_spin)
         
-        hyper_group.setLayout(hyper_layout)
+        self.hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
-        self.container_layout.addWidget(hyper_group)
+        self.container_layout.addWidget(self.hyper_group)
         
         # ===== Null Models Section =====
-        null_models_group = QGroupBox("Null Models")
+        self.null_models_group_box = QGroupBox("Null Models")
         null_models_layout = QVBoxLayout()
         
         # Add explanatory text
@@ -880,8 +895,12 @@ class ParametersPage(BaseWizardPage):
         # Set default selection
         self.no_null_btn.setChecked(True)
         
-        null_models_group.setLayout(null_models_layout)
-        self.container_layout.addWidget(null_models_group)
+        self.null_models_group_box.setLayout(null_models_layout)
+        self.container_layout.addWidget(self.null_models_group_box)
+
+        # Default: hide advanced sections.
+        self.show_advanced_chk.setChecked(False)
+        self._set_advanced_visible(False)
         # --- Restore Defaults button (placed at bottom of Parameters page) ---
         self.container_layout.addSpacing(12)
         # Create a horizontal layout for the button to prevent it from stretching
@@ -892,6 +911,55 @@ class ParametersPage(BaseWizardPage):
         
         # Mark widgets as initialized
         self.widgets_initialized = True
+
+    def _set_advanced_visible(self, visible: bool) -> None:
+        """Show/hide advanced sections on this page."""
+        for attr in ("del_cancel_group", "hyper_group", "null_models_group_box"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setVisible(bool(visible))
+        if not visible:
+            self._apply_hidden_num_log_points_policy()
+
+    def _set_num_log_points_value(self, value: int) -> None:
+        """Programmatically set log-grid points without marking manual override."""
+        target = int(value)
+        if self.num_log_points.value() == target:
+            if self.logspace_btn.isChecked():
+                self.config.num_points = target
+            return
+        self._suppress_num_log_points_manual_tracking = True
+        try:
+            self.num_log_points.setValue(target)
+        finally:
+            self._suppress_num_log_points_manual_tracking = False
+        if self.logspace_btn.isChecked():
+            self.config.num_points = target
+
+    def _on_num_log_points_changed(self, value: int) -> None:
+        """Track manual edits and keep config in sync for log-space mode."""
+        if (
+            not self._suppress_num_log_points_manual_tracking
+            and self.show_advanced_chk.isChecked()
+        ):
+            self._manual_num_log_points_override = True
+        if self.logspace_btn.isChecked():
+            self.config.num_points = int(value)
+
+    def _on_output_mode_toggled_for_points(self, checked: bool) -> None:
+        if checked:
+            self._apply_hidden_num_log_points_policy()
+
+    def _apply_hidden_num_log_points_policy(self) -> None:
+        """Auto-manage log points only while advanced options are hidden."""
+        if self.show_advanced_chk.isChecked():
+            return
+        if self._manual_num_log_points_override:
+            if self.logspace_btn.isChecked():
+                self.config.num_points = int(self.num_log_points.value())
+            return
+        desired_points = 4 if self.genes_only_btn.isChecked() else 20
+        self._set_num_log_points_value(desired_points)
         
     def restore_defaults(self):
         """Reset all parameters to their default ESLConfig values and update the UI."""
@@ -917,7 +985,8 @@ class ParametersPage(BaseWizardPage):
         self.initial_lambda2.setValue(self.config.initial_lambda2)
         self.final_lambda2.setValue(self.config.final_lambda2)
         self.lambda_step.setValue(self.config.lambda_step)
-        self.num_log_points.setValue(self.config.num_points)
+        self._manual_num_log_points_override = False
+        self._set_num_log_points_value(self.config.num_points)
 
         # Group penalty
         self.group_penalty_type.setCurrentText("median (Recommended)")
@@ -966,6 +1035,7 @@ class ParametersPage(BaseWizardPage):
         self._update_grid_type_view()
         self._update_penalty_type(self.config.group_penalty_type)
         self._update_phenotype_names_state()
+        self._apply_hidden_num_log_points_policy()
         self.update_output_options_state()
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -984,7 +1054,7 @@ class ParametersPage(BaseWizardPage):
         self.initial_lambda2.setValue(cfg.initial_lambda2)
         self.final_lambda2.setValue(cfg.final_lambda2)
         if cfg.grid_type == 'log':
-            self.num_log_points.setValue(int(cfg.num_points))
+            self._set_num_log_points_value(int(cfg.num_points))
         else:
             self.lambda_step.setValue(float(cfg.num_points))
         # Group penalty
@@ -1043,6 +1113,7 @@ class ParametersPage(BaseWizardPage):
         self._update_grid_type_view()
         self._update_penalty_type(cfg.group_penalty_type)
         self._update_phenotype_names_state()
+        self._apply_hidden_num_log_points_policy()
         self.update_output_options_state()
         # Deletion-canceler: preserve gap-canceled alignments
         if hasattr(self, 'preserve_gap_aligns'):
