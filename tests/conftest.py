@@ -15,6 +15,23 @@ if str(ROOT_DIR) not in sys.path:
 
 import pytest
 
+# pytest-qt provides a `qapp` fixture; in minimal environments it may be absent.
+# Our GUI tests only need a QApplication instance + processEvents().
+try:
+    import pytestqt  # type: ignore  # noqa: F401
+    _HAVE_PYTEST_QT = True
+except Exception:
+    _HAVE_PYTEST_QT = False
+
+if not _HAVE_PYTEST_QT:
+    @pytest.fixture(scope="session")
+    def qapp():  # type: ignore
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication([])
+        return app
+
 # pytest-qt 4 uses `qapp`; older code may expect `qt_app`.
 @pytest.fixture
 def qt_app(qapp):  # type: ignore
