@@ -27,6 +27,10 @@ class SiteViewer(QWidget):
     # current Python process.
     # ------------------------------------------------------------------
     REMEMBERED_OUTGROUP: List[str] = []
+    # Remember last Convergent and Control sets in-session (used when opening
+    # Site Viewer without a groups file or response dir)
+    REMEMBERED_CONVERGENT: List[str] = []
+    REMEMBERED_CONTROL: List[str] = []
 
     """
     Main alignment-inspection widget.
@@ -44,10 +48,29 @@ class SiteViewer(QWidget):
         pss_scores: Dict[int, float] | None = None,
         parent=None,
         # Optional phenotype information
-        species_pheno_map: Dict[str, int] | None = None,
-        pheno_name_map: Dict[int, str] | None = None,
-    ) -> None:
+        species_pheno_map: Dict[str, float] | None = None,
+        pheno_name_map: Dict[float, str] | None = None,
+        ) -> None:
         super().__init__(parent)
+        # Ensure this widget is a normal top-level window (not a dialog) with
+        # standard controls and no always-on-top hints, and is non-modal.
+        try:
+            base_flags = (
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+            )
+            self.setWindowFlags(base_flags)
+            if hasattr(self, 'setWindowModality'):
+                self.setWindowModality(Qt.WindowModality.NonModal)
+        except Exception:
+            pass
+
+        # Precompute species present in this alignment for subsequent checks
+        all_species_this_alignment = [r[0] for r in records]
 
         # ------------------------------------------------------------------
         # If caller did not supply an outgroup list, attempt to re-apply the
@@ -58,7 +81,6 @@ class SiteViewer(QWidget):
             # outgroup list for this new viewer.
             # Try to add each remembered species to the outgroup if it exists in this
             # alignment and is not already there.
-            all_species_this_alignment = [r[0] for r in records]
             for sp in SiteViewer.REMEMBERED_OUTGROUP:
                 if sp not in all_species_this_alignment:
                     continue  # Species absent from this alignment
@@ -78,6 +100,31 @@ class SiteViewer(QWidget):
             outgroup_species.sort()
 
         # ------------------------------------------------------------------
+        # If no explicit Convergent/Control lists were provided (i.e., no
+        # groups file/response dir used), attempt to re-apply the remembered
+        # Convergent/Control sets from this session, restricted to species
+        # present in this alignment. Any species moved into Convergent/Control
+        # are removed from Outgroup to avoid duplication.
+        # ------------------------------------------------------------------
+        if (not convergent_species and not control_species) and (
+            SiteViewer.REMEMBERED_CONVERGENT or SiteViewer.REMEMBERED_CONTROL
+        ):
+            for sp in SiteViewer.REMEMBERED_CONVERGENT:
+                if sp in all_species_this_alignment:
+                    if sp in outgroup_species:
+                        outgroup_species.remove(sp)
+                    if sp not in convergent_species:
+                        convergent_species.append(sp)
+            for sp in SiteViewer.REMEMBERED_CONTROL:
+                if sp in all_species_this_alignment:
+                    if sp in outgroup_species:
+                        outgroup_species.remove(sp)
+                    if sp not in control_species:
+                        control_species.append(sp)
+            convergent_species.sort()
+            control_species.sort()
+
+        # ------------------------------------------------------------------
         # store the minimal bits up front
         self.records              = records
         self.convergent_species  = sorted(convergent_species)
@@ -88,16 +135,21 @@ class SiteViewer(QWidget):
 
         # ─── Phenotype maps ───────────────────────────────────────────────
         # Mapping of species → phenotype value (1/-1)
-        self.species_pheno_map: Dict[str, int] = species_pheno_map or {}
+        self.species_pheno_map: Dict[str, float] = species_pheno_map or {}
         # Mapping of phenotype value (1/-1) → display name (e.g. "C4", "C3")
-        default_pheno_map = {1: "1", -1: "-1"}
+        default_pheno_map = {1.0: "1", -1.0: "-1"}
         # Build phenotype display names mapping avoiding Python 3.9+ dict union
-        self.pheno_name_map: Dict[int, str] = default_pheno_map.copy()
+        self.pheno_name_map: Dict[float, str] = default_pheno_map.copy()
         if pheno_name_map:
             self.pheno_name_map.update(pheno_name_map)
 
         # Cache the phenotype value considered "convergent" (defaults to +1)
-        self.convergent_pheno_value: int = 1
+        self.convergent_pheno_value: float = 1.0
+
+        # Determine if phenotypes are continuous (any value not exactly -1 or 1)
+        self._continuous_pheno: bool = any(
+            (float(v) not in (-1.0, 1.0)) for v in self.species_pheno_map.values()
+        ) if self.species_pheno_map else False
 
         if all_sites_info is None:
             all_sites_info = [
@@ -180,8 +232,23 @@ class SiteViewer(QWidget):
         # No stateChanged connection so users cannot toggle
         self.top_hbox.addWidget(self.showAllCheck)
 
+        # Add Other Species sort controls BEFORE Filters
+        other_sort_label = QLabel("Sort Other Species By:")
+        other_sort_label.setFont(font_bold)
+        self.other_sort_combo = QComboBox()
+        self.other_sort_combo.addItem("Alphabetical")       # idx 0 -> alpha
+        self.other_sort_combo.addItem("MSA Order")          # idx 1 -> msa
+        self.other_sort_combo.addItem("Phenotype High → Low")  # idx 2 -> pheno_hi
+        self.other_sort_combo.addItem("Phenotype Low → High")  # idx 3 -> pheno_lo
+        # Default alphabetical
+        self.other_species_sort_mode = "alpha"
+        self.other_sort_combo.currentIndexChanged.connect(self.onOtherSortModeChanged)
+        self.top_hbox.addWidget(other_sort_label)
+        self.top_hbox.addWidget(self.other_sort_combo)
+
         # --- Filters dropdown ---
         filters_label = QLabel("Filters:")
+        filters_label.setFont(font_bold)
         self.filter_combo = QComboBox()
         self.filter_combo.addItem("No Filter")                    # idx 0
         self.filter_combo.addItem("Show Only Selected Sites")     # idx 1
@@ -256,8 +323,10 @@ class SiteViewer(QWidget):
         self.top_right_table.verticalScrollBar().valueChanged.connect(
             self.top_left_table.verticalScrollBar().setValue
         )
-        # no horizontal scroll on the left
-        self.top_left_table.horizontalScrollBar().setDisabled(True)
+        # No user horizontal scrolling on the left; we'll toggle the policy dynamically
+        # to reserve space when the right table shows a horizontal scrollbar.
+        self.top_left_table.horizontalScrollBar().setEnabled(False)
+        self.top_left_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.top_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.top_splitter.addWidget(self.top_left_table)
@@ -278,6 +347,9 @@ class SiteViewer(QWidget):
         )
         self.bottom_left_table.horizontalHeader().setStretchLastSection(True)
         self.bottom_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # No user horizontal scrolling on the left; policy toggled dynamically for alignment
+        self.bottom_left_table.horizontalScrollBar().setEnabled(False)
+        self.bottom_left_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.bottom_right_table = QTableWidget()
         self.bottom_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -300,6 +372,12 @@ class SiteViewer(QWidget):
         self.bottom_right_table.horizontalScrollBar().valueChanged.connect(
             self.top_right_table.horizontalScrollBar().setValue
         )
+
+        # Keep left panes aligned with right panes when horizontal scrollbars appear/disappear
+        self.top_right_table.horizontalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.top_right_table.verticalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.bottom_right_table.horizontalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
+        self.bottom_right_table.verticalScrollBar().rangeChanged.connect(lambda _min, _max: self._syncAuxScrollbars())
 
         self.bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.bottom_splitter.addWidget(self.bottom_left_table)
@@ -377,6 +455,9 @@ class SiteViewer(QWidget):
         self.sort_combo.blockSignals(False)
         self.sort_combo.currentIndexChanged.connect(self.onSortModeChanged)
 
+        # Initial sync of auxiliary scrollbars to avoid bottom-row misalignment
+        self._syncAuxScrollbars()
+
 
     def showHelp(self):
         """Help dialog content for the ESL-PSC Site Viewer."""
@@ -433,6 +514,11 @@ class SiteViewer(QWidget):
 
     def onSortModeChanged(self, idx):
         self.default_sort_mode = "score" if idx == 0 else "position"
+        self.rebuildTables()
+
+    def onOtherSortModeChanged(self, idx):
+        modes = {0: "alpha", 1: "msa", 2: "pheno_hi", 3: "pheno_lo"}
+        self.other_species_sort_mode = modes.get(idx, "alpha")
         self.rebuildTables()
 
     def onShowAllChanged(self, state):
@@ -618,18 +704,22 @@ class SiteViewer(QWidget):
             self.only_ccs = False
             self.hide_control_convergence = False
 
-        # Update remembered outgroup list after any change
+        # Update remembered lists after any change
         SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+        SiteViewer.REMEMBERED_CONVERGENT = self.convergent_species.copy()
+        SiteViewer.REMEMBERED_CONTROL = self.control_species.copy()
 
         # now recalc scores + rebuild
         self.recalc_scores()
         self.rebuildTables()
 
     # ------------------------------------------------------------------
-    # Ensure the remembered outgroup list is persisted when the window closes
+    # Ensure the remembered lists are persisted when the window closes
     # ------------------------------------------------------------------
     def closeEvent(self, event):  # noqa: N802 (Qt override)
         SiteViewer.REMEMBERED_OUTGROUP = self.outgroup_species.copy()
+        SiteViewer.REMEMBERED_CONVERGENT = self.convergent_species.copy()
+        SiteViewer.REMEMBERED_CONTROL = self.control_species.copy()
         super().closeEvent(event)
 
     def recalc_scores(self):
@@ -796,6 +886,8 @@ class SiteViewer(QWidget):
         self._unifyCols()
         # Re-adjust vertical splitter after tables rebuild
         self._adjustVerticalSplitter()
+        # Ensure left panes reserve scrollbar height if right panes need it
+        self._syncAuxScrollbars()
 
     def _buildTopTables(self, displayed_sites):
         self.top_left_table.clearContents()
@@ -939,7 +1031,6 @@ class SiteViewer(QWidget):
                         aa = seq[site['position']]
                         it = self.make_aa_item(aa)
                         self.top_right_table.setItem(rr,c, it)
-
         for r in range(total_rows):
             self.top_right_table.setRowHeight(r, 24)
 
@@ -947,6 +1038,25 @@ class SiteViewer(QWidget):
         # "other" species
         used_set = set(self.convergent_species + self.control_species + self.outgroup_species)
         other_species = [sp for sp in self.all_species if sp not in used_set]
+        # Apply user-selected sort for Other Species
+        def _pheno_val(sp: str) -> float:
+            # For sorting, treat unlabeled as 0; continuous uses raw value; binary uses 1/-1
+            if sp in self.species_pheno_map:
+                try:
+                    return float(self.species_pheno_map[sp])
+                except Exception:
+                    return 0.0
+            return 0.0
+        if getattr(self, 'other_species_sort_mode', 'alpha') == "alpha":
+            other_species.sort(key=lambda s: s)
+        elif self.other_species_sort_mode == "msa":
+            # Preserve order from the input records
+            other_species = [sid for sid in self.species_ids if sid not in used_set]
+        elif self.other_species_sort_mode == "pheno_hi":
+            other_species.sort(key=lambda s: (-_pheno_val(s), s))
+        elif self.other_species_sort_mode == "pheno_lo":
+            other_species.sort(key=lambda s: (_pheno_val(s), s))
+
         if not other_species:
             self.bottom_left_table.setRowCount(0)
             self.bottom_right_table.setRowCount(0)
@@ -978,9 +1088,7 @@ class SiteViewer(QWidget):
         def species_label_helper(sp):
             disp_txt = sp
             if sp in self.species_pheno_map:
-                p_val = self.species_pheno_map[sp]
-                p_name = self.pheno_name_map.get(p_val, str(p_val))
-                disp_txt += f" ({p_name})"
+                disp_txt += f" ({self._format_pheno_for_label(sp)})"
             item = left_item(disp_txt)
             if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
                 item.setForeground(QBrush(QColor("blue")))
@@ -990,7 +1098,7 @@ class SiteViewer(QWidget):
 
         for i, sp in enumerate(other_species):
             rr = row_sp_start + i
-            self.bottom_left_table.setItem(rr, 0, self._create_species_item(sp))
+            self.bottom_left_table.setItem(rr, 0, species_label_helper(sp))
 
         for r in range(total_rows):
             self.bottom_left_table.setRowHeight(r, 24)
@@ -1022,14 +1130,34 @@ class SiteViewer(QWidget):
         """Return a table item for a species with phenotype annotation and coloring."""
         disp_txt = sp
         if sp in self.species_pheno_map:
-            p_val = self.species_pheno_map[sp]
-            p_name = self.pheno_name_map.get(p_val, str(p_val))
-            disp_txt += f" ({p_name})"
+            disp_txt += f" ({self._format_pheno_for_label(sp)})"
         item = QTableWidgetItem(disp_txt)
         item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
             item.setForeground(QBrush(QColor("blue")))
         return item
+
+    def _format_pheno_for_label(self, sp: str) -> str:
+        """Return the display string for a species' phenotype.
+
+        - If continuous phenotypes are present, show the numeric value with up to 3 decimals.
+        - Otherwise, use the phenotype name map (e.g., 1 -> "C4", -1 -> "C3") or the raw value.
+        - If the species has no phenotype value, return an empty string (no annotation).
+        """
+        if sp not in self.species_pheno_map:
+            return ""
+        val = self.species_pheno_map.get(sp)
+        if val is None:
+            return ""
+        try:
+            fval = float(val)
+        except Exception:
+            return str(val)
+        if getattr(self, "_continuous_pheno", False):
+            sval = f"{fval:.3f}".rstrip('0').rstrip('.')
+            return sval
+        # binary or named
+        return self.pheno_name_map.get(fval, str(fval))
 
     def _adjustVerticalSplitter(self):
         """Set vertical splitter sizes so top pane shows conv+ctrl species without scroll if space allows."""
@@ -1044,6 +1172,35 @@ class SiteViewer(QWidget):
         top_size = min(top_needed, total_height - bottom_min)
         bottom_size = total_height - top_size
         self.vertical_splitter.setSizes([top_size, bottom_size])
+
+    def _syncAuxScrollbars(self) -> None:
+        """Ensure left species-name panes reserve horizontal scrollbar space when right panes show it.
+
+        This prevents bottom-row misalignment when both vertical and horizontal scrollbars are present
+        on the right tables by showing a non-interactive horizontal bar on the left.
+        """
+        try:
+            def sync_pair(left_tbl, right_tbl):
+                # Determine if right table actually needs the horizontal/vertical scrollbar
+                right_h_needed = (right_tbl.horizontalScrollBar().maximum() > 0) or (
+                    right_tbl.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+                )
+                right_v_needed = (right_tbl.verticalScrollBar().maximum() > 0) or (
+                    right_tbl.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+                )
+                # Only reserve space when both are present to minimize wasted height
+                show_left_h = right_h_needed and right_v_needed
+                desired = Qt.ScrollBarPolicy.ScrollBarAlwaysOn if show_left_h else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                if left_tbl.horizontalScrollBarPolicy() != desired:
+                    left_tbl.setHorizontalScrollBarPolicy(desired)
+                # Keep it non-interactive
+                left_tbl.horizontalScrollBar().setEnabled(False)
+
+            sync_pair(self.top_left_table, self.top_right_table)
+            sync_pair(self.bottom_left_table, self.bottom_right_table)
+        except Exception:
+            # Non-fatal: if anything goes wrong, skip alignment adjustment
+            pass
 
 
     def _unifyCols(self):
@@ -1104,3 +1261,8 @@ class SiteViewer(QWidget):
         if event.type() == QEvent.Type.PaletteChange:
             self._apply_gridline_style()
         super().changeEvent(event)
+
+    def resizeEvent(self, event):  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        # Re-evaluate auxiliary scrollbars after layout/viewport size changes
+        self._syncAuxScrollbars()

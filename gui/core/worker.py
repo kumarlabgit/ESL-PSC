@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 from contextlib import redirect_stdout, redirect_stderr # noqa: F401
 from esl_psc_cli.esl_multimatrix import main as esl_main
+from esl_psc_cli import esl_psc_functions as ecf
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
@@ -35,6 +36,7 @@ class ESLWorker(QRunnable):
         self.is_running = False
         self.was_stopped = False # Flag to indicate if stop() was called
         self.process = None
+        self.original_cwd: str | None = None
         # Track deletion-canceler progress counts for step progress bar
         self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
         self.del_current_combo: int = 0           # number of combos completed so far
@@ -64,7 +66,7 @@ class ESLWorker(QRunnable):
     def run(self):
         """Execute esl_multimatrix in a subprocess and stream its output."""
         self.is_running = True
-        original_cwd = os.getcwd()  # Preserve GUI's working directory
+        self.original_cwd = os.getcwd()  # Preserve GUI's working directory
         exit_code = 0
 
         class StreamEmitter(io.TextIOBase):
@@ -112,8 +114,9 @@ class ESLWorker(QRunnable):
                         # Only parse stdout for progress updates
                         is_progress = self._parse_progress(line)
                         if not is_progress:
-                            # Emit the line even if it's empty to preserve original spacing
-                            self.signals.output.emit(line)
+                            # Drop whitespace-only lines during preprocess to reduce noise
+                            if not (self.worker.phase == 2 and not line.strip()):
+                                self.signals.output.emit(line)
                     else:  # stderr
                         # Always forward stderr lines to preserve spacing
                         self.signals.error.emit(line)
@@ -192,7 +195,6 @@ class ESLWorker(QRunnable):
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
                     # We’re now in phase 2 (preprocess)
                     self.worker.phase = 2
-                    # Reset deletion-canceler counters so they don’t affect later steps
                     # Reset deletion-canceler counters so they don't affect later steps
                     self.worker.del_total_combos = None
                     self.worker.del_current_combo = 0
@@ -202,13 +204,13 @@ class ESLWorker(QRunnable):
                         combo_msg = f" for combo {self.worker.current_combo} of {self.worker.total_combos}"
                     friendly = f"Running ESL preprocess{combo_msg}..."
                     # Reset counters for per-file progress
-                    self.pre_total_files: int | None = None
+                    self.pre_total_files: int | None = 0
                     self.pre_current_file: int = 0
                     if self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None
@@ -227,6 +229,23 @@ class ESLWorker(QRunnable):
                     if total > 0:
                         self._emit_step_progress(int(current / total * 100))
                     # This is a progress update, but we still want to see it in the log
+                    return False
+
+                # Group penalties adjustment status (CLI prints this right before replacement)
+                if "adjusting group penalties" in line.lower():
+                    # Treat as entering the model-building phase soon; reset phase progress if advancing
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("adjusting group penalties...")
+                    return False
+
+                # Median penalty calculation status (printed before computing median GP)
+                if "calculating median group penalty" in line.lower():
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("calculating median group penalty...")
                     return False
 
                 # Step status for major phases
@@ -248,19 +267,15 @@ class ESLWorker(QRunnable):
                         elif self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                     except Exception:
                         self.pre_total_files = None
-                    return True  # suppress command line output
-
-                # Preprocess per-file progress
-                if line.startswith("Processing FASTA file"):
-                    if self.pre_total_files is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                    if getattr(self, "pre_total_files", None) is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None
@@ -271,10 +286,6 @@ class ESLWorker(QRunnable):
                         if self.pre_total_files >= 5 and self.pre_current_file % max(1, self.pre_total_files // 10) == 0:
                             self.signals.step_status.emit(f"Preprocessing alignments ({self.pre_current_file}/{self.pre_total_files})")
                     return True  # hide individual file lines
-
-                # Filter noisy full path lines produced by preprocess
-                if "-alignments" in line and "/combo_" in line:
-                    return True
 
                 status_keywords = [
                     "Building models...",
@@ -306,11 +317,13 @@ class ESLWorker(QRunnable):
 
                 return False # Not a progress line
 
-        # For Windows packaged builds, Nuitka may not always set sys.frozen.
-        # Detect a packaged run either by sys.frozen *or* by the launcher not ending in '.py'.
-        if os.name == 'nt' and (getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"):
+        # Detect a packaged run either by sys.frozen or by the launcher not ending in '.py'
+        packaged = getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"
+
+        if packaged:
+            # Always run CLI in-process for packaged builds (macOS/Windows) to avoid
+            # shipping a separate CLI binary and onefile decompression delays.
             try:
-                # --- NEW PATH: Direct function call for packaged Windows ---
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
 
@@ -320,60 +333,37 @@ class ESLWorker(QRunnable):
                 # Flush any remaining output
                 out_stream.flush_buffer()
                 err_stream.flush_buffer()
-                exit_code = 0 # Assume success if no exceptions
+                exit_code = 0
 
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Treat exceptions raised after a user-initiated stop as cancellation
+                    exit_code = -1
             finally:
                 self.is_running = False
-                os.chdir(original_cwd)
+                try:
+                    os.chdir(self.original_cwd)
+                except Exception:
+                    pass
                 if not self.was_stopped:
                     self.signals.finished.emit(exit_code)
         else:
-            # --- ORIGINAL PATH: Subprocess for macOS and source runs ---
+            # --- Source run: use python -m to launch the CLI in a subprocess ---
             try:
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
 
-                def _build_command() -> list[str]:
-                    """
-                    • If we’re running from source (argv[0] ends with .py), use
-                        the current Python to launch the module with -m.
-                    • Otherwise we’re inside the packaged bundle: call the helper
-                    binary `esl_multimatrix(.exe)` that lives next to the GUI
-                    launcher (`main` on macOS, `ESL-PSC.exe` on Windows).
-                    """
-                    launcher_path = Path(os.path.realpath(sys.argv[0]))
-                    running_from_source = launcher_path.suffix.lower() == ".py"
-
-                    if running_from_source:
-                        return [
-                            sys.executable, "-u", "-m",
-                            "esl_psc_cli.esl_multimatrix",
-                            *self.command_args,
-                        ]
-
-                    # -------- packaged path --------
-                    # On macOS the helper binary is just "esl_multimatrix" with no extension.
-                    # Windows bundles no separate helper; Windows-specific logic is handled elsewhere.
-                    exe_name = "esl_multimatrix"
-                    cli_helper = launcher_path.with_name(exe_name)
-
-                    # Pass the bundle’s MacOS/ (or Windows dir) so the helper
-                    # can find bin/preprocess and bin/sg_lasso
-                    bundle_dir = launcher_path.parent  # Contents/MacOS or the exe dir
-
-                    return [
-                        str(cli_helper),
-                        "--esl_main_dir", str(bundle_dir),
-                        *self.command_args,
-                    ]
-
-                command = _build_command()
+                command = [
+                    sys.executable, "-u", "-m",
+                    "esl_psc_cli.esl_multimatrix",
+                    *self.command_args,
+                ]
                 self.process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -401,17 +391,21 @@ class ESLWorker(QRunnable):
 
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Suppress errors that arise due to user-initiated stop and mark as cancelled
+                    exit_code = -1
             finally:
                 self.is_running = False
                 if self.process and self.process.poll() is None:
                     self.process.kill()
                 self.process = None
                 try:
-                    os.chdir(original_cwd)
+                    os.chdir(self.original_cwd)
                 except Exception:
                     pass
                 if not self.was_stopped:
@@ -427,5 +421,11 @@ class ESLWorker(QRunnable):
                     self.process.kill()
                 except Exception:
                     pass
+            # Attempt to restore the original working directory immediately on stop
+            try:
+                if self.original_cwd and os.getcwd() != self.original_cwd:
+                    os.chdir(self.original_cwd)
+            except Exception:
+                pass
             # Emit special code for user stop
             self.signals.finished.emit(-1)

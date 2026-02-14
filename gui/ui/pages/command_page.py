@@ -27,6 +27,9 @@ class CommandPage(BaseWizardPage):
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Create a container widget for the scroll area
         container = QWidget()
@@ -182,6 +185,8 @@ class CommandPage(BaseWizardPage):
             self.add_summary_item(layout, "Limited Genes:", self.config.limited_genes_file)
         if hasattr(self.config, 'response_dir') and self.config.response_dir:
             self.add_summary_item(layout, "Response Directory:", self.config.response_dir)
+        if getattr(self.config, 'use_continuous_phenotypes', False):
+            self.add_summary_item(layout, "Response Type:", "Continuous phenotypes")
         
         # Add a header for analysis parameters
         params_header = QLabel("Analysis Parameters")
@@ -227,6 +232,10 @@ class CommandPage(BaseWizardPage):
         if hasattr(self.config, 'top_rank_frac'):
             self.add_summary_item(layout, "Top Rank Fraction:", str(self.config.top_rank_frac))
         
+        # Max iterations (only show when above default)
+        if hasattr(self.config, 'maxiter') and isinstance(self.config.maxiter, int) and self.config.maxiter > 100:
+            self.add_summary_item(layout, "Max Iterations:", str(self.config.maxiter))
+        
         # Phenotype names
         if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
             self.add_summary_item(layout, "Phenotype Comparison:", 
@@ -271,8 +280,11 @@ class CommandPage(BaseWizardPage):
         # SPS plot settings – show SPS, KDE, or both depending on selections
         make_sps_plot = getattr(self.config, 'make_sps_plot', False)
         make_kde_plot = getattr(self.config, 'make_sps_kde_plot', False)
+        make_cont_plot = getattr(self.config, 'make_continuous_plot', False)
 
-        if make_sps_plot and make_kde_plot:
+        if make_cont_plot:
+            output_settings.append("Generate phenotype density plot")
+        elif make_sps_plot and make_kde_plot:
             output_settings.append("Generate SPS and KDE plots")
         elif make_sps_plot:
             output_settings.append("Generate SPS plots")

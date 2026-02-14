@@ -24,7 +24,9 @@ class MainWindow(QMainWindow):
         try:
             # Set window properties
             self.setWindowTitle("ESL-PSC Wizard")
-            self.setMinimumSize(800, 900)  # Slightly taller window
+            # Keep a reasonable default minimum that fits on small laptop screens
+            # and allows vertical shrinking; content pages are scrollable.
+            self.setMinimumSize(720, 420)
             print("MainWindow: Window properties set")
             
             # Create a central widget
@@ -64,23 +66,62 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         """Handle the show event to ensure proper window centering and visibility."""
         super().showEvent(event)
-        
-        # Center the window on screen
-        screen = QApplication.primaryScreen().availableGeometry()
-        size = self.size()
-        if size.width() > screen.width() or size.height() > screen.height():
-            self.resize(screen.size() * 0.8)  # 80% of screen size if too large
+        try:
+            # In headless/offscreen environments, there may be no primary screen.
+            screen_obj = QApplication.primaryScreen()
+            if screen_obj is None:
+                print("MainWindow: No primary screen (likely offscreen); skipping centering/activation")
+                return
+
+            # Center the window on screen
+            screen = screen_obj.availableGeometry()
+            size = self.size()
+
+            # Ensure our minimum sizes never exceed the available screen size so users can shrink
+            max_w = screen.width()
+            max_h = screen.height()
+            # If our current minimums are bigger than the screen, lower them conservatively
+            if self.minimumHeight() > max_h - 80:
+                self.setMinimumHeight(max(360, max_h - 80))
+            if self.minimumWidth() > max_w - 40:
+                self.setMinimumWidth(max(640, max_w - 40))
+
+            # On first show on larger screens, open at the previous "full" size (pre-change)
+            # so the window feels spacious by default, but never exceed screen bounds.
+            if not getattr(self, "_applied_initial_size", False):
+                desired_w, desired_h = 800, 900  # historical default size users expect
+                target_w = min(desired_w, max_w - 40)
+                target_h = min(desired_h, max_h - 80)
+                if target_w > 0 and target_h > 0:
+                    self.resize(max(self.minimumWidth(), target_w),
+                                max(self.minimumHeight(), target_h))
+                self._applied_initial_size = True
+
+            # Also relax the wizard's own minimum height so vertical shrinking is possible
+            if hasattr(self, "wizard") and self.wizard is not None:
+                try:
+                    if self.wizard.minimumHeight() > max_h - 140:
+                        self.wizard.setMinimumHeight(max(320, max_h - 140))
+                except Exception:
+                    pass
+
+            # If current size is larger than the screen, clamp to ~90% of screen
+            if size.width() > max_w or size.height() > max_h:
+                self.resize(int(max_w * 0.9), int(max_h * 0.9))
             
-        # Center the window
-        frame_geometry = self.frameGeometry()
-        center_point = screen.center()
-        frame_geometry.moveCenter(center_point)
-        self.move(frame_geometry.topLeft())
-        
-        # Ensure the window is raised and activated
-        self.raise_()
-        self.activateWindow()
-        print("MainWindow: Window shown and activated")
+            # Center the window
+            frame_geometry = self.frameGeometry()
+            center_point = screen.center()
+            frame_geometry.moveCenter(center_point)
+            self.move(frame_geometry.topLeft())
+            
+            # Ensure the window is raised and activated
+            self.raise_()
+            self.activateWindow()
+            print("MainWindow: Window shown and activated")
+        except Exception as e:
+            # Be defensive: never allow test environments to hang due to GUI specifics
+            print(f"MainWindow: showEvent skipping centering due to environment error: {e}")
 
 
 class ESLWizard(QWizard):
@@ -113,7 +154,13 @@ class ESLWizard(QWizard):
             self.setOption(QWizard.WizardOption.HaveFinishButtonOnEarlyPages, False)  # No grayed-out finish button
             self.setOption(QWizard.WizardOption.NoBackButtonOnLastPage, False)
             self.setOption(QWizard.WizardOption.NoCancelButton, False)
-            self.setMinimumSize(800, 700)  # Reduced minimum width to align with MainWindow
+            # Allow the wizard to shrink vertically on laptops; pages are scrollable
+            self.setMinimumSize(720, 360)
+            # Show a size grip in the bottom-right corner to make resizing discoverable
+            try:
+                self.setSizeGripEnabled(True)
+            except Exception:
+                pass
             print("ESLWizard: Window properties set")
 
             # Create custom Save/Load buttons before setting cancel button text
@@ -342,7 +389,7 @@ class ESLWizard(QWizard):
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Configuration",
-            os.getcwd(),
+            os.path.join(os.getcwd(), "esl-psc_gui_config"),
             "JSON Files (*.json)"
         )
         if path:

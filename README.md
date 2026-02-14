@@ -5,6 +5,7 @@
 1. [Description](#description)
 2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
 3. [Command Line Usage](#command-line-usage)
+   - [Fast Scan Rust CLI](#fast-scan-rust-cli)
 4. [Installation and Dependencies](#installation-and-dependencies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 6. [Input Data](#input-data)
@@ -41,11 +42,16 @@ Now compatible with Windows, Mac, and Linux.
 
 #### July  2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
 
-The GUI now features an **interactive phylogenetic tree viewer** that lets you:
+The GUI now features an interactive phylogenetic tree viewer that lets you:
 
 * Load a Newick tree and a species phenotype file to visualize convergent and non-convergent clades.
 * Assign convergent vs. non-convergent phenotypes by right-clicking species names.
-* **Assign species to contrast pairs** which are then marked on the tree view.
+* Visualize phenotypes with colors:
+  - Binary values (-1/1) color species labels red/blue.
+  - Continuous float values are supported and colored by a red→blue gradient (low→high).
+  - Species without phenotype data remain black.
+  - Contrast pair coloring takes precedence over phenotype coloring to keep analysis pairs clear.
+* Assign species to contrast pairs which are then marked on the tree view.
 * Automatically generate sensible convergent/control contrast pairs with a single click.
 * Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
 * Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
@@ -53,6 +59,29 @@ The GUI now features an **interactive phylogenetic tree viewer** that lets you:
 Simply press **“Create a Species Groups File Using a Newick Tree”** on the first page, then use the toolbar at the top of the viewer.
 
 ![Tree Viewer](./images/tree_viewer.png)
+
+#### September 2025 Update – Continuous Phenotype Support
+
+We expanded GUI support for continuous (numeric) phenotypes across the Tree Viewer, analysis options, Site Viewer, and plots:
+
+- Tree Viewer (continuous mode)
+  - Load a phenotype file with float values. Species labels are colored by percentile using a Viridis gradient and the numeric value is shown next to each species name.
+  - Automatic contrast pair selection from continuous values using thresholds. When you click Auto Select Contrast Pairs with continuous phenotypes, you will be prompted for lower/upper thresholds to temporarily binarize values for the algorithm. Thresholds do not change the on-screen gradient coloring.
+  - Threshold picker dialog includes an interactive histogram and a tail-percentage control to auto-set symmetric quantile thresholds (e.g., 10% applies the 10th and 90th percentiles; 50% sets both to the median) while still allowing manual entry.
+  - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Default.
+  - Exported SVGs include the continuous colorbar and low/high labels. In continuous mode, manual binary tools such as Invert Phenotype and Set All to Non‑convergent are disabled by design.
+
+- Analysis modes (Parameters page and CLI)
+  - New GUI toggle: Use continuous phenotype values? This runs ESL-PSC with linear regression (ordinary least squares; sg_lasso_leastr) instead of binary logistic regression.
+  - CLI flag: `--use_continuous_phenotypes` to enable continuous-response modeling. When active, binary SPS plots are disabled by default.
+  - New plot option for continuous runs: a 2D density plot of true phenotype (X) vs SPS (Y). In the GUI this appears as Generate phenotype density plot when continuous mode is on. CLI flag: `--make_continuous_plot`.
+
+- Site Viewer: phenotype-aware “Other Species” pane
+  - Phenotype values (if provided) are displayed alongside species names, and you can sort “Other” species by Phenotype High → Low or Phenotype Low → High in addition to Alphabetical and MSA Order.
+
+- Plots for predictions
+  - Binary phenotypes: violin or KDE SPS plots remain available when a binary phenotype file is supplied.
+  - Continuous phenotypes: select the new Phenotype vs SPS density plot (GUI checkbox or `--make_continuous_plot`).
 
 
 ### Running the GUI
@@ -66,6 +95,11 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
    python -m gui.main
    ```
    The wizard window should appear. Fill in the pages and click **Run** on the final page to start the analysis.
+   If you see an error about the `xcb` platform plugin needing
+   `libxcb-cursor0`, install the system package first:
+   ```bash
+   sudo apt install libxcb-cursor0
+   ```
 
 ### Additional dependencies
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
@@ -102,6 +136,12 @@ Here is an example of how to run the script:
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
+
+### Fast Scan Rust CLI
+
+Looking for the high-performance fast scan backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
+
+**Parsimony-based ancestral reconstruction** is now available in Fast Scan via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Fast Scan will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Fast Scan Rust CLI README for examples.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 
@@ -154,13 +194,15 @@ To use this feature:
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in **2-line fasta format** and whose file names must have the file extension `.fas`. Each sequence must be entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, it will cause an error. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). Use the argumemnt `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in **2-line FASTA format** and whose file names must have the file extension `.fas`. Each sequence should appear entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, the run will continue but a warning will be issued and the deletion canceler will convert the files to 2-line format, which may be slower. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). Use the argument `--alignments_dir` and give the full absolute path to the directory.
 
 2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8) for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
 
 #### Optional input files: ####
 
-1. A species phenotype file. This is a text file which has each in the full  species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the ture phenotype will not be listed for each species prediction in the species_predictions output file. Use the argument `--species_pheno_path` and give the full absolute path to the file.
+1. A species phenotype file.
+   - CLI (analysis): a text file with each full species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the true phenotype will not be listed for each species prediction in the species_predictions output file. Use the argument `--species_pheno_path` and give the full absolute path to the file.
+   - GUI Tree Viewer (visualization only): also accepts continuous float phenotype values. Species labels are colored on a red→blue gradient (low→high). Species without phenotype entries are shown in black. When contrast pairs are assigned, pair colors override phenotype colors for those species.
 
 2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
 
@@ -211,6 +253,7 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--num_log_points`: The number of values per sparsity hyperparameter (lambda1 and lambda2) in a logspace of values to test. Include the `--use_logspace` flag (see options below).
 * `--pheno_names`: The names of the two phenotypes separated by a space, with the convergent phenotype coming first. by default "1" and "-1" will be used
 * `--min_genes`: Minimum number of genes a model must have in order for that model to be included in the prediction scores plots. Default = 0.
+* `--maxiter`: Maximum number of gradient-descent iterations performed by the optimizer for each model fit. Default = 100. 
 
 ##### Options:
 * `--use_logspace`: *Recommended* Use a log space of points for lambda values instead of initial and final lambda values with a lambda step.
@@ -301,5 +344,4 @@ the plot should look like this:
 If you use this software in your research, please cite our paper:
 
 John B. Allard, Sudip Sharma, Ravi Patel, Maxwell Sanderford, Koichiro Tamura, Slobodan Vucetic, Glenn S. Gerhard & Sudhir Kumar. Evolutionary sparse learning reveals the shared genetic basis of convergent traits. Nature Communications 16, 3217 (2025). https://doi.org/10.1038/s41467-025-58428-8
-
 

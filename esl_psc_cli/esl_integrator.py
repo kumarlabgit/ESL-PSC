@@ -29,12 +29,12 @@ def get_esl_args(parser = None):
     is typically auto-detected, but packaged builds may need to override it.'''
     group.add_argument('--esl_main_dir', help = help_txt, type = str,
                        required = False)
-    help_txt = '''The full path to the species phenotypes file which has the 
-    species name then a comma and then a 1 or -1 for the phenotype class.
-    Any species that is not in the phenotype file will not be included in the
-    predictions output even if it was in the prediction alignments. If the
-    phenotype file is not included, all species in the alignments will get
-    SPSs but no true phenotypes will be listed.
+    help_txt = '''The full path to the species phenotypes file with lines of
+    the form <species>,<value>. The value may be binary (-1, 0, or 1; where 0 means unassigned) or a
+    continuous numeric value. Any species that is not in the phenotype file
+    will not be included in the predictions output even if it was in the
+    prediction alignments. If the phenotype file is not included, all species
+    in the alignments will get SPSs but no true phenotypes will be listed.
     '''
     group.add_argument('--species_pheno_path', help = help_txt,
                            type = str, default = None)
@@ -114,6 +114,10 @@ def get_esl_args(parser = None):
     model to be included in the prediction scores plots. default = 0'''
     group.add_argument('--min_genes', help = help_txt,
                         type = int, default = 0)
+    help_txt = '''maximum number of iterations for the sg_lasso optimizer.
+    Default is 100. Increase to allow more gradient descent steps.'''
+    group.add_argument('--maxiter', help = help_txt, type = int, default = 100)
+
    
 
     ######### Options #########
@@ -133,6 +137,12 @@ def get_esl_args(parser = None):
     help_txt = '''don't replace group penalties. This is automatically set to
     True if the group_penalty_type is "std"'''
     group.add_argument('--use_default_gp', help = help_txt,
+                        action = 'store_true', default = False)
+    help_txt = '''interpret provided phenotype values as continuous and use
+    linear regression (sg_lasso_leastr). By default, even if a phenotype file
+    contains non-binary values they will be treated as 1/-1 unless this flag
+    is supplied.'''
+    group.add_argument('--use_continuous_phenotypes', help = help_txt,
                         action = 'store_true', default = False)
     help_txt = '''don't delete the raw model output files for each run'''
     group.add_argument('--keep_raw_output', help = help_txt,
@@ -156,6 +166,9 @@ def get_esl_args(parser = None):
     help_txt = '''make a kde plot showing sps density for each true
     phenotype.'''
     group2.add_argument('--make_sps_kde_plot', help = help_txt,
+                        action = 'store_true', default = False)
+    help_txt = '''make a 2D density plot of true phenotype vs SPS values. Requires continuous phenotypes.'''
+    group2.add_argument('--make_continuous_plot', help = help_txt,
                         action = 'store_true', default = False)
     
     
@@ -196,15 +209,16 @@ def replace_group_penalties(esl_inputs_outputs_dir, gene_objects_dict,
     file in the preprocessed input to change the group penalties.
     the penalty function operates on the number of variable sites.
     '''
-    # go to alignment folder for this species combo
-    os.chdir(input_alignments_dir)
+    # Build absolute paths to each gene's alignment file; do not change CWD
     gene_list = list(gene_objects_dict.keys())
-    # loop through alignment files in order
-    new_penalties = [] # list of numbers
-    alignment_file_list = [name + '.fas' for name in gene_list]
+    new_penalties = []  # list of numbers
+    alignment_file_list = [os.path.join(input_alignments_dir, name + '.fas')
+                           for name in gene_list]
     for file_path in alignment_file_list:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Alignment file not found: {file_path}")
         records = ecf.get_seq_records_in_order(file_path,
-                                               input_species_list)  
+                                               input_species_list)
         # calculate new penalty based on num variable sites and add to list
         new_penalties.append(penalty_function(ecf.count_var_sites(records)))
     # now modify penalties in group index file
@@ -212,13 +226,49 @@ def replace_group_penalties(esl_inputs_outputs_dir, gene_objects_dict,
                                + preprocessed_dir_name + '.txt')
     group_indices_file = os.path.join(esl_inputs_outputs_dir,
                                       group_indices_file)
-    with open(group_indices_file, 'r') as file:
-        group_indices_lines = file.readlines() # get existing lines
-    # now just replace the old penalties
-    group_indices_lines[2] = ','.join([str(penalty)
-                                        for penalty in new_penalties]) 
-    with open(group_indices_file, 'w') as file:
-        file.write(''.join(group_indices_lines)) #overwrite new penalties
+    # Read existing file as bytes to preserve newline style
+    with open(group_indices_file, 'rb') as file:
+        content_bytes = file.read()
+    lines = content_bytes.splitlines(True)  # keep newline characters
+    if len(lines) < 3:
+        raise RuntimeError(f"Group indices file is missing the penalties line: {group_indices_file}")
+    # Preserve the original newline sequence used on the penalties line
+    old_line = lines[2]
+    if old_line.endswith(b'\r\n'):
+        newline = b'\r\n'
+    elif old_line.endswith(b'\n'):
+        newline = b'\n'
+    elif old_line.endswith(b'\r'):
+        newline = b'\r'
+    else:
+        newline = b'\n'
+    # Build the new penalties line as ASCII bytes (digits/commas)
+    new_line = (','.join(str(p) for p in new_penalties)).encode('ascii') + newline
+    lines[2] = new_line
+    # Atomically write to a temp file in the same directory, then replace
+    dir_name = os.path.dirname(group_indices_file)
+    base_name = os.path.basename(group_indices_file)
+    tmp_path = os.path.join(dir_name, f".{base_name}.tmp.{os.getpid()}.{int(time.time()*1000)}")
+    # Try to preserve existing file permissions
+    try:
+        mode = os.stat(group_indices_file).st_mode
+    except Exception:
+        mode = None
+    try:
+        with open(tmp_path, 'wb') as tmp:
+            tmp.write(b''.join(lines))
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        if mode is not None:
+            os.chmod(tmp_path, mode)
+        os.replace(tmp_path, group_indices_file)
+    finally:
+        # Ensure no temp file is left behind on failure before replace
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
     return
 
 
@@ -228,7 +278,8 @@ def esl_integration(args,
                     preprocessed_dir_name,
                     input_alignments_dir,
                     gene_objects_dict,
-                    label = ''):
+                    label = '',
+                    response_matrix_path=None):
     """runs ESL for given inputs across lambda parameters and group penalties
     and returns dictionaries of objects for runs and genes. gene_objects_dict is
     a dictionary of ESLGeneObject as values and gene names as keys. label is
@@ -244,8 +295,16 @@ def esl_integration(args,
     # prepare variables for this integrated set of runs
     
     # dictionary of input species phenotypes
-    input_pheno_dict = ecf.make_input_pheno_dict(input_species_list)
-    print('species being checked:\n', ", ".join(input_species_list))
+    if getattr(args, 'species_pheno_is_continuous', False):
+        if response_matrix_path is None:
+            # Fall back to args.response_matrix_path for single-run executions
+            response_matrix_path = getattr(args, 'response_matrix_path', None)
+        if response_matrix_path is None:
+            raise ValueError('Continuous phenotypes requested but no response matrix path provided.')
+        input_pheno_dict = ecf.get_response_dict(response_matrix_path)
+    else:
+        input_pheno_dict = ecf.make_input_pheno_dict(input_species_list)
+    print('species being checked:\n', ", ".join(input_pheno_dict.keys()))
 
     # create a list of esl_run objects for the whole integration
     esl_run_list = []
@@ -256,6 +315,8 @@ def esl_integration(args,
 
     # if using the median penalty, modify args for penalty term accordingly
     if args.group_penalty_type == 'median':
+        # Inform both CLI and GUI that we are computing the median group penalty
+        print('calculating median group penalty...')
         median_gp = ecf.get_median_var_sites(input_alignments_dir)
         initial_penalty = median_gp
         final_penalty = median_gp
@@ -280,6 +341,8 @@ def esl_integration(args,
             # make penalty function which will take num var sites as its arg
             penalty_function = ecf.penalty_function_maker(penalty_term,
                                                           penalty_type)
+            # Inform both CLI and GUI that we are beginning the group penalty adjustment step
+            print("adjusting group penalties...")
             replace_group_penalties(args.esl_inputs_outputs_dir,
                                     gene_objects_dict,
                                     penalty_function,
@@ -399,7 +462,11 @@ def generate_predictions_output(esl_run_list, output_path, phenofile = None):
     if phenofile: 
         column_names.append('true_phenotype')
         # read the file
+        ph_type = ecf.detect_pheno_file_type(phenofile)
         all_species_pheno_dict = ecf.get_pheno_dict(phenofile)
+        # If the phenotype file is binary, emit integer labels -1/0/1; otherwise, preserve continuous values
+        if ph_type == 'binary':
+            all_species_pheno_dict = {sp: int(v) for sp, v in all_species_pheno_dict.items()}
     else:
         # this will just let it add nothing to each line if no pheno file 
         all_species_pheno_dict = defaultdict(lambda:'') 
@@ -415,7 +482,12 @@ def generate_predictions_output(esl_run_list, output_path, phenofile = None):
                 # also, if there is a phenotype file (phenofile != None)
                 # then if the species is not in the pheno file exclude it
                 continue 
-            true_pheno = str(all_species_pheno_dict[species]) # get true pheno
+            # For binary phenotypes, treat 0 as unassigned and leave the field blank
+            if ph_type == 'binary':
+                v = all_species_pheno_dict[species]
+                true_pheno = '' if v == 0 else str(v)
+            else:
+                true_pheno = str(all_species_pheno_dict[species])
             # construct output line
             line = [run.run_family.species_combo_tag, # species used
                     str(run.lambda1), # lambda 1
@@ -463,10 +535,11 @@ if __name__ == '__main__':
         args.path_file_path = ecf.make_path_file(args.input_alignments_dir)
 
     if not args.preprocessed_dir_name:
-        # construct name from response matrix and alignments name
-        args.preprocessed_dir_name = os.path.join(args.esl_inputs_outputs_dir,
-                     os.path.basename(args.input_alignments_dir)
-                     + "_" + os.path.basename(args.response_matrix_path))
+        # construct a NAME (not full path) from response matrix and alignments name
+        args.preprocessed_dir_name = (
+            os.path.basename(args.input_alignments_dir)
+            + "_" + os.path.basename(args.response_matrix_path)
+        )
         
     
     # list of input species
@@ -507,7 +580,8 @@ if __name__ == '__main__':
                                                     input_species_list,
                                                     args.preprocessed_dir_name,
                                                     args.input_alignments_dir,
-                                                    gene_objects_dict)
+                                                    gene_objects_dict,
+                                                    response_matrix_path=args.response_matrix_path)
     
     
     # Print a clear, multi-line summary so the GUI output isn't squished
@@ -539,12 +613,20 @@ if __name__ == '__main__':
     ecf.report_elapsed_time(start_time) # print time before making plot
 
     if args.make_sps_plot or args.make_sps_kde_plot:
-        plot_type = 'violin' if args.make_sps_plot else 'kde'
-        # generate and show density plots of predictions
-        # call sps_density.create_sps_plots for various rmse cutoffs
-        ecf.rmse_range_pred_plots(preds_output_path,
-                                  args.output_file_base_name,
-                                  args.pheno_names,
-                                  args.min_genes,
-                                  plot_type)
+        # Auto-disable if phenotype file is continuous
+        if getattr(args, 'species_pheno_is_continuous', False):
+            print("Skipping SPS plots: phenotype file appears to contain continuous values. Plots require binary classes (-1/1).")
+        else:
+            plot_type = 'violin' if args.make_sps_plot else 'kde'
+            # generate and show density plots of predictions
+            # call sps_density.create_sps_plots for various rmse cutoffs
+            ecf.rmse_range_pred_plots(preds_output_path,
+                                      args.output_file_base_name,
+                                      args.pheno_names,
+                                      args.min_genes,
+                                      plot_type)
+    elif getattr(args, 'make_continuous_plot', False):
+        ecf.continuous_pred_plot(preds_output_path,
+                                 args.output_file_base_name,
+                                 args.min_genes)
 

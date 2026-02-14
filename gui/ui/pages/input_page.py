@@ -1,17 +1,29 @@
 """Input-selection page of the ESL-PSC wizard."""
+from __future__ import annotations
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QFrame, QRadioButton,
     QLabel, QButtonGroup, QFormLayout, QPushButton, QFileDialog, QMessageBox,
-    QSizePolicy
+    QSizePolicy, QProgressDialog, QHBoxLayout, QDialog, QComboBox,
+    QDialogButtonBox
 )
 from PySide6.QtCore import Qt  # Needed for alignment
+from PySide6.QtWidgets import QApplication
 
 # New helper for viewing completed runs
 from gui.ui.widgets.existing_output_viewer import select_and_show_existing_output
 import os
 
+from esl_psc_cli import esl_psc_functions as ecf
+
 from gui.ui.widgets.file_selectors import FileSelector
 from gui.ui.widgets.tree_viewer import TreeViewer
+from gui.ui.widgets.dialogs import OutgroupDialog
+from gui.ui.widgets.results_display import (
+    FastScanResultsDialog,
+    _select_combo_from_groups,
+    _launch_site_viewer,
+)
+from gui.core import fast_scan
 from Bio import Phylo
 from .base_page import BaseWizardPage
 
@@ -28,6 +40,9 @@ class InputPage(BaseWizardPage):
         scroll = QScrollArea()
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Create a container widget for the scroll area
         container = QWidget()
@@ -37,12 +52,28 @@ class InputPage(BaseWizardPage):
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ─── Load Existing Output Button (top-left) ────────────────────
+        # ─── Top Buttons (Load Existing Output, Site Viewer, Fast Scan) ────────────
+        top_btns = QHBoxLayout()
+        fast_btn = QPushButton("Fast Scan")
+        fast_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        fast_btn.setToolTip("Quickly scan alignments for convergence signals.")
+        fast_btn.clicked.connect(self._on_fast_scan)
+
         load_prev_btn = QPushButton("Load and View Existing Output")
         load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
         load_prev_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         load_prev_btn.clicked.connect(lambda *_: select_and_show_existing_output(parent=self))
-        container_layout.addWidget(load_prev_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        site_view_btn = QPushButton("Site Viewer")
+        site_view_btn.setToolTip("View an alignment with a chosen species combo.")
+        site_view_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        site_view_btn.clicked.connect(self._on_site_viewer)
+        # Add 'Load Existing Output', then 'Site Viewer', then 'Fast Scan'
+        top_btns.addWidget(load_prev_btn)
+        top_btns.addWidget(site_view_btn)
+        top_btns.addWidget(fast_btn)
+        top_btns.setAlignment(Qt.AlignmentFlag.AlignRight)
+        container_layout.addLayout(top_btns)
         
         # Required inputs group
         req_group = QGroupBox("Required Inputs")
@@ -81,6 +112,7 @@ class InputPage(BaseWizardPage):
         
         input_type_layout.addWidget(self.use_species_groups)
         input_type_layout.addWidget(self.use_response_dir)
+        # The 'Use continuous phenotype values?' selector now lives on the Output Options page
         input_type_group.setLayout(input_type_layout)
         
         req_layout.addWidget(input_type_group)
@@ -95,9 +127,10 @@ class InputPage(BaseWizardPage):
             "Alignment Directory:", 'directory',
             default_path=os.getcwd(),
             description=(
-                "Directory containing alignment files in 2-line FASTA format. Each file must have the .fas extension. "
-                "Each sequence must be entirely on a single line below its identifier. "
-                "All sequences in a file must be aligned. Only standard amino acid and gap characters are allowed."
+                "Directory containing alignment files in FASTA format."
+                "Sequences should be in 2-line FASTA format for best performance, but multi-line files are accepted and "
+                "will be converted, which may be slower. All sequences in a file must be aligned and contain only standard "
+                "amino acid and gap characters."
             )
         )
         self.alignment_dir.path_changed.connect(
@@ -123,9 +156,7 @@ class InputPage(BaseWizardPage):
                 "..."
             )
         )
-        self.species_groups.path_changed.connect(
-            lambda p: setattr(self.config, 'species_groups_file', p)
-        )
+        self.species_groups.path_changed.connect(self._on_species_groups_changed)
         self.input_files_layout.addWidget(self.species_groups)
 
         # Button to open a Newick tree viewer
@@ -136,7 +167,24 @@ class InputPage(BaseWizardPage):
         )
         self.tree_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.tree_btn.clicked.connect(self.open_newick_tree)
-        self.input_files_layout.addWidget(self.tree_btn)
+        # Row: helper button on the left, combo count label on the right
+        self.groups_count_label = QLabel("number of species combos: —")
+        self.groups_count_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.groups_count_label.setToolTip(
+            "Computed as the product of the number of species listed on each line (choose one per line)."
+        )
+        # Hidden by default; becomes visible when a valid groups file is present
+        self.groups_count_label.setVisible(False)
+        tree_row = QHBoxLayout()
+        tree_row.addWidget(self.tree_btn)
+        tree_row.addStretch()
+        tree_row.addWidget(self.groups_count_label)
+        self.input_files_layout.addLayout(tree_row)
+        # Initialize the label from any pre-populated path
+        try:
+            self._update_count_label()
+        except Exception:
+            pass
         
         # Response directory selector (initially hidden)
         self.response_dir = FileSelector(
@@ -148,11 +196,20 @@ class InputPage(BaseWizardPage):
                 "Typically used for advanced analyses or when reusing previously computed matrices."
             )
         )
-        self.response_dir.path_changed.connect(
-            lambda p: setattr(self.config, 'response_dir', p)
-        )
+        self.response_dir.path_changed.connect(self._on_response_dir_changed)
         self.response_dir.setVisible(False)  # Start hidden
         self.input_files_layout.addWidget(self.response_dir)
+        # Row under the response directory: right-aligned response matrices count
+        self.response_count_label = QLabel("number of response matrices: —")
+        self.response_count_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.response_count_label.setToolTip(
+            "Count of response matrix files (*.txt) in the selected directory."
+        )
+        self.response_count_label.setVisible(False)
+        resp_row = QHBoxLayout()
+        resp_row.addStretch()
+        resp_row.addWidget(self.response_count_label)
+        self.input_files_layout.addLayout(resp_row)
         
         # Add input files frame to required layout
         req_layout.addWidget(self.input_files_frame)
@@ -164,14 +221,34 @@ class InputPage(BaseWizardPage):
             self.response_dir.setVisible(use_response_dir)
             # Show/hide the helper button for creating a species groups file
             self.tree_btn.setVisible(not use_response_dir)
+            # Update the count label based on current mode and paths
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
             
             # Update config to reflect the active input type
             if use_response_dir:
-                # Clear species groups path when switching to response dir
+                # Persist currently shown response dir in config
+                if hasattr(self, 'response_dir'):
+                    try:
+                        self.config.response_dir = self.response_dir.get_path()
+                    except Exception:
+                        pass
+                # Clear species groups path in config to avoid ambiguity for downstream code
                 self.config.species_groups_file = ""
             else:
+                # Persist currently shown species groups path in config
+                if hasattr(self, 'species_groups'):
+                    try:
+                        self.config.species_groups_file = self.species_groups.get_path()
+                    except Exception:
+                        pass
                 # Clear response dir path when switching to species groups
                 self.config.response_dir = ""
+                self.config.response_matrices_are_continuous = False
+                self.config.use_continuous_phenotypes = False
+            self._update_continuous_checkbox_visibility()
         
         self.use_species_groups.toggled.connect(update_input_visibility)
         self.use_response_dir.toggled.connect(update_input_visibility)
@@ -189,13 +266,11 @@ class InputPage(BaseWizardPage):
             default_path=os.getcwd(),
             description=(
                 "Optional: comma-separated file with species phenotypes. "
-                "First column is species ID, second column is phenotype value (1 or -1).\n"
+                "First column is species ID, second column is phenotype value (-1/0/1 for binary; 0 means unassigned; or float for continuous). "
                 "If omitted, the predictions output will not include a true phenotype column."
             ),
         )
-        self.species_phenotypes.path_changed.connect(
-            lambda p: setattr(self.config, 'species_phenotypes_file', p)
-        )
+        self.species_phenotypes.path_changed.connect(self._on_pheno_path_changed)
         opt_layout.addRow(self.species_phenotypes)
         
         # Prediction alignments directory
@@ -213,7 +288,7 @@ class InputPage(BaseWizardPage):
         self.limited_genes = FileSelector(
             "Limited Genes File:", 'file',
             default_path=os.getcwd(),
-            description="Optional: TEXT file with one alignment file *name* per line (no directory paths). "
+            description="Optional: Text file with one alignment file *name* per line (no directory paths). "
             "Each name must exactly match a `.fas` file in your alignments directory. The analysis will be limited to only those alignments even if more are present."
         )
         self.limited_genes.path_changed.connect(
@@ -228,43 +303,291 @@ class InputPage(BaseWizardPage):
         
         # Add stretch to push everything to the top
         container_layout.addStretch()
-        
+
         # Add the scroll area to the page's layout
         self.layout().addWidget(scroll)
+
+    def _on_site_viewer(self):
+        """Open the Site Viewer for a chosen alignment."""
+        groups_path = getattr(self.config, 'species_groups_file', '')
+        resp_dir = getattr(self.config, 'response_dir', '')
+        align_dir = getattr(self.config, 'alignments_dir', '')
+        if not align_dir or not os.path.isdir(align_dir):
+            QMessageBox.warning(
+                self,
+                "Site Viewer",
+                "Please select an alignment directory first.",
+            )
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Alignment File",
+            align_dir,
+            "FASTA Files (*.fas *.fasta *.fa *.faa)",
+        )
+        if not path:
+            return
+        gene = os.path.splitext(os.path.basename(path))[0]
+
+        # Choose species combination only if a groups file or response dir exists; otherwise skip
+        has_groups_file = bool(groups_path and os.path.exists(groups_path))
+        has_response_dir = bool(resp_dir and os.path.isdir(resp_dir))
+        if has_groups_file:
+            current = getattr(self.config, 'preferred_groups_combo', None)
+            res = _select_combo_from_groups(self, groups_path, current)
+            if not res:
+                return
+            self.config.preferred_groups_combo = res
+            self.config.preferred_response_matrix = ""
+            setattr(self, '_selected_groups_combo', res)
+            setattr(self, '_selected_response_matrix', "")
+        elif has_response_dir:
+            files = sorted([f for f in os.listdir(resp_dir) if f.endswith('.txt')])
+            if not files:
+                QMessageBox.warning(self, "Site Viewer", "No response matrices found.")
+                return
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Select Response Combo")
+            vbox = QVBoxLayout(dlg)
+            combo = QComboBox(dlg)
+            combo.addItems(files)
+            cur = getattr(self.config, 'preferred_response_matrix', '')
+            if cur and cur in files:
+                combo.setCurrentIndex(files.index(cur))
+            vbox.addWidget(combo)
+            conv_label = QLabel("Convergent species:")
+            conv_list = QLabel("")
+            conv_list.setWordWrap(True)
+            ctrl_label = QLabel("Control species:")
+            ctrl_list = QLabel("")
+            ctrl_list.setWordWrap(True)
+            vbox.addWidget(conv_label)
+            vbox.addWidget(conv_list)
+            vbox.addWidget(ctrl_label)
+            vbox.addWidget(ctrl_list)
+
+            def parse_species_lists(fname: str):
+                path = os.path.join(resp_dir, fname)
+                conv, ctrl = [], []
+                try:
+                    with open(path, encoding='utf-8', errors='ignore') as f:
+                        for idx, raw in enumerate(f):
+                            line = raw.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            sp = parts[0]
+                            if idx % 2 == 0:
+                                conv.append(sp)
+                            else:
+                                ctrl.append(sp)
+                except Exception:
+                    pass
+                return conv, ctrl
+
+            def refresh_lists():
+                fname = combo.currentText()
+                conv, ctrl = parse_species_lists(fname)
+                conv_list.setText("\n".join(conv) if conv else "(none)")
+                ctrl_list.setText("\n".join(ctrl) if ctrl else "(none)")
+
+            combo.currentIndexChanged.connect(lambda _i: refresh_lists())
+            refresh_lists()
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dlg)
+            vbox.addWidget(buttons)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+
+            if dlg.exec() != QDialog.Accepted:
+                return
+            selected = combo.currentText()
+            self.config.preferred_response_matrix = selected
+            self.config.preferred_groups_combo = None
+            setattr(self, '_selected_response_matrix', selected)
+            setattr(self, '_selected_groups_combo', None)
+
+        try:
+            _launch_site_viewer(gene, self.config, None, parent=self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
+
+    def _on_fast_scan(self):
+        """Run a quick convergence scan of the alignments."""
+        align_dir = getattr(self.config, 'alignments_dir', '')
+        groups_file = getattr(self.config, 'species_groups_file', '')
+        if not align_dir or not os.path.isdir(align_dir):
+            QMessageBox.warning(self, "Fast Scan", "Please select an alignment directory first.")
+            return
+        if not groups_file or not os.path.exists(groups_file):
+            QMessageBox.warning(self, "Fast Scan", "Please select a species groups file first.")
+            return
+        species = fast_scan.list_species(align_dir)
+        if not species:
+            QMessageBox.warning(self, "Fast Scan", "No species found in alignments.")
+            return
+        # Preselect the last chosen outgroup if remembered and still present
+        default_out = getattr(self.config, 'last_fast_scan_outgroup', '') or None
+        default_agree_pct = getattr(self.config, 'last_fast_scan_agree_pct', 100.0)
+        dlg = OutgroupDialog(
+            species,
+            self,
+            default_selected=default_out,
+            show_two_pair_option=True,
+            default_agreement_pct=default_agree_pct,
+            species_groups_file=groups_file,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        # Extract dialog choices
+        use_ancestral = dlg.use_ancestral_reconstruction
+        tree_file = dlg.tree_file if use_ancestral else None
+        outgroup = None if use_ancestral else dlg.selected
+        
+        use_two_pair = False
+        try:
+            use_two_pair = bool(dlg.use_two_pair_combos)
+        except Exception:
+            use_two_pair = False
+        # Agreement threshold chosen in dialog (fraction 0..1)
+        try:
+            min_agree = float(getattr(dlg, 'min_out_ctrl_agreement', 1.0))
+        except Exception:
+            min_agree = 1.0
+        
+        # Require unambiguous MRCA flag
+        require_unamb_mrca = dlg.require_unambiguous_mrca()
+        
+        # Validate ancestral reconstruction inputs
+        if use_ancestral:
+            if not tree_file or not os.path.exists(tree_file):
+                QMessageBox.warning(self, "Fast Scan", "Please select a valid tree file for ancestral reconstruction.")
+                return
+            # Remember tree file for this session
+            try:
+                setattr(self.config, 'last_fast_scan_tree_file', tree_file)
+            except Exception:
+                pass
+        else:
+            # Remember for next Fast Scan within this session
+            try:
+                setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
+                setattr(self.config, 'last_fast_scan_agree_pct', float(min_agree) * 100.0)
+            except Exception:
+                pass
+        progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
+        progress.setWindowTitle("Fast Scan")
+        progress.setAutoClose(True)
+        progress.show()
+
+        def update(cur, total):
+            progress.setMaximum(total)
+            progress.setValue(cur)
+            QApplication.processEvents()
+
+        # Determine response_dir similar to results_display logic so group selection matches Site Viewer
+        resp_dir = getattr(self.config, 'response_dir', '') or ''
+        if not resp_dir:
+            try:
+                base = os.path.basename(getattr(self.config, 'species_groups_file', '')).replace('.txt', '')
+                if base and getattr(self.config, 'output_dir', ''):
+                    cand = os.path.join(self.config.output_dir, f"{base}_response_matrices")
+                    if os.path.isdir(cand):
+                        resp_dir = cand
+            except Exception:
+                resp_dir = ''
+        # Use up to 4 processes by default for speed without oversubscribing
+        try:
+            n_jobs = min(4, os.cpu_count() or 1)
+        except Exception:
+            n_jobs = 1
+        results = fast_scan.fast_scan_alignments(
+            align_dir,
+            groups_file,
+            outgroup,
+            update,
+            response_dir=resp_dir,
+            n_jobs=n_jobs,
+            two_pair_combos=use_two_pair,
+            min_out_ctrl_agreement=min_agree,
+            tree_file=tree_file,
+            require_unambiguous_mrca=require_unamb_mrca,
+        )
+        progress.close()
+        if not results:
+            QMessageBox.information(self, "Fast Scan", "No results produced.")
+            return
+        # Show results as a top-level window (no parent) to decouple from the wizard
+        FastScanResultsDialog.show_results(results, self.config, outgroup, parent=None)
 
     def open_newick_tree(self):
         """Open a Newick file and display it in a tree viewer."""
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open Newick File",
+            "Open Tree File",
             os.getcwd(),
-            "Newick Files (*.nwk *.newick *.tree *.txt);;All Files (*)",
+            "Newick/NEXUS Files (*.nwk *.newick *.tree *.tre *.treefile *.contree *.nh *.nhx *.dnd *.nexus *.nex *.txt);;All Files (*)",
         )
         if not path:
             return
         # Basic validation: ensure equal number of opening and closing parentheses
         try:
             with open(path, "r", errors="ignore") as _nf:
-                newick_text = _nf.read()
-            open_paren = newick_text.count("(")
-            close_paren = newick_text.count(")")
-            # Must have at least one pair of parentheses and counts must match
-            if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
-                preview = newick_text[:100]
-                raise ValueError(
-                    "The file does not appear to be valid Newick: mismatched parentheses ("
-                    f"{open_paren} '(' vs {close_paren} ')').\n\n"
-                    f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
-                )
-
-            tree = Phylo.read(path, "newick")
+                text = _nf.read()
+            # Lightweight NEXUS detection: header or common extensions
+            is_nexus = text.lstrip().upper().startswith("#NEXUS") or path.lower().endswith((".nex", ".nexus"))
+            if is_nexus:
+                tree = Phylo.read(path, "nexus")
+            else:
+                open_paren = text.count("(")
+                close_paren = text.count(")")
+                # Must have at least one pair of parentheses and counts must match
+                if open_paren == 0 or close_paren == 0 or open_paren != close_paren:
+                    preview = text[:100]
+                    raise ValueError(
+                        "The file does not appear to be valid Newick: mismatched parentheses ("
+                        f"{open_paren} '(' vs {close_paren} ')').\n\n"
+                        f"File: {os.path.basename(path)}\nFirst 100 characters:\n{preview}"
+                    )
+                tree = Phylo.read(path, "newick")
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to parse Newick file:\n{exc}",
+                f"Failed to parse tree file:\n{exc}",
             )
             return
+
+        # Warn if the basal split is not a bifurcation (exactly two children).
+        # Ignore Bio.Phylo's rooted flag; instead, walk down any single-child wrappers
+        # and test the first node that branches into != 1 children.
+        try:
+            node = getattr(tree, "root", None)
+            # descend through unary chains that some exporters add as a wrapper
+            safety_counter = 0
+            while (
+                node is not None and hasattr(node, "clades") and isinstance(getattr(node, "clades", None), list)
+                and len(node.clades) == 1 and safety_counter < 1000
+            ):
+                node = node.clades[0]
+                safety_counter += 1
+            base_children = len(node.clades) if node is not None and hasattr(node, "clades") else 0
+            if base_children != 2:
+                QMessageBox.warning(
+                    self,
+                    "Rooting Warning",
+                    (
+                        "The loaded tree does not appear to be properly rooted: the basal split is not a bifurcation.\n\n"
+                        "For selecting valid contrast pairs, the tree should have a single basal bifurcation.\n"
+                        "Please root your tree (e.g., midpoint or outgroup rooting) and reload."
+                    ),
+                )
+        except Exception:
+            # If detection fails for any reason, continue without blocking the viewer
+            pass
 
         phenos = {}
         pheno_path = getattr(self.config, "species_phenotypes_file", "")
@@ -275,16 +598,24 @@ class InputPage(BaseWizardPage):
                 with open(pheno_path, newline="") as f:
                     reader = csv.reader(f)
                     for row in reader:
-                        if len(row) >= 2:
-                            try:
-                                phenos[row[0].strip()] = int(row[1])
-                            except ValueError:
-                                continue
+                        # Skip empty or too-short rows
+                        if not row or len(row) < 2:
+                            continue
+                        name = row[0].strip()
+                        val_str = row[1].strip()
+                        if not name or not val_str:
+                            continue
+                        # Try to parse as float; ignore unparseable rows (e.g., header)
+                        try:
+                            val = float(val_str)
+                        except ValueError:
+                            continue
+                        phenos[name] = val
             except Exception as exc:
                 QMessageBox.warning(
                     self,
                     "Phenotypes Error",
-                    f"Failed to parse phenotypes file:\n{exc}",
+                    f"Failed to parse phenotypes file (supports -1/0/1 with 0 meaning unassigned, or continuous floats):\n{exc}",
                 )
 
         self._tree_window = TreeViewer(
@@ -294,8 +625,201 @@ class InputPage(BaseWizardPage):
             on_groups_saved=self._update_groups_file,
             on_alignments_changed=self._update_alignment_dir,
             alignments_dir=getattr(self.config, 'alignments_dir', ''),
+            initial_groups_file=getattr(self.config, 'species_groups_file', ''),
+            initial_phenotypes_file=getattr(self.config, 'species_phenotypes_file', ''),
         )
         self._tree_window.show()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Internal helpers
+    # ──────────────────────────────────────────────────────────────────────────
+    def _looks_like_tree_file(self, path: str) -> bool:
+        """Return True if the path has a common Newick/NEXUS tree file extension.
+
+        This is intentionally minimal to avoid overcomplicating validation.
+        """
+        try:
+            if not path:
+                return False
+            lower = path.lower()
+            tree_exts = (
+                ".nwk", ".newick", ".tree", ".tre", ".treefile", ".contree",
+                ".nh", ".nhx", ".dnd", ".nexus", ".nex",
+            )
+            return lower.endswith(tree_exts)
+        except Exception:
+            return False
+
+    def _on_pheno_path_changed(self, path: str) -> None:
+        """Set config path and detect phenotype type (binary vs continuous)."""
+        setattr(self.config, 'species_phenotypes_file', path)
+        # Default flags when no file
+        self.config.species_pheno_is_binary = False
+        self.config.species_pheno_is_continuous = False
+        if not path or not os.path.exists(path):
+            # Update visibility in case file was removed
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+            return
+        try:
+            import csv
+            has_value = False
+            is_binary = True
+            with open(path, newline="", errors="ignore") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row or len(row) < 2:
+                        continue
+                    val_str = row[1].strip()
+                    if not val_str:
+                        continue
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        # ignore header or malformed rows
+                        continue
+                    has_value = True
+                    if val not in (-1.0, 0.0, 1.0):
+                        is_binary = False
+                        break
+            if has_value and is_binary:
+                self.config.species_pheno_is_binary = True
+                self.config.species_pheno_is_continuous = False
+            elif has_value:
+                self.config.species_pheno_is_binary = False
+                self.config.species_pheno_is_continuous = True
+        except Exception:
+            # On error, leave flags False so downstream treats as absent for plots
+            pass
+        finally:
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+            # Refresh label for valid path
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
+
+    def _on_species_groups_changed(self, path: str) -> None:
+        """Update config when species groups file changes and reset preferred combo."""
+        # Reject tree files mistakenly selected as species groups
+        if path and self._looks_like_tree_file(path):
+            QMessageBox.critical(
+                self,
+                "Invalid Species Groups File",
+                (
+                    "The selected file appears to be a phylogenetic tree (Newick or NEXUS),\n"
+                    "not a species groups file.\n\n"
+                    "Please choose a text file with species groups (comma-separated species per line),\n"
+                    "or use the 'Create a Species Groups File Using a Newick Tree' button to generate one."
+                ),
+            )
+            # Clear the path in both the widget and config
+            try:
+                self.species_groups.set_path("")
+            except Exception:
+                pass
+            setattr(self.config, 'species_groups_file', "")
+            # Hide the count label and bail out
+            try:
+                self.groups_count_label.setVisible(False)
+            except Exception:
+                pass
+            return
+        setattr(self.config, 'species_groups_file', path)
+        self.config.preferred_groups_combo = None
+        self.config.preferred_response_matrix = ""
+        setattr(self, '_selected_groups_combo', None)
+        setattr(self, '_selected_response_matrix', "")
+        # Update count label
+        try:
+            self._update_count_label(path)
+        except Exception:
+            pass
+
+    def _on_response_dir_changed(self, path: str) -> None:
+        """Set response directory and detect continuous response matrices."""
+        setattr(self.config, 'response_dir', path)
+        self.config.preferred_response_matrix = ""
+        self.config.preferred_groups_combo = None
+        self.config.response_matrices_are_continuous = False
+        # Immediately reflect the response matrices count in the UI upon selection
+        try:
+            if self.use_response_dir.isChecked():
+                cnt = self._compute_response_matrices_count(path) if path else None
+                if cnt is not None:
+                    self.response_count_label.setText(f"number of response matrices: {cnt:,}")
+                    self.response_count_label.setToolTip("Count of response matrix files (*.txt) in the selected directory.")
+                    self.response_count_label.setVisible(True)
+                else:
+                    self.response_count_label.setVisible(False)
+                QApplication.processEvents()
+        except Exception:
+            pass
+        if not path or not os.path.isdir(path):
+            self.config.use_continuous_phenotypes = False
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+            # Hide/refresh label for invalid path
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
+            return
+        try:
+            for fname in os.listdir(path):
+                if not fname.endswith('.txt'):
+                    continue
+                full = os.path.join(path, fname)
+                if ecf.response_matrix_is_continuous(full):
+                    self.config.response_matrices_are_continuous = True
+                    self.config.use_continuous_phenotypes = True
+                    self.config.species_pheno_is_continuous = True
+                    break
+            else:
+                self.config.use_continuous_phenotypes = False
+                self.config.species_pheno_is_continuous = False
+        except Exception:
+            # Ignore detection errors; treat as binary
+            self.config.use_continuous_phenotypes = False
+            self.config.species_pheno_is_continuous = False
+        finally:
+            self._update_continuous_checkbox_visibility()
+            # Inform Parameters page to refresh dependent UI immediately
+            try:
+                wiz = self.wizard()
+                if wiz and hasattr(wiz, 'params_page') and hasattr(wiz.params_page, 'update_output_options_state'):
+                    wiz.params_page.update_output_options_state()
+            except Exception:
+                pass
+
+    def _update_continuous_checkbox_visibility(self) -> None:
+        """Sync configuration flags for continuous mode; UI control is on Output Options page."""
+        cont_detected = bool(
+            getattr(self.config, 'species_pheno_is_continuous', False) or
+            getattr(self.config, 'response_matrices_are_continuous', False)
+        )
+        if not cont_detected:
+            # When no continuous inputs are present, ensure the setting is off
+            self.config.use_continuous_phenotypes = False
 
     def _update_phenotype_file(self, path: str) -> None:
         """Update the phenotype file selector and config."""
@@ -303,12 +827,100 @@ class InputPage(BaseWizardPage):
 
     def _update_groups_file(self, path: str) -> None:
         self.species_groups.set_path(path)
-        setattr(self.config, 'species_groups_file', path)
+        self._on_species_groups_changed(path)
 
     def _update_alignment_dir(self, path: str) -> None:
         """Update the alignment directory selector and config."""
         self.alignment_dir.set_path(path)
         setattr(self.config, 'alignments_dir', path)
+
+    def _compute_species_combos_from_file(self, path: str) -> int | None:
+        """Compute number of species combos from a groups file.
+
+        The groups file is structured as alternating convergent/control lines for each pair.
+        The total number of combinations is the product of the number of species listed
+        on each line (i.e., choose exactly one species from every line).
+
+        Returns None if the path is invalid or the file has an odd number of non-empty lines.
+        """
+        if not path or not os.path.exists(path):
+            return None
+        # Guard: if the file looks like a Newick/NEXUS tree, treat as invalid for groups
+        try:
+            if self._looks_like_tree_file(path):
+                return None
+        except Exception:
+            pass
+        try:
+            with open(path, encoding='utf-8', errors='ignore') as fh:
+                lines = [ln.strip() for ln in fh if ln.strip()]
+        except Exception:
+            return None
+        # Must be an even number of non-empty lines (convergent/control pairs)
+        if not lines or (len(lines) % 2) != 0:
+            return None
+        product = 1
+        for ln in lines:
+            parts = [p.strip() for p in ln.split(',') if p.strip()]
+            # If any line has no species, treat as invalid
+            if not parts:
+                return None
+            product *= len(parts)
+        return product
+
+    def _compute_response_matrices_count(self, dir_path: str) -> int | None:
+        """Count the number of response matrix files (*.txt) in the directory."""
+        if not dir_path or not os.path.isdir(dir_path):
+            return None
+        try:
+            return sum(1 for f in os.listdir(dir_path) if f.endswith('.txt'))
+        except Exception:
+            return None
+
+    def _update_count_label(self, path: str | None = None) -> None:
+        """Refresh the lower-right count label based on current input mode and paths.
+
+        - Species groups mode: show "number of species combos: N" only when a valid
+          species groups file exists; otherwise hide the label.
+        - Response directory mode: show "number of response matrices: M" when a valid
+          directory exists; otherwise hide the label.
+        """
+        if not hasattr(self, 'groups_count_label') or not hasattr(self, 'response_count_label'):
+            return
+        use_response_dir = bool(self.use_response_dir.isChecked())
+        if use_response_dir:
+            # Response dir count
+            try:
+                if path is None and hasattr(self, 'response_dir'):
+                    path = self.response_dir.get_path()
+            except Exception:
+                path = None
+            count = self._compute_response_matrices_count(path) if path else None
+            if count is None:
+                # Hide label entirely until a valid directory is chosen
+                self.response_count_label.setVisible(False)
+            else:
+                self.response_count_label.setText(f"number of response matrices: {count:,}")
+                self.response_count_label.setToolTip("Count of response matrix files (*.txt) in the selected directory.")
+                self.response_count_label.setVisible(True)
+            # Hide the groups label row in response mode
+            self.groups_count_label.setVisible(False)
+        else:
+            # Species groups count
+            try:
+                if path is None and hasattr(self, 'species_groups'):
+                    path = self.species_groups.get_path()
+            except Exception:
+                path = None
+            count = self._compute_species_combos_from_file(path) if path else None
+            if count is None:
+                self.groups_count_label.setVisible(False)
+            else:
+                self.groups_count_label.setText(f"number of species combos: {count:,}")
+                self.groups_count_label.setToolTip("Computed as the product of the number of species listed on each line (choose one per line).")
+                self.groups_count_label.setVisible(True)
+            # Hide the response label row in species-groups mode
+            self.response_count_label.setVisible(False)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public helpers for wizard
@@ -320,8 +932,18 @@ class InputPage(BaseWizardPage):
             self.alignment_dir.set_path(self.config.alignments_dir)
         if hasattr(self.config, 'species_groups_file'):
             self.species_groups.set_path(self.config.species_groups_file)
+            # Ensure the count label reflects the current config path/mode
+            try:
+                self._update_count_label()
+            except Exception:
+                pass
         if hasattr(self.config, 'response_dir'):
             self.response_dir.set_path(self.config.response_dir)
+        # After setting paths above, refresh the label once more to reflect mode
+        try:
+            self._update_count_label()
+        except Exception:
+            pass
         if hasattr(self.config, 'species_phenotypes_file'):
             self.species_phenotypes.set_path(self.config.species_phenotypes_file)
         if hasattr(self.config, 'prediction_alignments_dir'):
@@ -333,3 +955,5 @@ class InputPage(BaseWizardPage):
         use_resp = bool(self.config.response_dir)
         self.use_response_dir.setChecked(use_resp)
         self.use_species_groups.setChecked(not use_resp)
+        # Sync the continuous toggle visibility and state
+        self._update_continuous_checkbox_visibility()

@@ -71,3 +71,10 @@ The `tests/conftest.py` file automatically adds the project root to `sys.path` a
 
 All tests must pass.
 
+## 4. Local Development Environment (Virtualenv)
+
+This repository may include a local Python virtual environment at `.venv/` in the project root. When running Python scripts or tests locally, prefer using the executables inside `.venv/bin/` so that expected dependencies are available and isolated from the system Python.
+
+Note for remote agents (CI or ephemeral environments): always check if `.venv/` exists and prefer it when present; otherwise, fall back to the system Python.
+
+

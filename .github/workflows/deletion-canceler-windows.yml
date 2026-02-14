@@ -1,4 +1,4 @@
-name: Build Windows deletion_canceler (Rust)
+name: Build Rust Helpers
 
 on:
   # Allow manual triggering from the GitHub UI
@@ -8,6 +8,54 @@ permissions:
   contents: read
 
 jobs:
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build deletion_canceler (release)
+        working-directory: deletion_canceler_rs
+        run: |
+          cargo build --release
+
+      - name: Build fast_scan_rs (release)
+        working-directory: fast_scan_rs
+        run: |
+          cargo build --release
+
+      - name: Verify built binaries
+        run: |
+          ls -la deletion_canceler_rs/target/release/
+          ls -la fast_scan_rs/target/release/
+
+      - name: Rename macOS fast_scan_rs for artifact
+        run: |
+          cp fast_scan_rs/target/release/fast_scan_rs fast_scan_rs/target/release/fast_scan_rs_mac
+
+      - name: "Upload artifact: deletion_canceler (macOS)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: deletion_canceler-macos
+          path: |
+            deletion_canceler_rs/target/release/deletion_canceler
+          if-no-files-found: error
+
+      - name: "Upload artifact: fast_scan_rs (macOS)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast_scan_rs-macos
+          path: |
+            fast_scan_rs/target/release/fast_scan_rs_mac
+          if-no-files-found: error
+
   build-windows:
     name: Build (Windows x86_64)
     runs-on: windows-latest
@@ -31,14 +79,28 @@ jobs:
         run: |
           cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Verify built binary
+      - name: Build fast_scan_rs (release)
+        working-directory: fast_scan_rs
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Verify built binaries
         run: |
           ls -la deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/
+          ls -la fast_scan_rs/target/x86_64-pc-windows-msvc/release/
 
-      - name: Upload artifact
+      - name: "Upload artifact: deletion_canceler (Windows)"
         uses: actions/upload-artifact@v4
         with:
           name: deletion_canceler-windows-x86_64
           path: |
             deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/deletion_canceler.exe
+          if-no-files-found: error
+
+      - name: "Upload artifact: fast_scan_rs (Windows)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast_scan_rs-windows-x86_64
+          path: |
+            fast_scan_rs/target/x86_64-pc-windows-msvc/release/fast_scan_rs.exe
           if-no-files-found: error

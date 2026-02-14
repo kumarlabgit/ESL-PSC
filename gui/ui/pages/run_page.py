@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThreadPool, Qt
 import os
+import time
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (
 from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
-    SpsPlotDialog, GeneRanksDialog
+    SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
 )
 
 class RunPage(BaseWizardPage):
@@ -33,6 +34,9 @@ class RunPage(BaseWizardPage):
         scroll = QScrollArea()
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         container = QWidget()
         scroll.setWidget(container)
         container_layout = QVBoxLayout(container)
@@ -64,12 +68,20 @@ class RunPage(BaseWizardPage):
         self.sps_btn = QPushButton("Show SPS Plot")
         self.sps_btn.hide()
         self.sps_btn.clicked.connect(self.show_sps_plot)
+        self.cont_btn = QPushButton("Show Phenotype Plot")
+        self.cont_btn.hide()
+        self.cont_btn.clicked.connect(self.show_cont_plot)
         self.gene_btn = QPushButton("Show Top Gene Ranks")
         self.gene_btn.hide()
         self.gene_btn.clicked.connect(self.show_gene_ranks)
+        self.metrics_btn = QPushButton("Show Prediction Metrics")
+        self.metrics_btn.hide()
+        self.metrics_btn.clicked.connect(self.show_prediction_metrics)
         self.results_layout.addStretch()
         self.results_layout.addWidget(self.sps_btn)
+        self.results_layout.addWidget(self.cont_btn)
         self.results_layout.addWidget(self.gene_btn)
+        self.results_layout.addWidget(self.metrics_btn)
         container_layout.addLayout(self.results_layout)
 
         # Progress Bars GroupBox
@@ -133,6 +145,9 @@ class RunPage(BaseWizardPage):
         self.sps_plot_path = None
         self.gene_ranks_path = None
         self.selected_sites_path = None
+        self.predictions_csv_path = None
+        # Timestamp for run start, to filter out stale artifacts from prior runs
+        self._run_start_time = None
     
     # ------------------------------------------------------------------
     # Checkpoint helpers
@@ -200,6 +215,9 @@ class RunPage(BaseWizardPage):
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
 
+            # Record start time so we can verify which outputs were created by THIS run
+            self._run_start_time = time.time()
+
             # 2) Show overwrite warning only for a *fresh* run (no checkpoint or user forces fresh)
             from esl_psc_cli.checkpoint import Checkpointer
             cp = Checkpointer(output_dir)
@@ -249,10 +267,13 @@ class RunPage(BaseWizardPage):
             self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis (may take 10 seconds)...")
             self.sps_btn.hide()
+            self.cont_btn.hide()
             self.gene_btn.hide()
             self.sps_plot_path = None
+            self.cont_plot_path = None
             self.gene_ranks_path = None
             self.selected_sites_path = None
+            self.predictions_csv_path = None
 
             # Create and configure worker
             self.worker = ESLWorker(args)
@@ -306,17 +327,34 @@ class RunPage(BaseWizardPage):
         else:
             QMessageBox.warning(self, "File Not Found", "The SPS plot file could not be found.")
 
+    def show_cont_plot(self):
+        """Slot to show the continuous phenotype plot if available."""
+        if self.cont_plot_path and os.path.exists(self.cont_plot_path):
+            ContinuousPlotDialog.show_dialog(self.cont_plot_path, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The phenotype plot file could not be found.")
+
     def show_gene_ranks(self):
         """Slot to show the gene ranks table if available."""
         if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
+            # Launch as a top-level window (no parent) to keep stable stacking
+            # relative to the wizard when opening further child windows.
             GeneRanksDialog.show_dialog(
                 self.gene_ranks_path,
                 self.config,
                 self.selected_sites_path,
-                parent=self,
+                parent=None,
             )
         else:
             QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")
+
+    def show_prediction_metrics(self):
+        """Open metrics dialog for predictions when available (binary only)."""
+        if self.predictions_csv_path and os.path.exists(self.predictions_csv_path):
+            # Launch as a dialog with this page as parent for stacking
+            PredictionMetricsDialog.show_dialog(self.predictions_csv_path, self.config, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The species predictions file could not be found.")
 
 
     def analysis_finished(self, exit_code):
@@ -347,9 +385,19 @@ class RunPage(BaseWizardPage):
             ):
                 fig_name = f"{base}_pred_sps_plot.svg"
                 path = os.path.abspath(os.path.join(out_dir, fig_name))
-                if os.path.exists(path):
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
                     self.sps_plot_path = path
                     self.sps_btn.show()
+
+            self.cont_plot_path = None
+            if getattr(self.config, "make_continuous_plot", False) and not getattr(self.config, "no_pred_output", False):
+                cont_name = f"{base}_continuous_plot.svg"
+                path = os.path.abspath(os.path.join(out_dir, cont_name))
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
+                    self.cont_plot_path = path
+                    self.cont_btn.show()
 
             ranks_path = os.path.abspath(os.path.join(out_dir, f"{base}_gene_ranks.csv"))
             # Only show the button if gene output was requested in this run
@@ -360,6 +408,15 @@ class RunPage(BaseWizardPage):
             sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
             if getattr(self.config, "show_selected_sites", False) and os.path.exists(sites_path):
                 self.selected_sites_path = sites_path
+
+            # Prediction Metrics (requires predictions CSV and binary phenotypes)
+            preds_path = os.path.abspath(os.path.join(out_dir, f"{base}_species_predictions.csv"))
+            self.metrics_btn.hide()
+            if not getattr(self.config, "no_pred_output", False) and os.path.exists(preds_path):
+                # Only enable metrics for binary phenotype mode
+                if getattr(self.config, "species_pheno_is_binary", False) and not getattr(self.config, "use_continuous_phenotypes", False) and not getattr(self.config, 'response_matrices_are_continuous', False):
+                    self.predictions_csv_path = preds_path
+                    self.metrics_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_output("\n🛑 Analysis was stopped.")
