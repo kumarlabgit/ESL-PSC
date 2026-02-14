@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.worker import ESLWorker
+from esl_psc_cli import esl_psc_functions as ecf
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
     SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
@@ -206,6 +207,9 @@ class RunPage(BaseWizardPage):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         os.chdir(project_root)
         try:
+            if not self._prepare_two_line_alignments():
+                return
+
             output_dir = self.config.output_dir
             base_name = self.config.output_file_base_name
 
@@ -290,6 +294,59 @@ class RunPage(BaseWizardPage):
         except Exception as e:
             self.append_error(f"Error starting analysis: {str(e)}")
             self.analysis_finished(1)
+
+    def _prepare_two_line_alignments(self) -> bool:
+        """Offer conversion to 2-line FASTA for directories requiring strict format."""
+        def _maybe_convert(attr_name: str, label: str, recursive: bool) -> bool:
+            dir_path = getattr(self.config, attr_name, "") or ""
+            if not dir_path:
+                return True
+            try:
+                non_two = ecf.find_non_two_line_fasta_files(dir_path, recursive=recursive)
+            except ValueError as e:
+                QMessageBox.critical(self, "Invalid FASTA", str(e))
+                return False
+            if not non_two:
+                return True
+
+            target_dir = ecf.default_two_line_dir(dir_path)
+            msg = (
+                f"The selected {label} are not in strict 2-line FASTA format.\n\n"
+                f"Detected files: {len(non_two)}\n"
+                f"Example: {non_two[0]}\n\n"
+                "Create converted files now and continue this run?\n"
+                f"Converted directory:\n{target_dir}"
+            )
+            reply = QMessageBox.question(
+                self,
+                "Convert Alignments to 2-line FASTA?",
+                msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+
+            out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+                dir_path,
+                recursive=recursive,
+                output_dir=target_dir,
+                overwrite=True,
+            )
+            setattr(self.config, attr_name, out_dir)
+            self.append_output(
+                f"[INFO] Converted {n_written} FASTA file(s) to 2-line format for {label}."
+            )
+            self.append_output(f"[INFO] Using converted directory: {out_dir}")
+            return True
+
+        if not getattr(self.config, "no_pred_output", False):
+            if not _maybe_convert("prediction_alignments_dir", "prediction alignments", False):
+                return False
+        if getattr(self.config, "use_existing_alignments", False):
+            if not _maybe_convert("canceled_alignments_dir", "existing canceled alignments", True):
+                return False
+        return True
     
     def stop_analysis(self):
         """Stop the running analysis."""

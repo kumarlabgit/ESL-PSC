@@ -248,6 +248,60 @@ def randomize_alignments(original_alignments_directory, species_list):
     
     # return path to new directory
     return scrambled_alignments_dir
+
+
+def _ensure_two_line_with_optional_conversion(
+    args,
+    dir_path: str,
+    *,
+    recursive: bool = False,
+    label: str = "alignments",
+) -> str:
+    """Validate 2-line FASTA format and optionally convert to a sibling folder.
+
+    This function is intentionally non-interactive so CLI runs remain automation-friendly.
+    """
+    if not dir_path:
+        return dir_path
+
+    try:
+        ecf.validate_alignment_dir_two_line(dir_path, recursive=recursive)
+        return dir_path
+    except ValueError as e:
+        msg = str(e)
+        if "not in 2-line FASTA format" not in msg:
+            raise
+
+    target_dir = ecf.default_two_line_dir(dir_path)
+    if not bool(getattr(args, "auto_convert_to_2line", False)):
+        raise ValueError(
+            f"{msg}\n"
+            "Run again with --auto_convert_to_2line to automatically create "
+            "a sibling '<alignments_dir>_2line' directory and continue non-interactively."
+        )
+
+    if os.path.exists(target_dir):
+        raise ValueError(
+            f"Cannot auto-convert {label}: target directory already exists:\n"
+            f"  {target_dir}\n"
+            "Use that converted directory directly as your alignment directory "
+            "(e.g., set --prediction_alignments_dir or --canceled_alignments_dir accordingly), "
+            "then re-run without --auto_convert_to_2line."
+        )
+
+    out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+        dir_path,
+        recursive=recursive,
+        output_dir=target_dir,
+        overwrite=False,
+    )
+    print(
+        f"Converted {n_written} FASTA file(s) in {label} to 2-line format:\n"
+        f"  source: {dir_path}\n"
+        f"  using:  {out_dir}"
+    )
+    ecf.validate_alignment_dir_two_line(out_dir, recursive=recursive)
+    return out_dir
     
 
 def run_multi_matrix_integration(args, list_of_species_combos,
@@ -500,6 +554,15 @@ def main(raw_args=None):
     group.add_argument('--num_randomized_alignments',
                         help = 'number of pair-randomized alignments to make',
                         type = int, default = 10)
+    group.add_argument(
+        '--auto_convert_to_2line',
+        action='store_true',
+        default=False,
+        help=(
+            "If 2-line FASTA validation fails, automatically create a sibling "
+            "'<alignments_dir>_2line' directory and continue with converted files."
+        ),
+    )
     
     # Ensure we have sensible, project-root defaults for these two paths
     args = ecf.parse_args_with_config(parser, raw_args) # checks for config file
@@ -665,14 +728,23 @@ def main(raw_args=None):
         # For predictions, strictly require 2-line FASTA in the directory that
         # will be used to read sequences for scoring.
         if not args.no_pred_output:
-            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+            args.prediction_alignments_dir = _ensure_two_line_with_optional_conversion(
+                args,
+                args.prediction_alignments_dir,
+                recursive=False,
+                label="prediction alignments",
+            )
         # Otherwise, skip any upfront source alignment validation.
         # --- Limited genes list sanity check --------------------------------
         validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
         
         if args.use_existing_alignments and args.canceled_alignments_dir:
-            ecf.validate_alignment_dir_two_line(
-                args.canceled_alignments_dir, recursive=True)
+            args.canceled_alignments_dir = _ensure_two_line_with_optional_conversion(
+                args,
+                args.canceled_alignments_dir,
+                recursive=True,
+                label="existing canceled alignments",
+            )
 
         # --- Heuristic checks for common file mix-ups ----------------------
         if args.species_groups_file:

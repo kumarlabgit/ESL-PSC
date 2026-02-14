@@ -520,6 +520,104 @@ def is_two_line_fasta(fasta_path):
     return True
 
 
+def find_non_two_line_fasta_files(directory, recursive=False):
+    """Return a sorted list of FASTA paths in *directory* that are not 2-line.
+
+    Raises
+    ------
+    ValueError
+        If any FASTA file is not parseable/valid FASTA.
+    """
+    if not directory or not os.path.isdir(directory):
+        return []
+
+    walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
+    non_two_line = []
+    for root, _dirs, files in walker:
+        for fname in files:
+            if not is_fasta(fname):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                if not is_two_line_fasta(fpath):
+                    non_two_line.append(fpath)
+            except ValueError as e:
+                raise ValueError(
+                    f"Alignment file '{fpath}' is not valid FASTA: {e}"
+                ) from None
+    return sorted(non_two_line)
+
+
+def default_two_line_dir(source_dir, suffix="_2line"):
+    """Return sibling directory path for converted 2-line FASTA alignments."""
+    src = os.path.abspath(source_dir.rstrip(os.sep))
+    parent, base = os.path.split(src)
+    return os.path.join(parent, f"{base}{suffix}")
+
+
+def convert_alignment_dir_to_two_line(
+    source_dir,
+    *,
+    recursive=False,
+    output_dir=None,
+    suffix="_2line",
+    overwrite=True,
+):
+    """Convert FASTA files from *source_dir* into strict 2-line FASTA files.
+
+    A new directory is created by default as a sibling of *source_dir* with
+    suffix ``_2line``. Returns ``(output_dir, num_files_written)``.
+    """
+    if not source_dir or not os.path.isdir(source_dir):
+        raise ValueError(f"Alignment directory not found: {source_dir}")
+
+    src = os.path.abspath(source_dir)
+    out = os.path.abspath(output_dir or default_two_line_dir(src, suffix=suffix))
+    if out == src:
+        raise ValueError("Output directory for 2-line conversion must differ from source directory")
+
+    if os.path.exists(out):
+        if not overwrite:
+            raise FileExistsError(
+                f"Output directory already exists: {out}. "
+                "Re-run with overwrite enabled or remove the directory first."
+            )
+        shutil.rmtree(out)
+    os.makedirs(out, exist_ok=True)
+
+    total_written = 0
+    walker = os.walk(src) if recursive else [(src, [], os.listdir(src))]
+    for root, _dirs, files in walker:
+        rel = os.path.relpath(root, src)
+        out_root = out if rel == "." else os.path.join(out, rel)
+        os.makedirs(out_root, exist_ok=True)
+        for fname in files:
+            if not is_fasta(fname):
+                continue
+            in_path = os.path.join(root, fname)
+            out_path = os.path.join(out_root, fname)
+            try:
+                records = list(SeqIO.parse(in_path, "fasta"))
+            except Exception as e:
+                raise ValueError(
+                    f"Failed parsing FASTA file '{in_path}' during 2-line conversion: {e}"
+                ) from None
+            if not records:
+                raise ValueError(
+                    f"Failed parsing FASTA file '{in_path}' during 2-line conversion: no records found"
+                )
+            with open(out_path, "w") as output_handle:
+                SeqIO.write(records, output_handle, "fasta-2line")
+            total_written += 1
+
+    if total_written == 0:
+        raise ValueError(
+            f"No FASTA files (.fas, .fasta, .fa, .faa) were found in '{source_dir}'"
+        )
+
+    return out, total_written
+
+
 def validate_alignment_dir_two_line(directory, recursive=False, allow_multi_line=False):
     """Ensure all FASTA files in *directory* are 2-line format.
 
@@ -531,27 +629,16 @@ def validate_alignment_dir_two_line(directory, recursive=False, allow_multi_line
 
     print("Verifying alignment format...")
 
-    walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
-    found_multiline = False
-    for root, _dirs, files in walker:
-        for fname in files:
-            if is_fasta(fname):
-                fpath = os.path.join(root, fname)
-                try:
-                    if not is_two_line_fasta(fpath):
-                        if allow_multi_line:
-                            found_multiline = True
-                        else:
-                            msg = (
-                                f"Alignment file '{fpath}' is not in 2-line FASTA format.\n"
-                                "Each sequence must appear on a single line. "
-                                "You can reformat the file with a tool like 'seqtk seq -l0'."
-                            )
-                            raise ValueError(msg) from None
-                except ValueError as e:
-                    raise ValueError(
-                        f"Alignment file '{fpath}' is not valid FASTA: {e}"
-                    ) from None
+    non_two_line = find_non_two_line_fasta_files(directory, recursive=recursive)
+    found_multiline = bool(non_two_line)
+    if non_two_line and not allow_multi_line:
+        msg = (
+            f"Alignment file '{non_two_line[0]}' is not in 2-line FASTA format.\n"
+            "Each sequence must appear on a single line. "
+            "You can reformat files with a tool like 'seqtk seq -l0', or use "
+            "ESL-PSC's built-in 2-line conversion option."
+        )
+        raise ValueError(msg)
 
     if found_multiline:
         print(
