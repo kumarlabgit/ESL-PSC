@@ -7,7 +7,8 @@ import time
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame, QCheckBox
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame, QCheckBox,
+    QProgressDialog, QApplication
 )
 
 from gui.core.worker import ESLWorker
@@ -310,6 +311,24 @@ class RunPage(BaseWizardPage):
                 return True
 
             target_dir = ecf.default_two_line_dir(dir_path)
+            if os.path.isdir(target_dir):
+                reply = QMessageBox.question(
+                    self,
+                    "Use Existing 2-line Directory?",
+                    (
+                        f"A converted 2-line directory already exists for {label}:\n\n"
+                        f"{target_dir}\n\n"
+                        "Use this directory for the run?"
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    setattr(self.config, attr_name, target_dir)
+                    self.append_output(f"[INFO] Using existing converted directory: {target_dir}")
+                    return True
+                return False
+
             msg = (
                 f"The selected {label} are not in strict 2-line FASTA format.\n\n"
                 f"Detected files: {len(non_two)}\n"
@@ -327,12 +346,42 @@ class RunPage(BaseWizardPage):
             if reply != QMessageBox.StandardButton.Yes:
                 return False
 
-            out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
-                dir_path,
-                recursive=recursive,
-                output_dir=target_dir,
-                overwrite=True,
-            )
+            progress = QProgressDialog(f"Converting {label} to 2-line FASTA...", None, 0, 1, self)
+            progress.setWindowTitle("Preparing Alignments")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setCancelButton(None)
+            progress.setAutoClose(False)
+            progress.show()
+            QApplication.processEvents()
+
+            def _on_progress(cur: int, total: int, path: str) -> None:
+                progress.setMaximum(max(1, int(total)))
+                progress.setValue(int(cur))
+                if path:
+                    progress.setLabelText(
+                        f"Converting {label} to 2-line FASTA...\n"
+                        f"{cur}/{total}: {os.path.basename(path)}"
+                    )
+                else:
+                    progress.setLabelText(f"Converting {label} to 2-line FASTA...\n{cur}/{total}")
+                QApplication.processEvents()
+
+            try:
+                try:
+                    out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+                        dir_path,
+                        recursive=recursive,
+                        output_dir=target_dir,
+                        overwrite=False,
+                        progress_callback=_on_progress,
+                    )
+                finally:
+                    progress.close()
+            except Exception as e:
+                QMessageBox.critical(self, "2-line Conversion Failed", str(e))
+                return False
+
             setattr(self.config, attr_name, out_dir)
             self.append_output(
                 f"[INFO] Converted {n_written} FASTA file(s) to 2-line format for {label}."

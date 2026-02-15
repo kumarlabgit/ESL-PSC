@@ -562,6 +562,7 @@ def convert_alignment_dir_to_two_line(
     output_dir=None,
     suffix="_2line",
     overwrite=True,
+    progress_callback=None,
 ):
     """Convert FASTA files from *source_dir* into strict 2-line FASTA files.
 
@@ -585,35 +586,42 @@ def convert_alignment_dir_to_two_line(
         shutil.rmtree(out)
     os.makedirs(out, exist_ok=True)
 
-    total_written = 0
+    jobs = []
     walker = os.walk(src) if recursive else [(src, [], os.listdir(src))]
     for root, _dirs, files in walker:
         rel = os.path.relpath(root, src)
         out_root = out if rel == "." else os.path.join(out, rel)
-        os.makedirs(out_root, exist_ok=True)
         for fname in files:
-            if not is_fasta(fname):
-                continue
-            in_path = os.path.join(root, fname)
-            out_path = os.path.join(out_root, fname)
-            try:
-                records = list(SeqIO.parse(in_path, "fasta"))
-            except Exception as e:
-                raise ValueError(
-                    f"Failed parsing FASTA file '{in_path}' during 2-line conversion: {e}"
-                ) from None
-            if not records:
-                raise ValueError(
-                    f"Failed parsing FASTA file '{in_path}' during 2-line conversion: no records found"
-                )
-            with open(out_path, "w") as output_handle:
-                SeqIO.write(records, output_handle, "fasta-2line")
-            total_written += 1
+            if is_fasta(fname):
+                jobs.append((os.path.join(root, fname), os.path.join(out_root, fname)))
 
-    if total_written == 0:
+    total_jobs = len(jobs)
+    if total_jobs == 0:
         raise ValueError(
             f"No FASTA files (.fas, .fasta, .fa, .faa) were found in '{source_dir}'"
         )
+
+    total_written = 0
+    for idx, (in_path, out_path) in enumerate(jobs, start=1):
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        if progress_callback is not None:
+            progress_callback(idx, total_jobs, in_path)
+        try:
+            records = list(SeqIO.parse(in_path, "fasta"))
+        except Exception as e:
+            raise ValueError(
+                f"Failed parsing FASTA file '{in_path}' during 2-line conversion: {e}"
+            ) from None
+        if not records:
+            raise ValueError(
+                f"Failed parsing FASTA file '{in_path}' during 2-line conversion: no records found"
+            )
+        with open(out_path, "w") as output_handle:
+            SeqIO.write(records, output_handle, "fasta-2line")
+        total_written += 1
+
+    if progress_callback is not None:
+        progress_callback(total_jobs, total_jobs, "")
 
     return out, total_written
 

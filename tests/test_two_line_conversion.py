@@ -62,6 +62,28 @@ def test_find_non_two_line_fasta_files_detects_multiline(tmp_path):
     assert non_two[0].endswith("gene3.fa")
 
 
+def test_convert_alignment_dir_reports_progress_callback(tmp_path):
+    src = tmp_path / "alns"
+    src.mkdir()
+    _write_multiline_fasta(src / "geneA.fas")
+    _write_multiline_fasta(src / "geneB.fas")
+
+    ticks = []
+
+    def _cb(cur, total, path):
+        ticks.append((cur, total, path))
+
+    out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+        str(src),
+        progress_callback=_cb,
+    )
+    assert n_written == 2
+    assert out_dir.endswith("alns_2line")
+    assert ticks
+    assert ticks[-1][0] == ticks[-1][1] == 2
+    assert any("geneA.fas" in t[2] or "geneB.fas" in t[2] for t in ticks if t[2])
+
+
 def test_ensure_two_line_requires_auto_flag_when_multiline(tmp_path):
     src = tmp_path / "alignments"
     src.mkdir()
