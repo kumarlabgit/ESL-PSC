@@ -73,8 +73,23 @@ All tests must pass.
 
 ## 4. Local Development Environment (Virtualenv)
 
-This repository may include a local Python virtual environment at `.venv/` in the project root. When running Python scripts or tests locally, prefer using the executables inside `.venv/bin/` so that expected dependencies are available and isolated from the system Python.
+This repository may include a local Python virtual environment at `.venv/` in the project root. For Codex and other remote agents, do **not** rely on whichever `python` happens to be on `PATH`. Use the `.venv` executables explicitly so dependencies come from this repository's environment.
 
-Note for remote agents (CI or ephemeral environments): always check if `.venv/` exists and prefer it when present; otherwise, fall back to the system Python.
+Required command forms when `.venv/` exists:
 
+```bash
+.venv/bin/python -m pytest -q
+.venv/bin/python <script.py> [args...]
+.venv/bin/python -m pip install -r requirements-gui.txt
+```
+
+Avoid these ambiguous forms in agent runs:
+
+```bash
+python ...
+pytest ...
+pip ...
+```
+
+Fallback rule for remote agents (CI or ephemeral environments): if `.venv/` does not exist, use system Python.
 
