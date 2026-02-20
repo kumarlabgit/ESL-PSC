@@ -65,7 +65,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--method",
         default="default",
-        choices=["default", "longest", "shortest", "contrast", "composite", "random"],
+        choices=["default", "longest", "shortest", "contrast", "composite", "random", "pct_contrast"],
         help="Tie-breaking method for ambiguous ancestor clades",
     )
     parser.add_argument(
@@ -102,6 +102,15 @@ def main(argv=None) -> int:
         type=float,
         default=None,
         help="If set (>0), override thresholds using symmetric quantile tails in percent (0-50)",
+    )
+    parser.add_argument(
+        "--min_pct_diff",
+        type=float,
+        default=0.0,
+        help=(
+            "Minimum percent contrast for --method pct_contrast, where upper must be at least "
+            "(1 + pct/100) * lower (continuous positive phenotypes only)"
+        ),
     )
     parser.add_argument(
         "--seed",
@@ -170,6 +179,7 @@ def main(argv=None) -> int:
                 lower_threshold=args.lower_threshold,
                 upper_threshold=args.upper_threshold,
                 quantile_tails_pct=args.quantile_tails_pct,
+                min_pct_diff=args.min_pct_diff,
                 seed=run_seed,
             )
             write_species_groups(pairs, out_path)

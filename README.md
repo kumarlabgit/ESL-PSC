@@ -66,8 +66,10 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
 
 - Tree Viewer (continuous mode)
   - Load a phenotype file with float values. Species labels are colored by percentile using a Viridis gradient and the numeric value is shown next to each species name.
-  - Automatic contrast pair selection from continuous values using thresholds. When you click Auto Select Contrast Pairs with continuous phenotypes, you will be prompted for lower/upper thresholds to temporarily binarize values for the algorithm. Thresholds do not change the on-screen gradient coloring.
-  - Threshold picker dialog includes an interactive histogram and a tail-percentage control to auto-set symmetric quantile thresholds (e.g., 10% applies the 10th and 90th percentiles; 50% sets both to the median) while still allowing manual entry.
+  - Automatic contrast pair selection supports two continuous workflows:
+    - Thresholded binarization: prompt for lower/upper thresholds (with histogram + quantile tails) used only by the auto-selection algorithm.
+    - Positive-trait percent contrast: require a minimum percent difference (`upper` vs `lower`) and greedily select closest non-overlapping pairs first.
+  - For the positive-trait percent-contrast mode, the GUI can preview a threshold sweep plot (threshold vs selected pair count) before applying a threshold.
   - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Default.
   - Exported SVGs include the continuous colorbar and low/high labels. In continuous mode, manual binary tools such as Invert Phenotype and Set All to Non‑convergent are disabled by design.
 
@@ -344,4 +346,3 @@ the plot should look like this:
 If you use this software in your research, please cite our paper:
 
 John B. Allard, Sudip Sharma, Ravi Patel, Maxwell Sanderford, Koichiro Tamura, Slobodan Vucetic, Glenn S. Gerhard & Sudhir Kumar. Evolutionary sparse learning reveals the shared genetic basis of convergent traits. Nature Communications 16, 3217 (2025). https://doi.org/10.1038/s41467-025-58428-8
-

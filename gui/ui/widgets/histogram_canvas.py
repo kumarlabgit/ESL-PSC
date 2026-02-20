@@ -142,6 +142,35 @@ class HistogramCanvas(FigureCanvasQTAgg):
         # allocates enough space for tick/axis labels to avoid clipping.
         self.draw()
 
+    def plot_threshold_curve(
+        self,
+        thresholds: Sequence[float],
+        pair_counts: Sequence[int],
+        selected_threshold: float | None = None,
+    ) -> None:
+        """Plot threshold vs selected-pair count for percent-contrast tuning."""
+        self.axes.clear()
+        xs = [float(x) for x in thresholds]
+        ys = [int(y) for y in pair_counts]
+        if not xs or not ys or len(xs) != len(ys):
+            self.draw()
+            return
+        self.axes.plot(xs, ys, marker="o", markersize=3, color="#1f77b4")
+        if selected_threshold is not None:
+            self.axes.axvline(
+                x=float(selected_threshold),
+                color="red",
+                linestyle="--",
+                label=f"Selected = {float(selected_threshold):.1f}%",
+            )
+            self.axes.legend()
+        self.axes.set(
+            xlabel="Minimum % difference (upper vs lower)",
+            ylabel="Selected pairs",
+            title="Threshold Sweep",
+        )
+        self.draw()
+
     # Ensure that on resize, a new draw is scheduled so constrained_layout can
     # adapt the subplot geometry to the new size and keep labels visible.
     def resizeEvent(self, event) -> None:  # type: ignore[override]

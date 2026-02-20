@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Callable, Sequence
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -27,10 +27,18 @@ class AutoSelectOptionsDialog(QDialog):
     """Dialog to choose auto-select behavior with vertically stacked buttons.
 
     Presents options in this order: Longest Sequence → Shortest distance → Max trait contrast → Composite best → Random → Default → Cancel.
-    Stores the chosen option as `self.choice` in {"default","longest","shortest","contrast","composite","random",None}.
+    Stores the chosen option as `self.choice` in
+    {"default","longest","shortest","contrast","composite","random","pct_contrast",None}.
     """
 
-    def __init__(self, allow_longest: bool, allow_contrast: bool, allow_composite: bool = True, parent=None):
+    def __init__(
+        self,
+        allow_longest: bool,
+        allow_contrast: bool,
+        allow_composite: bool = True,
+        allow_pct_contrast: bool = False,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Auto Select Options")
         layout = QVBoxLayout(self)
@@ -114,6 +122,17 @@ class AutoSelectOptionsDialog(QDialog):
             tip=(
                 "Choose tips with maximal continuous-phenotype difference."
                 if allow_contrast
+                else "Available only when continuous phenotypes are loaded"
+            ),
+        )
+        self.pct_contrast_btn = mk_btn(
+            "Min % contrast (positive traits)",
+            "pct_contrast",
+            enabled=allow_pct_contrast,
+            tip=(
+                "Continuous positive traits only. Select pairs by closest distance first, "
+                "requiring a minimum percent difference between upper and lower species."
+                if allow_pct_contrast
                 else "Available only when continuous phenotypes are loaded"
             ),
         )
@@ -300,6 +319,94 @@ class PhenoThresholdDialog(QDialog):
     @property
     def upper_threshold(self) -> float:
         return self.upper_spin.value()
+
+
+class PercentContrastDialog(QDialog):
+    """Dialog to choose minimum percent contrast and inspect threshold-vs-pair sweep."""
+
+    def __init__(
+        self,
+        sweep_thresholds: Sequence[float],
+        sweep_counts: Sequence[int],
+        *,
+        count_fn: Callable[[float], int] | None = None,
+        default_threshold: float | None = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Percent Contrast Threshold")
+        self.setSizeGripEnabled(True)
+        self._sweep_thresholds = [float(x) for x in sweep_thresholds]
+        self._sweep_counts = [int(x) for x in sweep_counts]
+        self._count_fn = count_fn
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        expl = QLabel(
+            "Select the minimum % difference for a pair:\n"
+            "upper must be at least (1 + %/100) times lower."
+        )
+        expl.setWordWrap(True)
+        layout.addWidget(expl)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Minimum % difference:"))
+        self.threshold_spin = QDoubleSpinBox()
+        self.threshold_spin.setDecimals(1)
+        self.threshold_spin.setSingleStep(1.0)
+        self.threshold_spin.setSuffix("%")
+        vmax = max(self._sweep_thresholds) if self._sweep_thresholds else 100.0
+        self.threshold_spin.setRange(0.0, max(1.0, float(vmax)))
+        if default_threshold is not None:
+            self.threshold_spin.setValue(max(0.0, min(float(vmax), float(default_threshold))))
+        row.addWidget(self.threshold_spin)
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.pair_count_lbl = QLabel("")
+        layout.addWidget(self.pair_count_lbl)
+
+        self.canvas = HistogramCanvas(self, width=4, height=2, dpi=100)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.canvas, stretch=1)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+        self.threshold_spin.valueChanged.connect(self._update_preview)
+        self._update_preview()
+
+    def _nearest_count(self, thr: float) -> int:
+        if not self._sweep_thresholds:
+            return 0
+        best_i = 0
+        best_d = abs(self._sweep_thresholds[0] - thr)
+        for i in range(1, len(self._sweep_thresholds)):
+            d = abs(self._sweep_thresholds[i] - thr)
+            if d < best_d:
+                best_i = i
+                best_d = d
+        return int(self._sweep_counts[best_i]) if self._sweep_counts else 0
+
+    def _update_preview(self, _=None) -> None:
+        thr = float(self.threshold_spin.value())
+        if self._count_fn is not None:
+            try:
+                count = int(self._count_fn(thr))
+            except Exception:
+                count = self._nearest_count(thr)
+        else:
+            count = self._nearest_count(thr)
+        self.pair_count_lbl.setText(f"Selected pairs at current threshold: {count}")
+        self.canvas.plot_threshold_curve(self._sweep_thresholds, self._sweep_counts, thr)
+
+    @property
+    def min_pct_diff(self) -> float:
+        return float(self.threshold_spin.value())
 
 
 class OutgroupDialog(QDialog):

@@ -26,6 +26,7 @@ class CandidatePair:
     control: str
     distance: float
     ancestor: Optional[Clade] = None
+    pct_diff: float = 0.0
 
 
 def load_tree(tree_path: str) -> Tree:
@@ -196,6 +197,122 @@ def _compute_combo_count(pairs: List[PairInfo], cap: Optional[int] = None) -> in
     return total
 
 
+def _build_pct_contrast_candidates(
+    tree: Tree,
+    parent_map: Dict[Clade, Clade],
+    leaf_by_name: Dict[str, Clade],
+    phenotypes: Dict[str, float],
+) -> List[CandidatePair]:
+    names = [nm for nm in leaf_by_name.keys() if nm in phenotypes]
+    out: List[CandidatePair] = []
+    for i in range(len(names)):
+        a = names[i]
+        va = float(phenotypes[a])
+        if va <= 0.0:
+            continue
+        la = leaf_by_name.get(a)
+        if la is None:
+            continue
+        for j in range(i + 1, len(names)):
+            b = names[j]
+            vb = float(phenotypes[b])
+            if vb <= 0.0:
+                continue
+            lb = leaf_by_name.get(b)
+            if lb is None:
+                continue
+            if va == vb:
+                continue
+
+            if va > vb:
+                conv, ctrl = a, b
+                upper, lower = va, vb
+                conv_leaf, ctrl_leaf = la, lb
+            else:
+                conv, ctrl = b, a
+                upper, lower = vb, va
+                conv_leaf, ctrl_leaf = lb, la
+
+            if lower <= 0.0:
+                continue
+            pct_diff = ((upper - lower) / lower) * 100.0
+            try:
+                anc = tree.common_ancestor(conv_leaf, ctrl_leaf)
+            except Exception:
+                anc = None
+            dist = _pair_distance(tree, parent_map, conv_leaf, ctrl_leaf)
+            out.append(
+                CandidatePair(
+                    convergent=conv,
+                    control=ctrl,
+                    distance=float(dist),
+                    ancestor=anc,
+                    pct_diff=float(pct_diff),
+                )
+            )
+    out.sort(key=lambda c: (c.distance, -c.pct_diff, c.convergent, c.control))
+    return out
+
+
+def _select_pct_contrast_candidates(
+    candidates: List[CandidatePair],
+    parent_map: Dict[Clade, Clade],
+    min_pct_diff: float,
+    blocked: Optional[List[Clade]] = None,
+) -> List[CandidatePair]:
+    selected: List[CandidatePair] = []
+    blocked_local: List[Clade] = list(blocked or [])
+
+    def overlaps_blocked(anc: Clade) -> bool:
+        for b in blocked_local:
+            if _is_descendant(parent_map, b, anc) or _is_descendant(parent_map, anc, b):
+                return True
+        return False
+
+    for cand in candidates:
+        if cand.pct_diff < min_pct_diff:
+            continue
+        anc = cand.ancestor
+        if anc is None:
+            continue
+        if overlaps_blocked(anc):
+            continue
+        selected.append(cand)
+        blocked_local.append(anc)
+    return selected
+
+
+def sweep_pct_contrast_pair_counts(
+    tree: Tree,
+    phenotypes: Dict[str, float],
+    thresholds: Sequence[float],
+) -> List[Tuple[float, int]]:
+    leaf_names = {leaf.name or "" for leaf in tree.get_terminals()}
+    phenos = {n: float(v) for n, v in phenotypes.items() if n in leaf_names}
+    if not phenos:
+        raise ValueError("No phenotype entries matched species present in the tree")
+    vals = list(phenos.values())
+    if not _pheno_is_continuous(vals):
+        raise ValueError("Percent-contrast thresholding is only available for continuous phenotypes")
+    if any(float(v) <= 0.0 for v in vals):
+        raise ValueError("Percent-contrast thresholding requires strictly positive phenotype values")
+
+    parent_map = _build_parent_map(tree.root)
+    leaf_by_name: Dict[str, Clade] = {}
+    for leaf in tree.get_terminals():
+        nm = leaf.name or ""
+        if nm and nm not in leaf_by_name:
+            leaf_by_name[nm] = leaf
+
+    candidates = _build_pct_contrast_candidates(tree, parent_map, leaf_by_name, phenos)
+    out: List[Tuple[float, int]] = []
+    for th in thresholds:
+        thr = max(0.0, float(th))
+        cnt = len(_select_pct_contrast_candidates(candidates, parent_map, thr))
+        out.append((thr, int(cnt)))
+    return out
+
+
 def _y_positions(tree: Tree, step: int = 30) -> Dict[Clade, float]:
     y: Dict[Clade, float] = {}
     for idx, leaf in enumerate(tree.get_terminals()):
@@ -313,6 +430,7 @@ def auto_select_pairs(
     lower_threshold: Optional[float] = None,
     upper_threshold: Optional[float] = None,
     quantile_tails_pct: Optional[float] = None,
+    min_pct_diff: float = 0.0,
     seed: Optional[int] = None,
 ) -> List[PairInfo]:
     if seed is not None:
@@ -323,8 +441,48 @@ def auto_select_pairs(
     if not phenotypes:
         raise ValueError("No phenotype entries matched species present in the tree")
 
+    method = (method or "default").strip().lower()
+    if method not in {"default", "longest", "shortest", "contrast", "composite", "random", "pct_contrast"}:
+        raise ValueError(f"Unknown method: {method}")
+
     values = list(phenotypes.values())
     continuous = _pheno_is_continuous(values)
+
+    parent_map = _build_parent_map(tree.root)
+    leaf_by_name: Dict[str, Clade] = {}
+    for leaf in tree.get_terminals():
+        nm = leaf.name or ""
+        if nm and nm not in leaf_by_name:
+            leaf_by_name[nm] = leaf
+
+    if method == "pct_contrast":
+        if not continuous:
+            raise ValueError("Method 'pct_contrast' is only available for continuous phenotypes")
+        if any(float(v) <= 0.0 for v in values):
+            raise ValueError("Method 'pct_contrast' requires strictly positive phenotype values")
+        if int(num_alternates) > 0:
+            raise ValueError("Alternates are not supported for method 'pct_contrast'")
+        thr = max(0.0, float(min_pct_diff))
+        candidates = _build_pct_contrast_candidates(tree, parent_map, leaf_by_name, phenotypes)
+        selected_cands = _select_pct_contrast_candidates(candidates, parent_map, thr)
+        if len(selected_cands) < 2:
+            raise ValueError("ESL-PSC requires at least 2 valid contrast pairs")
+        added = [PairInfo(c.convergent, c.control) for c in selected_cands]
+        y_pos = _y_positions(tree)
+
+        def anc_y(pair: PairInfo) -> float:
+            conv_leaf = leaf_by_name.get(pair.convergent)
+            ctrl_leaf = leaf_by_name.get(pair.control)
+            if conv_leaf is None or ctrl_leaf is None:
+                return 0.0
+            try:
+                anc = tree.common_ancestor(conv_leaf, ctrl_leaf)
+            except Exception:
+                return 0.0
+            return float(y_pos.get(anc, 0.0))
+
+        added.sort(key=anc_y)
+        return added
 
     pheno_for_algo: Dict[str, int] = {}
     if continuous:
@@ -353,22 +511,11 @@ def auto_select_pairs(
     if sum(1 for v in pheno_for_algo.values() if v in (1, -1)) < 4:
         raise ValueError("Not enough species outside the thresholds for auto-selection")
 
-    method = (method or "default").strip().lower()
-    if method not in {"default", "longest", "shortest", "contrast", "composite", "random"}:
-        raise ValueError(f"Unknown method: {method}")
-
     if num_alternates <= 0:
         max_combinations = 1
 
     if method in {"longest", "composite"} and not alignments_dir:
         raise ValueError("alignments_dir is required for method 'longest' and 'composite'")
-
-    parent_map = _build_parent_map(tree.root)
-    leaf_by_name: Dict[str, Clade] = {}
-    for leaf in tree.get_terminals():
-        nm = leaf.name or ""
-        if nm and nm not in leaf_by_name:
-            leaf_by_name[nm] = leaf
 
     seq_lengths: Dict[str, int] = {}
     if method in {"longest", "composite"}:

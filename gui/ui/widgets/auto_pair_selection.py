@@ -12,6 +12,7 @@ from Bio.Phylo.Newick import Clade
 from gui.ui.widgets.dialogs import (
     AutoSelectOptionsDialog as AutoSelectOptionsDialogExt,
     PhenoThresholdDialog,
+    PercentContrastDialog,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +42,205 @@ class CandidatePair:
     # leaf names. Materializing descendant sets for every candidate can become
     # quadratic in both time and memory for large trees.
     ancestor: Clade | None = None
+    pct_diff: float = 0.0
+
+
+def _existing_blocked_ancestors(viewer: "TreeViewer") -> List[Clade]:
+    blocked: List[Clade] = []
+    for p in viewer._pairs:
+        try:
+            conv_leaf = viewer._leaf(p.convergent)
+            ctrl_leaf = viewer._leaf(p.control)
+            if conv_leaf is None or ctrl_leaf is None:
+                continue
+            blocked.append(viewer._tree.common_ancestor(conv_leaf, ctrl_leaf))
+        except Exception:
+            continue
+    return blocked
+
+
+def _overlaps_blocked(viewer: "TreeViewer", anc: Clade, blocked: List[Clade]) -> bool:
+    for b in blocked:
+        if viewer._is_descendant(b, anc) or viewer._is_descendant(anc, b):
+            return True
+    return False
+
+
+def _build_pct_contrast_candidates(viewer: "TreeViewer") -> List[CandidatePair]:
+    leaves: List[tuple[str, Clade, float]] = []
+    for leaf in viewer._tree.get_terminals():
+        nm = (leaf.name or "").strip()
+        if not nm:
+            continue
+        if nm not in viewer._phenotypes:
+            continue
+        try:
+            val = float(viewer._phenotypes[nm])
+        except Exception:
+            continue
+        if val <= 0.0:
+            continue
+        leaves.append((nm, leaf, val))
+
+    out: List[CandidatePair] = []
+    for i in range(len(leaves)):
+        a_name, a_leaf, a_val = leaves[i]
+        for j in range(i + 1, len(leaves)):
+            b_name, b_leaf, b_val = leaves[j]
+            if a_val == b_val:
+                continue
+            if a_val > b_val:
+                conv, ctrl = a_name, b_name
+                upper, lower = a_val, b_val
+                conv_leaf, ctrl_leaf = a_leaf, b_leaf
+            else:
+                conv, ctrl = b_name, a_name
+                upper, lower = b_val, a_val
+                conv_leaf, ctrl_leaf = b_leaf, a_leaf
+            if lower <= 0.0:
+                continue
+            pct_diff = ((upper - lower) / lower) * 100.0
+            try:
+                anc = viewer._tree.common_ancestor(conv_leaf, ctrl_leaf)
+            except Exception:
+                anc = None
+            try:
+                dist = float(viewer._tree.distance(conv_leaf, ctrl_leaf))
+            except Exception:
+                if anc is None:
+                    dist = float("inf")
+                else:
+                    conv_path = viewer._path_to(anc, conv_leaf)
+                    ctrl_path = viewer._path_to(anc, ctrl_leaf)
+                    dist = float(len(conv_path) + len(ctrl_path))
+            out.append(
+                CandidatePair(
+                    convergent=conv,
+                    control=ctrl,
+                    distance=float(dist),
+                    ancestor=anc,
+                    pct_diff=float(pct_diff),
+                )
+            )
+    out.sort(key=lambda c: (c.distance, -c.pct_diff, c.convergent, c.control))
+    return out
+
+
+def _select_pct_contrast_candidates(
+    viewer: "TreeViewer",
+    candidates: List[CandidatePair],
+    min_pct_diff: float,
+    blocked: List[Clade] | None = None,
+) -> List[CandidatePair]:
+    blocked_local = list(blocked or [])
+    selected: List[CandidatePair] = []
+    for cand in candidates:
+        if cand.pct_diff < min_pct_diff:
+            continue
+        anc = cand.ancestor
+        if anc is None:
+            continue
+        if _overlaps_blocked(viewer, anc, blocked_local):
+            continue
+        selected.append(cand)
+        blocked_local.append(anc)
+    return selected
+
+
+def _default_pct_sweep_thresholds(candidates: List[CandidatePair], points: int = 25) -> List[float]:
+    if not candidates:
+        return [0.0]
+    max_pct = max(float(c.pct_diff) for c in candidates)
+    if max_pct <= 0.0:
+        return [0.0]
+    pts = max(5, int(points))
+    hi = min(max_pct, 1000.0)
+    vals = [(hi * i) / float(pts - 1) for i in range(pts)]
+    if max_pct > hi:
+        vals.append(max_pct)
+    # Preserve order while removing duplicates from rounding.
+    out: List[float] = []
+    seen = set()
+    for v in vals:
+        key = round(float(v), 6)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(float(v))
+    return out
+
+
+def _auto_select_pairs_pct_contrast(
+    viewer: "TreeViewer",
+    min_pct_diff: float,
+    num_alternates: int,
+) -> None:
+    if num_alternates > 0:
+        QMessageBox.information(
+            viewer,
+            "Alternates Not Used",
+            "Alternates are not used for the percent-contrast method.",
+        )
+    candidates = _build_pct_contrast_candidates(viewer)
+    if not candidates:
+        QMessageBox.warning(
+            viewer,
+            "Auto Select Error",
+            "No eligible positive-valued species pairs were found.",
+        )
+        return
+
+    progress = QProgressDialog("Selecting percent-contrast pairs...", "Cancel", 0, len(candidates), viewer)
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setValue(0)
+    progress.show()
+    QApplication.processEvents()
+
+    blocked = _existing_blocked_ancestors(viewer)
+    added: List[PairInfo] = []
+    for idx, cand in enumerate(candidates, start=1):
+        if idx % 100 == 0:
+            progress.setValue(idx)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                progress.close()
+                return
+        if cand.pct_diff < min_pct_diff:
+            continue
+        anc = cand.ancestor
+        if anc is None:
+            continue
+        if _overlaps_blocked(viewer, anc, blocked):
+            continue
+        added.append(PairInfo(cand.convergent, cand.control))
+        blocked.append(anc)
+
+    progress.setValue(len(candidates))
+    progress.close()
+
+    if len(viewer._pairs) + len(added) < 2:
+        QMessageBox.warning(
+            viewer,
+            "Auto Select Error",
+            "ESL-PSC requires at least 2 valid contrast pairs and if not all of the species are labeled they may need to label more.",
+        )
+        return
+    if not added:
+        QMessageBox.warning(
+            viewer,
+            "Auto Select Error",
+            "No pairs passed the selected percent-contrast threshold.",
+        )
+        return
+
+    viewer._push_undo()
+    viewer._pairs.extend(added)
+    viewer._prune_nested_pairs()
+    viewer._sort_pairs_by_vertical_position()
+    viewer._current_role = None
+    viewer._current_first = None
+    viewer._apply_pairs()
 
 
 def auto_select_pairs(viewer: "TreeViewer") -> None:
@@ -53,7 +253,66 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
     # If the tree's leaf set has changed since last snapshot, clear pairs now
     viewer._clear_pairs_if_tree_changed()
     temp_mapping: Dict[str, int] | None = None
-    if viewer._continuous_pheno:
+
+    # Ask user which auto-selection strategy to use
+    dlg = AutoSelectOptionsDialogExt(
+        bool(viewer._alignments_dir),
+        bool(viewer._continuous_pheno),
+        True,
+        allow_pct_contrast=bool(viewer._continuous_pheno),
+        parent=viewer,
+    )
+    dlg.exec()
+    if not dlg.choice:
+        return
+    method = dlg.choice  # "default", "longest", "shortest", "contrast", "composite", "random", or "pct_contrast"
+
+    # Continuous-trait setup differs by method:
+    # - pct_contrast: positive-only percentage threshold on pair values.
+    # - others: temporary binary mapping via lower/upper thresholds.
+    min_pct_diff = 0.0
+    if viewer._continuous_pheno and method == "pct_contrast":
+        vals = []
+        try:
+            vals = [float(v) for v in viewer._phenotypes.values() if v is not None]
+        except Exception:
+            vals = []
+        if not vals or any(v <= 0.0 for v in vals):
+            QMessageBox.warning(
+                viewer,
+                "Percent Contrast Error",
+                "This method requires continuous phenotype values that are all strictly positive.",
+            )
+            return
+        pct_candidates = _build_pct_contrast_candidates(viewer)
+        if not pct_candidates:
+            QMessageBox.warning(
+                viewer,
+                "Percent Contrast Error",
+                "No eligible positive-valued species pairs were found.",
+            )
+            return
+        sweep_thresholds = _default_pct_sweep_thresholds(pct_candidates, points=25)
+        blocked_existing = _existing_blocked_ancestors(viewer)
+        sweep_counts = [
+            len(_select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing))
+            for th in sweep_thresholds
+        ]
+        default_thr = float(getattr(viewer, "_last_pct_diff_threshold", 0.0) or 0.0)
+        pct_dlg = PercentContrastDialog(
+            sweep_thresholds,
+            sweep_counts,
+            count_fn=lambda th: len(
+                _select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing)
+            ),
+            default_threshold=default_thr,
+            parent=viewer,
+        )
+        if pct_dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        min_pct_diff = max(0.0, float(pct_dlg.min_pct_diff))
+        viewer._last_pct_diff_threshold = float(min_pct_diff)
+    elif viewer._continuous_pheno:
         dlg_thresh = PhenoThresholdDialog(
             list(viewer._phenotypes.values()), parent=viewer
         )
@@ -62,12 +321,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
             vmin, vmax = float(viewer._pheno_min), float(viewer._pheno_max)
             low = max(vmin, min(vmax, float(viewer._last_thresh_lower)))
             up = max(vmin, min(vmax, float(viewer._last_thresh_upper)))
-            # Ensure low <= up; if not, reset to dialog defaults
             if low <= up:
                 dlg_thresh.lower_spin.setValue(low)
                 dlg_thresh.upper_spin.setValue(up)
         else:
-            # Default both thresholds to the median of phenotype values at session start
             vals = sorted(float(v) for v in viewer._phenotypes.values())
             if vals:
                 mid = len(vals) // 2
@@ -77,14 +334,12 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                     median = 0.5 * (vals[mid - 1] + vals[mid])
                 vmin, vmax = float(viewer._pheno_min), float(viewer._pheno_max)
                 med = max(vmin, min(vmax, float(median)))
-                # Allow equality by default: both thresholds start at the median
                 dlg_thresh.lower_spin.setValue(med)
                 dlg_thresh.upper_spin.setValue(med)
         if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
             return
         lower = dlg_thresh.lower_threshold
         upper = dlg_thresh.upper_threshold
-        # Allow equality; only error if lower > upper
         if lower > upper:
             QMessageBox.warning(
                 viewer,
@@ -92,9 +347,7 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 "Lower threshold must not exceed upper threshold",
             )
             return
-        # Remember for this session
         viewer._last_thresh_lower, viewer._last_thresh_upper = float(lower), float(upper)
-        # Build a temporary binary mapping for the algorithm only
         temp_mapping = {
             name: (1 if val > upper else -1)
             for name, val in viewer._phenotypes.items()
@@ -107,15 +360,6 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
                 "Not enough species outside the thresholds for auto-selection",
             )
             return
-
-    # Ask user how to resolve ambiguous choices
-    dlg = AutoSelectOptionsDialogExt(
-        bool(viewer._alignments_dir), bool(viewer._continuous_pheno), True, parent=viewer
-    )
-    dlg.exec()
-    if not dlg.choice:
-        return
-    method = dlg.choice  # "default", "longest", "shortest", "contrast", "composite", or "random"
     # Alternates configuration
     try:
         num_alternates = int(getattr(dlg, "num_alternates", 0))
@@ -127,6 +371,10 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
         max_combos = 1
     if num_alternates <= 0:
         max_combos = 1  # force single combo when no alternates requested
+
+    if method == "pct_contrast":
+        _auto_select_pairs_pct_contrast(viewer, min_pct_diff=min_pct_diff, num_alternates=num_alternates)
+        return
 
     # If longest is requested, ensure we have an alignments directory and
     # collect sequence length info for relevant species.

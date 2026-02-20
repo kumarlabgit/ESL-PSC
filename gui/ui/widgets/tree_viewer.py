@@ -124,6 +124,7 @@ class TreeViewer(QWidget):
         # Remember last used continuous thresholds for the session
         self._last_thresh_lower: float | None = None
         self._last_thresh_upper: float | None = None
+        self._last_pct_diff_threshold: float | None = None
 
         # Map explicit species name to total aligned amino acid sequence length.
         self._seq_lengths: Dict[str, int] = {}
