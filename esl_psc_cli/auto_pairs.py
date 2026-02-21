@@ -442,6 +442,8 @@ def auto_select_pairs(
         raise ValueError("No phenotype entries matched species present in the tree")
 
     method = (method or "default").strip().lower()
+    if method == "simple_deterministic":
+        method = "default"
     if method not in {"default", "longest", "shortest", "contrast", "composite", "random", "pct_contrast"}:
         raise ValueError(f"Unknown method: {method}")
 

@@ -253,113 +253,121 @@ def auto_select_pairs(viewer: "TreeViewer") -> None:
     # If the tree's leaf set has changed since last snapshot, clear pairs now
     viewer._clear_pairs_if_tree_changed()
     temp_mapping: Dict[str, int] | None = None
-
-    # Ask user which auto-selection strategy to use
-    dlg = AutoSelectOptionsDialogExt(
-        bool(viewer._alignments_dir),
-        bool(viewer._continuous_pheno),
-        True,
-        allow_pct_contrast=bool(viewer._continuous_pheno),
-        parent=viewer,
-    )
-    dlg.exec()
-    if not dlg.choice:
-        return
-    method = dlg.choice  # "default", "longest", "shortest", "contrast", "composite", "random", or "pct_contrast"
-
-    # Continuous-trait setup differs by method:
-    # - pct_contrast: positive-only percentage threshold on pair values.
-    # - others: temporary binary mapping via lower/upper thresholds.
     min_pct_diff = 0.0
-    if viewer._continuous_pheno and method == "pct_contrast":
-        vals = []
-        try:
-            vals = [float(v) for v in viewer._phenotypes.values() if v is not None]
-        except Exception:
-            vals = []
-        if not vals or any(v <= 0.0 for v in vals):
-            QMessageBox.warning(
-                viewer,
-                "Percent Contrast Error",
-                "This method requires continuous phenotype values that are all strictly positive.",
-            )
-            return
-        pct_candidates = _build_pct_contrast_candidates(viewer)
-        if not pct_candidates:
-            QMessageBox.warning(
-                viewer,
-                "Percent Contrast Error",
-                "No eligible positive-valued species pairs were found.",
-            )
-            return
-        sweep_thresholds = _default_pct_sweep_thresholds(pct_candidates, points=25)
-        blocked_existing = _existing_blocked_ancestors(viewer)
-        sweep_counts = [
-            len(_select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing))
-            for th in sweep_thresholds
-        ]
-        default_thr = float(getattr(viewer, "_last_pct_diff_threshold", 0.0) or 0.0)
-        pct_dlg = PercentContrastDialog(
-            sweep_thresholds,
-            sweep_counts,
-            count_fn=lambda th: len(
-                _select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing)
-            ),
-            default_threshold=default_thr,
+
+    while True:
+        temp_mapping = None
+        min_pct_diff = 0.0
+
+        # Ask user which auto-selection strategy to use.
+        dlg = AutoSelectOptionsDialogExt(
+            bool(viewer._alignments_dir),
+            bool(viewer._continuous_pheno),
+            True,
+            allow_pct_contrast=bool(viewer._continuous_pheno),
             parent=viewer,
         )
-        if pct_dlg.exec() != QDialog.DialogCode.Accepted:
+        dlg.exec()
+        if not dlg.choice:
             return
-        min_pct_diff = max(0.0, float(pct_dlg.min_pct_diff))
-        viewer._last_pct_diff_threshold = float(min_pct_diff)
-    elif viewer._continuous_pheno:
-        dlg_thresh = PhenoThresholdDialog(
-            list(viewer._phenotypes.values()), parent=viewer
-        )
-        # Pre-populate with last used thresholds for the session (clamped)
-        if viewer._last_thresh_lower is not None and viewer._last_thresh_upper is not None:
-            vmin, vmax = float(viewer._pheno_min), float(viewer._pheno_max)
-            low = max(vmin, min(vmax, float(viewer._last_thresh_lower)))
-            up = max(vmin, min(vmax, float(viewer._last_thresh_upper)))
-            if low <= up:
-                dlg_thresh.lower_spin.setValue(low)
-                dlg_thresh.upper_spin.setValue(up)
-        else:
-            vals = sorted(float(v) for v in viewer._phenotypes.values())
-            if vals:
-                mid = len(vals) // 2
-                if len(vals) % 2 == 1:
-                    median = vals[mid]
-                else:
-                    median = 0.5 * (vals[mid - 1] + vals[mid])
+
+        method = dlg.choice
+        if method == "simple_deterministic":
+            method = "default"
+
+        # Continuous-trait setup differs by method:
+        # - pct_contrast: positive-only percentage threshold on pair values.
+        # - others: temporary binary mapping via lower/upper thresholds.
+        if viewer._continuous_pheno and method == "pct_contrast":
+            vals = []
+            try:
+                vals = [float(v) for v in viewer._phenotypes.values() if v is not None]
+            except Exception:
+                vals = []
+            if not vals or any(v <= 0.0 for v in vals):
+                QMessageBox.warning(
+                    viewer,
+                    "Percent Contrast Error",
+                    "This method requires continuous phenotype values that are all strictly positive.",
+                )
+                continue
+            pct_candidates = _build_pct_contrast_candidates(viewer)
+            if not pct_candidates:
+                QMessageBox.warning(
+                    viewer,
+                    "Percent Contrast Error",
+                    "No eligible positive-valued species pairs were found.",
+                )
+                continue
+            sweep_thresholds = _default_pct_sweep_thresholds(pct_candidates, points=25)
+            blocked_existing = _existing_blocked_ancestors(viewer)
+            sweep_counts = [
+                len(_select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing))
+                for th in sweep_thresholds
+            ]
+            default_thr = float(getattr(viewer, "_last_pct_diff_threshold", 0.0) or 0.0)
+            pct_dlg = PercentContrastDialog(
+                sweep_thresholds,
+                sweep_counts,
+                count_fn=lambda th: len(
+                    _select_pct_contrast_candidates(viewer, pct_candidates, float(th), blocked_existing)
+                ),
+                default_threshold=default_thr,
+                parent=viewer,
+            )
+            if pct_dlg.exec() != QDialog.DialogCode.Accepted:
+                continue
+            min_pct_diff = max(0.0, float(pct_dlg.min_pct_diff))
+            viewer._last_pct_diff_threshold = float(min_pct_diff)
+        elif viewer._continuous_pheno:
+            dlg_thresh = PhenoThresholdDialog(
+                list(viewer._phenotypes.values()), parent=viewer
+            )
+            # Pre-populate with last used thresholds for the session (clamped)
+            if viewer._last_thresh_lower is not None and viewer._last_thresh_upper is not None:
                 vmin, vmax = float(viewer._pheno_min), float(viewer._pheno_max)
-                med = max(vmin, min(vmax, float(median)))
-                dlg_thresh.lower_spin.setValue(med)
-                dlg_thresh.upper_spin.setValue(med)
-        if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
-            return
-        lower = dlg_thresh.lower_threshold
-        upper = dlg_thresh.upper_threshold
-        if lower > upper:
-            QMessageBox.warning(
-                viewer,
-                "Threshold Error",
-                "Lower threshold must not exceed upper threshold",
-            )
-            return
-        viewer._last_thresh_lower, viewer._last_thresh_upper = float(lower), float(upper)
-        temp_mapping = {
-            name: (1 if val > upper else -1)
-            for name, val in viewer._phenotypes.items()
-            if (val > upper) or (val < lower)
-        }
-        if sum(1 for v in temp_mapping.values() if v in (1, -1)) < 4:
-            QMessageBox.warning(
-                viewer,
-                "Threshold Error",
-                "Not enough species outside the thresholds for auto-selection",
-            )
-            return
+                low = max(vmin, min(vmax, float(viewer._last_thresh_lower)))
+                up = max(vmin, min(vmax, float(viewer._last_thresh_upper)))
+                if low <= up:
+                    dlg_thresh.lower_spin.setValue(low)
+                    dlg_thresh.upper_spin.setValue(up)
+            else:
+                vals = sorted(float(v) for v in viewer._phenotypes.values())
+                if vals:
+                    mid = len(vals) // 2
+                    if len(vals) % 2 == 1:
+                        median = vals[mid]
+                    else:
+                        median = 0.5 * (vals[mid - 1] + vals[mid])
+                    vmin, vmax = float(viewer._pheno_min), float(viewer._pheno_max)
+                    med = max(vmin, min(vmax, float(median)))
+                    dlg_thresh.lower_spin.setValue(med)
+                    dlg_thresh.upper_spin.setValue(med)
+            if dlg_thresh.exec() != QDialog.DialogCode.Accepted:
+                continue
+            lower = dlg_thresh.lower_threshold
+            upper = dlg_thresh.upper_threshold
+            if lower > upper:
+                QMessageBox.warning(
+                    viewer,
+                    "Threshold Error",
+                    "Lower threshold must not exceed upper threshold",
+                )
+                continue
+            viewer._last_thresh_lower, viewer._last_thresh_upper = float(lower), float(upper)
+            temp_mapping = {
+                name: (1 if val > upper else -1)
+                for name, val in viewer._phenotypes.items()
+                if (val > upper) or (val < lower)
+            }
+            if sum(1 for v in temp_mapping.values() if v in (1, -1)) < 4:
+                QMessageBox.warning(
+                    viewer,
+                    "Threshold Error",
+                    "Not enough species outside the thresholds for auto-selection",
+                )
+                continue
+        break
     # Alternates configuration
     try:
         num_alternates = int(getattr(dlg, "num_alternates", 0))

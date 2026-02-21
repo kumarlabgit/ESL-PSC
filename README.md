@@ -70,7 +70,7 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
     - Thresholded binarization: prompt for lower/upper thresholds (with histogram + quantile tails) used only by the auto-selection algorithm.
     - Positive-trait percent contrast: require a minimum percent difference (`upper` vs `lower`) and greedily select closest non-overlapping pairs first.
   - For the positive-trait percent-contrast mode, the GUI can preview a threshold sweep plot (threshold vs selected pair count) before applying a threshold.
-  - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Default.
+  - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Simple deterministic.
   - Exported SVGs include the continuous colorbar and low/high labels. In continuous mode, manual binary tools such as Invert Phenotype and Set All to Non‑convergent are disabled by design.
 
 - Analysis modes (Parameters page and CLI)
@@ -84,6 +84,15 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
 - Plots for predictions
   - Binary phenotypes: violin or KDE SPS plots remain available when a binary phenotype file is supplied.
   - Continuous phenotypes: select the new Phenotype vs SPS density plot (GUI checkbox or `--make_continuous_plot`).
+
+#### February 2026 Update – Local Contrast Selector for Continuous Traits
+
+- Tree Viewer (continuous mode)
+  - Added a local percent-contrast selector for positive-valued continuous traits. This mode picks closest non-overlapping pairs that pass a user-chosen minimum percent-difference threshold.
+  - Includes a threshold sweep preview (threshold vs selected pair count) to help choose a cutoff before applying pair selection.
+
+- CLI auto pair selection
+  - Added method `pct_contrast` with `--min_pct_diff` for the same local percent-contrast selection workflow.
 
 
 ### Running the GUI
@@ -138,6 +147,10 @@ Here is an example of how to run the script:
 To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
+
+### Auto Pair Selection CLI
+
+Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
 
 ### Fast Scan Rust CLI
 

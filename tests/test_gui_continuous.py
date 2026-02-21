@@ -48,3 +48,21 @@ def test_checkbox_locked_for_response_dir(qt_app):
     assert "--use_continuous_phenotypes" in cmd_page.cmd_display.toPlainText()
     texts = [w.text() for w in cmd_page.summary_group.findChildren(QLineEdit)]
     assert any("Continuous phenotypes" in t for t in texts)
+
+
+def test_continuous_toggle_not_hidden_by_advanced_toggle(qt_app):
+    cfg = ESLConfig()
+    cfg.species_pheno_is_continuous = True
+    cfg.species_phenotypes_file = "dummy.csv"
+    params = ParametersPage(cfg)
+    params.update_output_options_state()
+    params.show()
+    qt_app.processEvents()
+
+    assert params.use_continuous_chk.isVisible()
+    params.show_advanced_chk.setChecked(True)
+    qt_app.processEvents()
+    assert params.use_continuous_chk.isVisible()
+    params.show_advanced_chk.setChecked(False)
+    qt_app.processEvents()
+    assert params.use_continuous_chk.isVisible()

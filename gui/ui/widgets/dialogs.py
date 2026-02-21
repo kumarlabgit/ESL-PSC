@@ -18,18 +18,14 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
     QLineEdit,
+    QGroupBox,
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
 
 
 class AutoSelectOptionsDialog(QDialog):
-    """Dialog to choose auto-select behavior with vertically stacked buttons.
-
-    Presents options in this order: Longest Sequence → Shortest distance → Max trait contrast → Composite best → Random → Default → Cancel.
-    Stores the chosen option as `self.choice` in
-    {"default","longest","shortest","contrast","composite","random","pct_contrast",None}.
-    """
+    """Dialog to choose auto-select behavior and advanced options."""
 
     def __init__(
         self,
@@ -41,127 +37,144 @@ class AutoSelectOptionsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("Auto Select Options")
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Choose how to resolve equally valid siblings"))
+        self.choice: str | None = None
 
-        # --- Alternates controls ---
-        # Number of alternates per convergent/control species (0..20)
+        layout = QVBoxLayout(self)
+        intro = QLabel("Choose one method for resolving valid convergent/control tip pairs.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        method_box = QGroupBox("Method")
+        method_layout = QVBoxLayout(method_box)
+        self._method_group = QButtonGroup(self)
+        self._method_group.setExclusive(True)
+        self._method_buttons: dict[str, QRadioButton] = {}
+
+        options = [
+            (
+                "shortest",
+                "Shortest distance",
+                "Prefer the closest pair when multiple sibling choices are available.",
+                True,
+                "",
+            ),
+            (
+                "longest",
+                "Longest sequence",
+                "Prefer tips with greatest aligned sequence length.",
+                bool(allow_longest),
+                "Requires alignments directory.",
+            ),
+            (
+                "contrast",
+                "Max trait contrast",
+                "For continuous traits, choose descendants with maximal raw difference.",
+                bool(allow_contrast),
+                "Continuous only.",
+            ),
+            (
+                "pct_contrast",
+                "Min % contrast (positive traits)",
+                "Closest-first non-overlapping selection with a minimum % upper-vs-lower difference.",
+                bool(allow_pct_contrast),
+                "Continuous positive values only.",
+            ),
+            (
+                "composite",
+                "Composite best",
+                "Balance distance, sequence length, and trait contrast where available.",
+                bool(allow_composite),
+                "",
+            ),
+            (
+                "random",
+                "Random",
+                "Random tie-break among valid sibling choices.",
+                True,
+                "",
+            ),
+            (
+                "simple_deterministic",
+                "Simple deterministic",
+                "Use initial adjacent tips with opposite phenotypes.",
+                True,
+                "",
+            ),
+        ]
+
+        for key, title, desc, enabled, badge in options:
+            rb = QRadioButton(title)
+            rb.setEnabled(enabled)
+            self._method_group.addButton(rb)
+            self._method_buttons[key] = rb
+            row = QVBoxLayout()
+            row.addWidget(rb)
+            dtext = desc if not badge else f"{desc} {badge}"
+            dlabel = QLabel(dtext)
+            dlabel.setWordWrap(True)
+            dlabel.setStyleSheet("QLabel { color: #666; margin-left: 22px; }")
+            row.addWidget(dlabel)
+            method_layout.addLayout(row)
+
+        # Choose a stable default selection.
+        for key in ("composite", "shortest", "random", "longest", "contrast", "pct_contrast", "simple_deterministic"):
+            btn = self._method_buttons.get(key)
+            if btn is not None and btn.isEnabled():
+                btn.setChecked(True)
+                break
+
+        layout.addWidget(method_box)
+
+        adv_box = QGroupBox("Advanced")
+        adv_layout = QVBoxLayout(adv_box)
+
         alts_row = QHBoxLayout()
-        alts_row.addWidget(QLabel("Number of alternates to add per convergent and control species:"))
+        alts_row.addWidget(QLabel("Alternates per side:"))
         self._alts_spin = QSpinBox()
         self._alts_spin.setRange(0, 20)
         self._alts_spin.setValue(0)
         self._alts_spin.setToolTip(
-            "Select alternate siblings species in each pair if possible to allow multiple species combinations"
+            "Optional alternate species per convergent/control side for each selected pair."
         )
         alts_row.addWidget(self._alts_spin)
         alts_row.addStretch()
-        layout.addLayout(alts_row)
+        adv_layout.addLayout(alts_row)
 
-        # Maximum combinations (1..32,999). Disabled unless alternates > 0
         max_row = QHBoxLayout()
-        max_lbl = QLabel("Maximum species combinations:")
-        max_row.addWidget(max_lbl)
+        max_row.addWidget(QLabel("Maximum species combinations:"))
         self._max_spin = QSpinBox()
-        self._max_spin.setRange(1, 32999)  # strictly less than 33,000
+        self._max_spin.setRange(1, 32999)
         self._max_spin.setValue(1)
         self._max_spin.setEnabled(False)
-        self._max_spin.setToolTip("Upper limit on the product of choices across pairs. Disabled unless alternates > 0.")
+        self._max_spin.setToolTip(
+            "Upper cap on product of species choices across pairs."
+        )
         max_row.addWidget(self._max_spin)
         max_row.addStretch()
-        layout.addLayout(max_row)
+        adv_layout.addLayout(max_row)
 
-        # Enable/disable logic for max combinations
-        def _on_alts_changed(val: int):
-            try:
-                if val <= 0:
-                    self._max_spin.setValue(1)
-                    self._max_spin.setEnabled(False)
-                else:
-                    # Enable and set a sensible default if previously disabled or at 1
-                    was_enabled = self._max_spin.isEnabled()
-                    self._max_spin.setEnabled(True)
-                    if (not was_enabled) or self._max_spin.value() <= 1:
-                        self._max_spin.setValue(32)
-            except Exception:
-                pass
-        self._alts_spin.valueChanged.connect(_on_alts_changed)
+        self._alts_note = QLabel(
+            "Alternates are disabled for the Min % contrast method."
+        )
+        self._alts_note.setWordWrap(True)
+        self._alts_note.setStyleSheet("QLabel { color: #9a5b00; }")
+        self._alts_note.setVisible(False)
+        adv_layout.addWidget(self._alts_note)
 
-        def mk_btn(text: str, choice: str, enabled: bool = True, tip: str | None = None) -> QPushButton:
-            btn = QPushButton(text)
-            btn.setEnabled(enabled)
-            if tip:
-                btn.setToolTip(tip)
-            btn.clicked.connect(lambda: self._pick(choice))
-            layout.addWidget(btn)
-            return btn
+        layout.addWidget(adv_box)
 
-        self.choice: str | None = None
+        self._alts_spin.valueChanged.connect(self._sync_alt_controls)
+        self._method_group.buttonToggled.connect(lambda *_args: self._on_method_changed())
+        self._sync_alt_controls()
+        self._on_method_changed()
 
-        # Create buttons stacked vertically
-        self.longest_btn = mk_btn(
-            "Longest Sequence",
-            "longest",
-            enabled=True,
-            tip=(
-                "Choose tips with the greatest total sequence length under each ancestor. "
-                "If no alignments directory is set, you will be prompted to choose one."
-            ),
-        )
-        self.shortest_btn = mk_btn(
-            "Shortest distance",
-            "shortest",
-            tip=(
-                "Resolve equally valid siblings using a shortest-distance heuristic."
-            ),
-        )
-        self.contrast_btn = mk_btn(
-            "Max trait contrast",
-            "contrast",
-            enabled=allow_contrast,
-            tip=(
-                "Choose tips with maximal continuous-phenotype difference."
-                if allow_contrast
-                else "Available only when continuous phenotypes are loaded"
-            ),
-        )
-        self.pct_contrast_btn = mk_btn(
-            "Min % contrast (positive traits)",
-            "pct_contrast",
-            enabled=allow_pct_contrast,
-            tip=(
-                "Continuous positive traits only. Select pairs by closest distance first, "
-                "requiring a minimum percent difference between upper and lower species."
-                if allow_pct_contrast
-                else "Available only when continuous phenotypes are loaded"
-            ),
-        )
-        self.composite_btn = mk_btn(
-            "Composite best",
-            "composite",
-            enabled=allow_composite,
-            tip=(
-                "Best pair of siblings based on a composite score of distance, and sequence length, "
-                "and trait contrast if available (all rescaled)."
-            ),
-        )
-        self.random_btn = mk_btn(
-            "Random",
-            "random",
-            tip=("Choose randomly among siblings."),
-        )
-        self.default_btn = mk_btn(
-            "Default",
-            "default",
-            tip=(
-                "Use initial adjacent tips with opposite phenotypes."
-            ),
-        )
-
-        # Cancel at the bottom
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        layout.addWidget(cancel)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        ok_btn = btns.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_btn is not None:
+            ok_btn.setText("Apply")
+        btns.accepted.connect(self._accept_choice)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
 
     @property
     def num_alternates(self) -> int:
@@ -177,8 +190,42 @@ class AutoSelectOptionsDialog(QDialog):
         except Exception:
             return 1
 
-    def _pick(self, choice: str) -> None:
-        self.choice = choice
+    def _selected_method(self) -> str | None:
+        for key, btn in self._method_buttons.items():
+            if btn.isChecked() and btn.isEnabled():
+                return key
+        return None
+
+    def _sync_alt_controls(self) -> None:
+        try:
+            alts = int(self._alts_spin.value())
+        except Exception:
+            alts = 0
+        if alts <= 0:
+            self._max_spin.setValue(1)
+            self._max_spin.setEnabled(False)
+            return
+        if self._max_spin.value() <= 1:
+            self._max_spin.setValue(32)
+        self._max_spin.setEnabled(True)
+
+    def _on_method_changed(self) -> None:
+        method = self._selected_method()
+        is_pct = method == "pct_contrast"
+        self._alts_note.setVisible(is_pct)
+        if is_pct:
+            self._alts_spin.setValue(0)
+            self._alts_spin.setEnabled(False)
+            self._max_spin.setValue(1)
+            self._max_spin.setEnabled(False)
+        else:
+            self._alts_spin.setEnabled(True)
+            self._sync_alt_controls()
+
+    def _accept_choice(self) -> None:
+        self.choice = self._selected_method()
+        if not self.choice:
+            return
         self.accept()
 
 

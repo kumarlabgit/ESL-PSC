@@ -64,8 +64,17 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--method",
-        default="default",
-        choices=["default", "longest", "shortest", "contrast", "composite", "random", "pct_contrast"],
+        default="simple_deterministic",
+        choices=[
+            "simple_deterministic",
+            "default",
+            "longest",
+            "shortest",
+            "contrast",
+            "composite",
+            "random",
+            "pct_contrast",
+        ],
         help="Tie-breaking method for ambiguous ancestor clades",
     )
     parser.add_argument(
