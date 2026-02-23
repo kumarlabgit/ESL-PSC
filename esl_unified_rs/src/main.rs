@@ -326,7 +326,8 @@ fn main() -> Result<()> {
     }
     validate_args(&args, &resolved_alignments)?;
     report_compat_warnings(&args);
-    let model_workers = configure_model_workers(&args)?;
+    let lambda_grid = build_lambda_grid(&args)?;
+    let model_workers = configure_model_workers(&args, lambda_grid.len())?;
 
     let output_dir = resolve_output_dir(&args)?;
     fs::create_dir_all(&output_dir)
@@ -449,7 +450,6 @@ fn main() -> Result<()> {
         None
     };
 
-    let lambda_grid = build_lambda_grid(&args)?;
     println!("Lambda grid has {} pairs", lambda_grid.len());
     println!("Lambda model workers: {}", model_workers);
 
@@ -885,14 +885,14 @@ fn derive_canceled_alignments_dir(args: &Args, output_dir: &Path) -> PathBuf {
     output_dir.join(format!("{}_gap-canceled_alignments", base))
 }
 
-fn configure_model_workers(args: &Args) -> Result<usize> {
+fn configure_model_workers(args: &Args, lambda_pairs: usize) -> Result<usize> {
     let n = if let Some(n) = args.num_threads {
         if n == 0 {
             bail!("--num_threads must be >= 1");
         }
         n
     } else {
-        auto_model_workers()
+        auto_model_workers(lambda_pairs)
     };
     rayon::ThreadPoolBuilder::new()
         .num_threads(n)
@@ -901,13 +901,26 @@ fn configure_model_workers(args: &Args) -> Result<usize> {
     Ok(rayon::current_num_threads())
 }
 
-fn auto_model_workers() -> usize {
+fn auto_model_workers(lambda_pairs: usize) -> usize {
     let avail = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    // In practice this workload often slows down at full-core saturation;
-    // cap default auto workers to keep memory bandwidth and scheduling overhead lower.
-    avail.min(8).max(1)
+    // Keep some headroom to reduce contention with other processes and memory bandwidth pressure.
+    let reserve = if avail >= 16 {
+        4
+    } else if avail >= 8 {
+        2
+    } else if avail >= 2 {
+        1
+    } else {
+        0
+    };
+    let mut workers = avail.saturating_sub(reserve).max(1);
+    // Never launch more workers than independent lambda models in a combo.
+    if lambda_pairs > 0 {
+        workers = workers.min(lambda_pairs);
+    }
+    workers
 }
 
 fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
