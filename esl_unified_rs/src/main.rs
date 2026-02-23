@@ -86,6 +86,9 @@ struct Args {
     #[arg(long = "maxiter", default_value_t = 100)]
     maxiter: usize,
 
+    #[arg(long = "num_threads", alias = "num-threads")]
+    num_threads: Option<usize>,
+
     #[arg(long = "top_rank_frac", alias = "top-rank-frac", default_value_t = 0.01)]
     top_rank_frac: f64,
 
@@ -308,6 +311,7 @@ fn main() -> Result<()> {
     }
     validate_args(&args, &resolved_alignments)?;
     report_compat_warnings(&args);
+    let model_workers = configure_model_workers(&args)?;
 
     let output_dir = resolve_output_dir(&args)?;
     fs::create_dir_all(&output_dir)
@@ -418,7 +422,7 @@ fn main() -> Result<()> {
 
     let lambda_grid = build_lambda_grid(&args)?;
     println!("Lambda grid has {} pairs", lambda_grid.len());
-    println!("Lambda model workers: {}", rayon::current_num_threads());
+    println!("Lambda model workers: {}", model_workers);
 
     let mut gene_aggregates: Vec<GeneAggregate> = train_alignments
         .iter()
@@ -614,7 +618,7 @@ fn main() -> Result<()> {
 
                 // Solve model grid in bounded parallel chunks so workers share the
                 // same read-only matrices while keeping peak result memory bounded.
-                let chunk_size = rayon::current_num_threads().max(1);
+                let chunk_size = model_workers.max(1);
                 for lambda_chunk in lambda_grid.chunks(chunk_size) {
                     let results: Vec<ModelResult> = if lambda_chunk.len() == 1 {
                         let (lambda1, lambda2) = lambda_chunk[0];
@@ -878,6 +882,19 @@ fn derive_canceled_alignments_dir(args: &Args, output_dir: &Path) -> PathBuf {
     output_dir.join(format!("{}_gap-canceled_alignments", base))
 }
 
+fn configure_model_workers(args: &Args) -> Result<usize> {
+    if let Some(n) = args.num_threads {
+        if n == 0 {
+            bail!("--num_threads must be >= 1");
+        }
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .map_err(|e| anyhow!("failed to configure rayon thread pool: {e}"))?;
+    }
+    Ok(rayon::current_num_threads())
+}
+
 fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
     if !alignments_dir.is_dir() {
         bail!("alignments directory does not exist: {}", alignments_dir.display());
@@ -917,6 +934,11 @@ fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
     }
     if args.gp_step <= 0.0 {
         bail!("--gp_step must be > 0");
+    }
+    if let Some(n) = args.num_threads {
+        if n == 0 {
+            bail!("--num_threads must be >= 1");
+        }
     }
     if args.maxiter == 0 {
         bail!("--maxiter must be > 0");
