@@ -274,7 +274,8 @@ struct PhenotypeInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PredictionDesign {
     species: Vec<String>,
-    x: Vec<Vec<f64>>, // shape: n_species x n_features
+    // For each feature index, row indices (within `species`) with a match.
+    feature_hit_rows: Vec<Vec<usize>>,
     true_values: Vec<Option<f64>>,
 }
 
@@ -623,6 +624,11 @@ fn main() -> Result<()> {
                     phenotype_info.as_ref(),
                 )?)
             };
+            let input_feature_hit_rows = if args.no_pred_output {
+                None
+            } else {
+                Some(build_feature_hit_rows_from_dense(&prep.x))
+            };
 
             let lipschitz = if prep.features.is_empty() {
                 1.0
@@ -706,6 +712,9 @@ fn main() -> Result<()> {
                             append_prediction_rows(
                                 &mut all_prediction_rows,
                                 &prep,
+                                input_feature_hit_rows
+                                    .as_deref()
+                                    .ok_or_else(|| anyhow!("missing input feature hit rows"))?,
                                 pred,
                                 result,
                                 &combo_tag,
@@ -877,16 +886,28 @@ fn derive_canceled_alignments_dir(args: &Args, output_dir: &Path) -> PathBuf {
 }
 
 fn configure_model_workers(args: &Args) -> Result<usize> {
-    if let Some(n) = args.num_threads {
+    let n = if let Some(n) = args.num_threads {
         if n == 0 {
             bail!("--num_threads must be >= 1");
         }
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(n)
-            .build_global()
-            .map_err(|e| anyhow!("failed to configure rayon thread pool: {e}"))?;
-    }
+        n
+    } else {
+        auto_model_workers()
+    };
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(n)
+        .build_global()
+        .map_err(|e| anyhow!("failed to configure rayon thread pool: {e}"))?;
     Ok(rayon::current_num_threads())
+}
+
+fn auto_model_workers() -> usize {
+    let avail = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    // In practice this workload often slows down at full-core saturation;
+    // cap default auto workers to keep memory bandwidth and scheduling overhead lower.
+    avail.min(8).max(1)
 }
 
 fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
@@ -2596,14 +2617,14 @@ fn build_prediction_design(
         .map(|g| (g.name.as_str(), g))
         .collect();
 
-    let mut x = vec![vec![0.0_f64; features.len()]; species.len()];
+    let mut feature_hit_rows = vec![Vec::new(); features.len()];
     for (row_idx, sp) in species.iter().enumerate() {
         for (j, fm) in features.iter().enumerate() {
             let gene_name = genes[fm.gene_idx].name.as_str();
             if let Some(gene) = gene_lookup.get(gene_name) {
                 if let Some(seq) = gene.seqs.get(sp) {
                     if fm.position < seq.len() && seq[fm.position] == fm.aa {
-                        x[row_idx][j] = 1.0;
+                        feature_hit_rows[j].push(row_idx);
                     }
                 }
             }
@@ -2612,14 +2633,31 @@ fn build_prediction_design(
 
     Ok(PredictionDesign {
         species,
-        x,
+        feature_hit_rows,
         true_values,
     })
+}
+
+fn build_feature_hit_rows_from_dense(x: &[Vec<f64>]) -> Vec<Vec<usize>> {
+    if x.is_empty() {
+        return Vec::new();
+    }
+    let p = x[0].len();
+    let mut rows = vec![Vec::new(); p];
+    for (i, row) in x.iter().enumerate() {
+        for (j, v) in row.iter().enumerate() {
+            if *v != 0.0 {
+                rows[j].push(i);
+            }
+        }
+    }
+    rows
 }
 
 fn append_prediction_rows(
     out_rows: &mut Vec<PredictionRowOut>,
     prep: &PreprocessedData,
+    input_feature_hit_rows: &[Vec<usize>],
     pred: &PredictionDesign,
     run: &ModelResult,
     combo_tag: &str,
@@ -2632,7 +2670,8 @@ fn append_prediction_rows(
     // Python parity: species predictions are emitted only for species that
     // matched at least one selected non-zero feature in that run.
     // Intercept and RMSE are then applied only to species present in the score map.
-    let (pred_scores, input_rmse) = python_style_prediction_scores(prep, pred, run);
+    let (pred_scores, input_rmse) =
+        python_style_prediction_scores(prep, input_feature_hit_rows, pred, run);
 
     for (i, score) in pred_scores {
         let true_phenotype = if let Some(ph) = phenotype_info {
@@ -2661,11 +2700,10 @@ fn append_prediction_rows(
 
 fn python_style_prediction_scores(
     prep: &PreprocessedData,
+    input_feature_hit_rows: &[Vec<usize>],
     pred: &PredictionDesign,
     run: &ModelResult,
 ) -> (Vec<(usize, f64)>, f64) {
-    let mut scores: HashMap<String, f64> = HashMap::new();
-
     let active_features: Vec<usize> = run
         .beta
         .iter()
@@ -2673,50 +2711,52 @@ fn python_style_prediction_scores(
         .filter_map(|(j, w)| if *w != 0.0 { Some(j) } else { None })
         .collect();
 
-    // Match Python behavior for input species: only create entries for species
-    // that matched at least one selected feature.
-    for (i, species) in prep.species.iter().enumerate() {
-        let mut touched = false;
-        let mut s = 0.0_f64;
-        for &j in &active_features {
-            if prep.x[i][j] != 0.0 {
-                s += run.beta[j];
-                touched = true;
-            }
-        }
-        if touched {
-            scores.insert(species.clone(), s);
-        }
-    }
+    let mut input_scores = vec![0.0_f64; prep.species.len()];
+    let mut input_touched = vec![false; prep.species.len()];
+    let mut pred_scores_dense = vec![0.0_f64; pred.species.len()];
+    let mut pred_touched_mask = vec![false; pred.species.len()];
 
-    // Match Python behavior for prediction species (non-input species):
-    // only include species with at least one selected-feature match.
-    let mut pred_touched: Vec<usize> = Vec::new();
-    for (i, species) in pred.species.iter().enumerate() {
-        let mut touched = false;
-        let mut s = 0.0_f64;
-        for &j in &active_features {
-            if pred.x[i][j] != 0.0 {
-                s += run.beta[j];
-                touched = true;
+    for &j in &active_features {
+        let w = run.beta[j];
+
+        if let Some(rows) = input_feature_hit_rows.get(j) {
+            for &row in rows {
+                input_scores[row] += w;
+                input_touched[row] = true;
             }
         }
-        if touched {
-            scores.insert(species.clone(), s);
-            pred_touched.push(i);
+        if let Some(rows) = pred.feature_hit_rows.get(j) {
+            for &row in rows {
+                pred_scores_dense[row] += w;
+                pred_touched_mask[row] = true;
+            }
         }
     }
 
     // Python adds intercept only to species keys already present in the map.
-    for value in scores.values_mut() {
-        *value += run.intercept;
+    for i in 0..input_scores.len() {
+        if input_touched[i] {
+            input_scores[i] += run.intercept;
+        }
+    }
+    for i in 0..pred_scores_dense.len() {
+        if pred_touched_mask[i] {
+            pred_scores_dense[i] += run.intercept;
+        }
+    }
+
+    let mut pred_touched: Vec<usize> = Vec::new();
+    for i in 0..pred.species.len() {
+        if pred_touched_mask[i] {
+            pred_touched.push(i);
+        }
     }
 
     // Python computes RMSE over all input species, defaulting missing scores to 0.
     let mut sum_sq = 0.0_f64;
     let n = prep.species.len().max(1);
-    for (i, species) in prep.species.iter().enumerate() {
-        let observed = scores.get(species).copied().unwrap_or(0.0);
+    for (i, _) in prep.species.iter().enumerate() {
+        let observed = if input_touched[i] { input_scores[i] } else { 0.0 };
         let expected = prep.y_model[i];
         sum_sq += (expected - observed).powi(2);
     }
@@ -2724,7 +2764,7 @@ fn python_style_prediction_scores(
 
     let pred_scores = pred_touched
         .into_iter()
-        .map(|i| (i, scores.get(&pred.species[i]).copied().unwrap_or(0.0)))
+        .map(|i| (i, pred_scores_dense[i]))
         .collect();
 
     (pred_scores, input_rmse)
