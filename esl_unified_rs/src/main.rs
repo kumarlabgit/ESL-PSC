@@ -380,13 +380,27 @@ fn main() -> Result<()> {
         println!("Loaded {} gene alignments", train_alignments.len());
     }
 
-    let prediction_alignments = if args.no_pred_output {
-        Vec::new()
+    let prediction_alignments_owned: Option<Vec<GeneAlignment>> =
+        if args.no_pred_output || resolved_prediction == resolved_alignments {
+            None
+        } else {
+            println!("Loading prediction alignments from {}", resolved_prediction.display());
+            Some(load_alignments(
+                &resolved_prediction,
+                limited_gene_set.as_ref(),
+                None,
+            )?)
+        };
+    let prediction_alignments: &[GeneAlignment] = if args.no_pred_output {
+        &[]
     } else if resolved_prediction == resolved_alignments {
-        train_alignments.clone()
+        // Reuse loaded input alignments directly when prediction and input
+        // directories are the same to avoid duplicating all sequence data.
+        train_alignments.as_slice()
     } else {
-        println!("Loading prediction alignments from {}", resolved_prediction.display());
-        load_alignments(&resolved_prediction, limited_gene_set.as_ref(), None)?
+        prediction_alignments_owned
+            .as_deref()
+            .ok_or_else(|| anyhow!("failed to load prediction alignments"))?
     };
 
     let phenotype_info = if let Some(path) = &args.species_pheno_path {
@@ -602,7 +616,7 @@ fn main() -> Result<()> {
                 None
             } else {
                 Some(build_prediction_design(
-                    &prediction_alignments,
+                    prediction_alignments,
                     &prep.features,
                     &prep.genes,
                     &combo.species,
@@ -1874,8 +1888,9 @@ fn read_fasta_map(path: &Path) -> Result<(HashMap<String, Vec<u8>>, usize)> {
         }
         if let Some(rest) = t.strip_prefix('>') {
             if !current_id.is_empty() {
+                let current_len = current_seq.len();
                 if let Some(expected) = seq_len {
-                    if current_seq.len() != expected {
+                    if current_len != expected {
                         bail!(
                             "sequence length mismatch in {} for species {}",
                             path.display(),
@@ -1883,12 +1898,14 @@ fn read_fasta_map(path: &Path) -> Result<(HashMap<String, Vec<u8>>, usize)> {
                         );
                     }
                 } else {
-                    seq_len = Some(current_seq.len());
+                    seq_len = Some(current_len);
                 }
-                seq_map.insert(current_id.clone(), current_seq.clone());
+                seq_map.insert(
+                    std::mem::take(&mut current_id),
+                    std::mem::take(&mut current_seq),
+                );
             }
             current_id = rest.trim().to_string();
-            current_seq.clear();
         } else if !current_id.is_empty() {
             for b in t.as_bytes() {
                 let c = if *b == b'?' { b'-' } else { b.to_ascii_uppercase() };
@@ -1898,8 +1915,9 @@ fn read_fasta_map(path: &Path) -> Result<(HashMap<String, Vec<u8>>, usize)> {
     }
 
     if !current_id.is_empty() {
+        let current_len = current_seq.len();
         if let Some(expected) = seq_len {
-            if current_seq.len() != expected {
+            if current_len != expected {
                 bail!(
                     "sequence length mismatch in {} for species {}",
                     path.display(),
@@ -1907,7 +1925,7 @@ fn read_fasta_map(path: &Path) -> Result<(HashMap<String, Vec<u8>>, usize)> {
                 );
             }
         } else {
-            seq_len = Some(current_seq.len());
+            seq_len = Some(current_len);
         }
         seq_map.insert(current_id, current_seq);
     }
