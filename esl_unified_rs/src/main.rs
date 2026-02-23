@@ -215,6 +215,20 @@ struct PreprocessedData {
     genes: Vec<GeneMeta>,
 }
 
+#[derive(Debug)]
+struct GeneFeatureColumn {
+    position: usize,
+    aa: u8,
+    values: Vec<f64>,
+}
+
+#[derive(Debug)]
+struct GenePreprocessResult {
+    gene_name: String,
+    var_site_count: usize,
+    columns: Vec<GeneFeatureColumn>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ModelResult {
     lambda1: f64,
@@ -2206,133 +2220,60 @@ fn preprocess_combo_alignments(
     let mut features: Vec<FeatureMeta> = Vec::new();
     let mut genes: Vec<GeneMeta> = Vec::with_capacity(alignments.len());
 
-    for (gene_idx, gene) in alignments.iter().enumerate() {
-        let mut seqs = Vec::with_capacity(combo.species.len());
-        let mut missing_flags = Vec::with_capacity(combo.species.len());
+    // Process genes in parallel chunks while merging each chunk in input order,
+    // preserving deterministic feature/gene ordering.
+    let chunk_size = rayon::current_num_threads().max(1);
+    for (chunk_idx, gene_chunk) in alignments.chunks(chunk_size).enumerate() {
+        let chunk_start = chunk_idx * chunk_size;
+        let chunk_results: Vec<GenePreprocessResult> = if gene_chunk.len() == 1 {
+            vec![preprocess_one_gene(
+                &gene_chunk[0],
+                combo,
+                apply_gap_cancel,
+                randomize_pairs,
+                preserve_alignments_dir,
+                args,
+            )?]
+        } else {
+            gene_chunk
+                .par_iter()
+                .map(|gene| {
+                    preprocess_one_gene(
+                        gene,
+                        combo,
+                        apply_gap_cancel,
+                        randomize_pairs,
+                        preserve_alignments_dir,
+                        args,
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?
+        };
 
-        for sp in &combo.species {
-            if let Some(seq) = gene.seqs.get(sp) {
-                seqs.push(seq.clone());
-                missing_flags.push(false);
-            } else {
-                seqs.push(vec![b'-'; gene.seq_len]);
-                missing_flags.push(true);
-            }
-        }
-
-        if args.nix_full_deletions && missing_flags.iter().any(|v| *v) {
-            let start = features.len();
-            genes.push(GeneMeta {
-                name: gene.name.clone(),
-                feature_start: start,
-                feature_end: start.saturating_sub(1),
-                var_site_count: 0,
-            });
-            continue;
-        }
-
-        if apply_gap_cancel {
-            let outgroup = args
-                .outgroup_species
-                .as_ref()
-                .and_then(|sp| gene.seqs.get(sp).cloned());
-            apply_gap_cancellation(
-                &mut seqs,
-                &missing_flags,
-                outgroup.as_ref(),
-                args.min_pairs,
-                args.cancel_only_partner,
-                args.cancel_tri_allelic,
-            );
-        }
-        if randomize_pairs {
-            apply_pair_randomization(&mut seqs);
-        }
-        if let Some(dir) = preserve_alignments_dir {
-            let out_path = dir.join(format!("{}.fas", gene.name));
-            write_two_line_fasta(&out_path, &combo.species, &seqs)?;
-        }
-
-        let var_site_count = count_var_sites_python(&seqs);
-        let feature_start = features.len();
-
-        for pos in 0..gene.seq_len {
-            let mut bases: BTreeSet<u8> = BTreeSet::new();
-            bases.insert(b'-');
-            for seq in &seqs {
-                bases.insert(seq[pos]);
-            }
-
-            if bases.len() <= 2 {
-                continue;
-            }
-
-            let mut base_counts: HashMap<u8, usize> = HashMap::new();
-            for b in &bases {
-                base_counts.insert(*b, 0);
-            }
-            for seq in &seqs {
-                if let Some(c) = base_counts.get_mut(&seq[pos]) {
-                    *c += 1;
-                }
-            }
-
-            let mut base_count_total = 0usize;
-            let mut max_count = 0usize;
-            for (b, c) in &base_counts {
-                if *b == b'-' {
-                    continue;
-                }
-                base_count_total += *c;
-                if *c > max_count {
-                    max_count = *c;
-                }
-            }
-
-            // Match preprocess ignore-singleton behavior (countThreshold=2).
-            if base_count_total.saturating_sub(max_count) < 2 {
-                continue;
-            }
-
-            for base in &bases {
-                if *base == b'-' {
-                    continue;
-                }
-
-                let mut feature_vals = vec![0.0_f64; seqs.len()];
-                let mut feature_sum = 0usize;
-                for (i, seq) in seqs.iter().enumerate() {
-                    if seq[pos] == *base {
-                        feature_vals[i] = 1.0;
-                        feature_sum += 1;
-                    }
-                }
-
-                if feature_sum < 2 {
-                    continue;
-                }
-
-                for (row, v) in x.iter_mut().zip(feature_vals.into_iter()) {
+        for (offset, gene_out) in chunk_results.into_iter().enumerate() {
+            let gene_idx = chunk_start + offset;
+            let feature_start = features.len();
+            let gene_name = gene_out.gene_name;
+            for col in gene_out.columns {
+                for (row, v) in x.iter_mut().zip(col.values.into_iter()) {
                     row.push(v);
                 }
-
-                let label = format!("{}_{}_{}", gene.name, pos, *base as char);
+                let label = format!("{}_{}_{}", gene_name, col.position, col.aa as char);
                 features.push(FeatureMeta {
                     label,
                     gene_idx,
-                    position: pos,
-                    aa: *base,
+                    position: col.position,
+                    aa: col.aa,
                 });
             }
+            let feature_end = features.len().saturating_sub(1);
+            genes.push(GeneMeta {
+                name: gene_name,
+                feature_start,
+                feature_end,
+                var_site_count: gene_out.var_site_count,
+            });
         }
-
-        let feature_end = features.len().saturating_sub(1);
-        genes.push(GeneMeta {
-            name: gene.name.clone(),
-            feature_start,
-            feature_end,
-            var_site_count,
-        });
     }
 
     let y_model = if continuous {
@@ -2348,6 +2289,144 @@ fn preprocess_combo_alignments(
         features,
         genes,
     })
+}
+
+fn preprocess_one_gene(
+    gene: &GeneAlignment,
+    combo: &ComboJob,
+    apply_gap_cancel: bool,
+    randomize_pairs: bool,
+    preserve_alignments_dir: Option<&Path>,
+    args: &Args,
+) -> Result<GenePreprocessResult> {
+    let mut seqs = Vec::with_capacity(combo.species.len());
+    let mut missing_flags = Vec::with_capacity(combo.species.len());
+
+    for sp in &combo.species {
+        if let Some(seq) = gene.seqs.get(sp) {
+            seqs.push(seq.clone());
+            missing_flags.push(false);
+        } else {
+            seqs.push(vec![b'-'; gene.seq_len]);
+            missing_flags.push(true);
+        }
+    }
+
+    if args.nix_full_deletions && missing_flags.iter().any(|v| *v) {
+        return Ok(GenePreprocessResult {
+            gene_name: gene.name.clone(),
+            var_site_count: 0,
+            columns: Vec::new(),
+        });
+    }
+
+    if apply_gap_cancel {
+        let outgroup = args
+            .outgroup_species
+            .as_ref()
+            .and_then(|sp| gene.seqs.get(sp).cloned());
+        apply_gap_cancellation(
+            &mut seqs,
+            &missing_flags,
+            outgroup.as_ref(),
+            args.min_pairs,
+            args.cancel_only_partner,
+            args.cancel_tri_allelic,
+        );
+    }
+    if randomize_pairs {
+        apply_pair_randomization(&mut seqs);
+    }
+    if let Some(dir) = preserve_alignments_dir {
+        let out_path = dir.join(format!("{}.fas", gene.name));
+        write_two_line_fasta(&out_path, &combo.species, &seqs)?;
+    }
+
+    let (var_site_count, columns) = build_gene_feature_columns(&seqs);
+    Ok(GenePreprocessResult {
+        gene_name: gene.name.clone(),
+        var_site_count,
+        columns,
+    })
+}
+
+fn build_gene_feature_columns(seqs: &[Vec<u8>]) -> (usize, Vec<GeneFeatureColumn>) {
+    if seqs.is_empty() {
+        return (0, Vec::new());
+    }
+    let seq_len = seqs[0].len();
+    let n_species = seqs.len();
+    let mut var_site_count = 0usize;
+    let mut columns: Vec<GeneFeatureColumn> = Vec::new();
+
+    for pos in 0..seq_len {
+        let mut counts = [0usize; 256];
+        let mut seen = [false; 256];
+        let mut residues: Vec<u8> = Vec::with_capacity(8);
+
+        for seq in seqs {
+            let b = seq[pos];
+            let idx = b as usize;
+            counts[idx] += 1;
+            if !seen[idx] {
+                seen[idx] = true;
+                residues.push(b);
+            }
+        }
+        residues.sort_unstable();
+
+        let mut non_gap_total = 0usize;
+        let mut max_count = 0usize;
+        let mut unique_non_gap = 0usize;
+        for &b in &residues {
+            if b == b'-' {
+                continue;
+            }
+            let c = counts[b as usize];
+            unique_non_gap += 1;
+            non_gap_total += c;
+            if c > max_count {
+                max_count = c;
+            }
+        }
+
+        if unique_non_gap < 2 {
+            continue;
+        }
+        if unique_non_gap == non_gap_total {
+            continue;
+        }
+        if max_count == non_gap_total.saturating_sub(1) {
+            continue;
+        }
+        var_site_count += 1;
+
+        // Match preprocess ignore-singleton behavior (countThreshold=2).
+        if non_gap_total.saturating_sub(max_count) < 2 {
+            continue;
+        }
+
+        for &base in &residues {
+            if base == b'-' {
+                continue;
+            }
+            let feature_sum = counts[base as usize];
+            if feature_sum < 2 {
+                continue;
+            }
+            let mut values = Vec::with_capacity(n_species);
+            for seq in seqs {
+                values.push(if seq[pos] == base { 1.0 } else { 0.0 });
+            }
+            columns.push(GeneFeatureColumn {
+                position: pos,
+                aa: base,
+                values,
+            });
+        }
+    }
+
+    (var_site_count, columns)
 }
 
 fn apply_pair_randomization(seqs: &mut [Vec<u8>]) {
