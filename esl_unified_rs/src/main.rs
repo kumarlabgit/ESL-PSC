@@ -3,6 +3,7 @@ use chrono::Local;
 use clap::Parser;
 use csv::Writer;
 use rand::Rng;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -417,6 +418,7 @@ fn main() -> Result<()> {
 
     let lambda_grid = build_lambda_grid(&args)?;
     println!("Lambda grid has {} pairs", lambda_grid.len());
+    println!("Lambda model workers: {}", rayon::current_num_threads());
 
     let mut gene_aggregates: Vec<GeneAggregate> = train_alignments
         .iter()
@@ -604,72 +606,117 @@ fn main() -> Result<()> {
                 };
                 let group_weights =
                     compute_group_weights(effective_group_penalty_kind, *penalty, &prep.genes);
+                let combo_tag = if args.make_pair_randomized_null_models {
+                    format!("{}_{}", combo.combo_tag, random_rep)
+                } else {
+                    combo.combo_tag.clone()
+                };
 
-                for (lambda1, lambda2) in &lambda_grid {
-                    let mut result = if prep.features.is_empty() {
-                        intercept_only_model(&prep, *lambda1, *lambda2, *penalty, use_continuous)
+                // Solve model grid in bounded parallel chunks so workers share the
+                // same read-only matrices while keeping peak result memory bounded.
+                let chunk_size = rayon::current_num_threads().max(1);
+                for lambda_chunk in lambda_grid.chunks(chunk_size) {
+                    let results: Vec<ModelResult> = if lambda_chunk.len() == 1 {
+                        let (lambda1, lambda2) = lambda_chunk[0];
+                        let mut result = if prep.features.is_empty() {
+                            intercept_only_model(&prep, lambda1, lambda2, *penalty, use_continuous)
+                        } else {
+                            let mut r = solve_sparse_group_lasso(
+                                &prep.x,
+                                &prep.y_model,
+                                &prep.features,
+                                &prep.genes,
+                                &group_weights,
+                                lambda1,
+                                lambda2,
+                                use_continuous,
+                                args.maxiter,
+                                1e-4,
+                                lipschitz,
+                                &[],
+                                0.0,
+                            )?;
+                            r.penalty_term = *penalty;
+                            r
+                        };
+                        if prep.features.is_empty() {
+                            result.penalty_term = *penalty;
+                        }
+                        vec![result]
                     } else {
-                        let mut r = solve_sparse_group_lasso(
-                            &prep.x,
-                            &prep.y_model,
-                            &prep.features,
-                            &prep.genes,
-                            &group_weights,
-                            *lambda1,
-                            *lambda2,
-                            use_continuous,
-                            args.maxiter,
-                            1e-4,
-                            lipschitz,
-                            &[],
-                            0.0,
-                        )?;
-                        r.penalty_term = *penalty;
-                        r
+                        lambda_chunk
+                            .par_iter()
+                            .map(|(lambda1, lambda2)| -> Result<ModelResult> {
+                                let mut result = if prep.features.is_empty() {
+                                    intercept_only_model(
+                                        &prep,
+                                        *lambda1,
+                                        *lambda2,
+                                        *penalty,
+                                        use_continuous,
+                                    )
+                                } else {
+                                    let mut r = solve_sparse_group_lasso(
+                                        &prep.x,
+                                        &prep.y_model,
+                                        &prep.features,
+                                        &prep.genes,
+                                        &group_weights,
+                                        *lambda1,
+                                        *lambda2,
+                                        use_continuous,
+                                        args.maxiter,
+                                        1e-4,
+                                        lipschitz,
+                                        &[],
+                                        0.0,
+                                    )?;
+                                    r.penalty_term = *penalty;
+                                    r
+                                };
+                                if prep.features.is_empty() {
+                                    result.penalty_term = *penalty;
+                                }
+                                Ok(result)
+                            })
+                            .collect::<Result<Vec<_>>>()?
                     };
 
-                    if prep.features.is_empty() {
-                        result.penalty_term = *penalty;
-                    }
+                    for result in &results {
+                        if args.keep_raw_output {
+                            write_model_file(
+                                &model_dir,
+                                &args.output_file_base_name,
+                                &prep.features,
+                                result,
+                                if is_multimatrix_mode {
+                                    Some(rep_label.as_str())
+                                } else {
+                                    None
+                                },
+                            )?;
+                        }
 
-                    if args.keep_raw_output {
-                        write_model_file(
-                            &model_dir,
-                            &args.output_file_base_name,
-                            &prep.features,
-                            &result,
-                            if is_multimatrix_mode {
-                                Some(rep_label.as_str())
-                            } else {
-                                None
-                            },
-                        )?;
-                    }
-
-                    update_gene_stats_for_run(
-                        &result,
-                        &mut combo_highest_gss,
-                        &mut combo_best_rank,
-                        &mut gene_aggregates,
-                    );
-
-                    if let Some(pred) = &pred_design {
-                        let combo_tag = if args.make_pair_randomized_null_models {
-                            format!("{}_{}", combo.combo_tag, random_rep)
-                        } else {
-                            combo.combo_tag.clone()
-                        };
-                        append_prediction_rows(
-                            &mut all_prediction_rows,
-                            &prep,
-                            pred,
-                            &result,
-                            &combo_tag,
-                            phenotype_info.as_ref(),
+                        update_gene_stats_for_run(
+                            result,
+                            &mut combo_highest_gss,
+                            &mut combo_best_rank,
+                            &mut gene_aggregates,
                         );
-                    }
 
-                    total_model_runs += 1;
+                        if let Some(pred) = &pred_design {
+                            append_prediction_rows(
+                                &mut all_prediction_rows,
+                                &prep,
+                                pred,
+                                result,
+                                &combo_tag,
+                                phenotype_info.as_ref(),
+                            );
+                        }
+
+                        total_model_runs += 1;
+                    }
                 }
             }
         }
@@ -2611,7 +2658,14 @@ fn update_gene_stats_for_run(
         .filter(|(_, v)| **v > 0.0)
         .map(|(idx, v)| (idx, *v))
         .collect();
-    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+    // Python uses a stable sort over per-gene GSS values; equal scores preserve
+    // first-seen order. Reproduce that behavior by using gene index as a
+    // deterministic tie-breaker.
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
 
     for (gidx, gss) in &ranked {
         if *gss > combo_highest_gss[*gidx] {
