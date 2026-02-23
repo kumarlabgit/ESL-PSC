@@ -3375,19 +3375,24 @@ fn solve_sparse_group_lasso(
         let mut l_const = 1.0_f64;
         let mut bflag = false;
 
+        let mut s = vec![0.0_f64; p];
+        let mut as_vec = vec![0.0_f64; n];
+        let mut atas = vec![0.0_f64; p];
+        let mut g = vec![0.0_f64; p];
+        let mut v = vec![0.0_f64; p];
+        let mut dv = vec![0.0_f64; p];
+        let mut av = vec![0.0_f64; n];
+
         for iter_step in 0..maxiter {
             let beta_fac = (alphap - 1.0) / alpha;
-            let mut s = vec![0.0_f64; p];
             for j in 0..p {
                 s[j] = beta[j] + xxp[j] * beta_fac;
             }
-            let mut as_vec = vec![0.0_f64; n];
             for i in 0..n {
                 as_vec[i] = ax[i] + (ax[i] - axp[i]) * beta_fac;
             }
 
-            let atas = mat_t_vec_mul(x, &as_vec);
-            let mut g = vec![0.0_f64; p];
+            mat_t_vec_mul_into(x, &as_vec, &mut atas);
             for j in 0..p {
                 g[j] = atas[j] - aty[j];
             }
@@ -3395,19 +3400,16 @@ fn solve_sparse_group_lasso(
             axp.clone_from(&ax);
 
             loop {
-                let mut v = vec![0.0_f64; p];
                 for j in 0..p {
                     v[j] = s[j] - g[j] / l_const;
                 }
                 beta = altra_vector(&v, lambda1_abs / l_const, lambda2_abs / l_const, genes, group_weights);
 
-                let mut dv = vec![0.0_f64; p];
                 for j in 0..p {
                     dv[j] = beta[j] - s[j];
                 }
-                ax = mat_vec_mul(x, &beta);
+                mat_vec_mul_into(x, &beta, &mut ax);
 
-                let mut av = vec![0.0_f64; n];
                 for i in 0..n {
                     av[i] = ax[i] - as_vec[i];
                 }
@@ -3503,21 +3505,26 @@ fn solve_sparse_group_lasso(
             weighty[i] = sample_weights[i] * y[i];
         }
 
+        let mut s = vec![0.0_f64; p];
+        let mut as_vec = vec![0.0_f64; n];
+        let mut aa = vec![0.0_f64; n];
+        let mut bb = vec![0.0_f64; n];
+        let mut prob = vec![0.0_f64; n];
+        let mut g = vec![0.0_f64; p];
+        let mut v = vec![0.0_f64; p];
+        let mut dv = vec![0.0_f64; p];
+
         for iter_step in 0..maxiter {
             let beta_fac = (alphap - 1.0_f64) / alpha;
-            let mut s = vec![0.0_f64; p];
             for j in 0..p {
                 s[j] = beta64[j] + xxp[j] * beta_fac;
             }
             let sc = intercept64 + beta_fac * ccp;
 
-            let mut as_vec = vec![0.0_f64; n];
             for i in 0..n {
                 as_vec[i] = ax[i] + (ax[i] - axp[i]) * beta_fac;
             }
 
-            let mut aa = vec![0.0_f64; n];
-            let mut bb = vec![0.0_f64; n];
             for i in 0..n {
                 aa[i] = -y[i] * (as_vec[i] + sc);
                 bb[i] = aa[i].max(0.0_f64);
@@ -3527,32 +3534,29 @@ fn solve_sparse_group_lasso(
                 fun_s += sample_weights[i] * (((-bb[i]).exp() + (aa[i] - bb[i]).exp()).ln() + bb[i]);
             }
 
-            let mut prob = vec![0.0_f64; n];
             for i in 0..n {
                 prob[i] = 1.0_f64 / (1.0_f64 + aa[i].exp());
                 b[i] = -weighty[i] * (1.0_f64 - prob[i]);
             }
             let gc: f64 = b.iter().sum();
-            let g = mat_t_vec_mul(x, &b);
+            mat_t_vec_mul_into(x, &b, &mut g);
 
             xp.clone_from(&beta64);
             axp.clone_from(&ax);
             let cp = intercept64;
 
             loop {
-                let mut v = vec![0.0_f64; p];
                 for j in 0..p {
                     v[j] = s[j] - g[j] / l_const;
                 }
                 intercept64 = sc - gc / l_const;
                 beta64 = altra_vector(&v, lambda1_abs / l_const, lambda2_abs / l_const, genes, group_weights);
 
-                let mut dv = vec![0.0_f64; p];
                 for j in 0..p {
                     dv[j] = beta64[j] - s[j];
                 }
 
-                ax = mat_vec_mul(x, &beta64);
+                mat_vec_mul_into(x, &beta64, &mut ax);
                 for i in 0..n {
                     aa[i] = -y[i] * (ax[i] + intercept64);
                     bb[i] = aa[i].max(0.0_f64);
@@ -3704,8 +3708,8 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
 }
 
-fn mat_vec_mul(x: &[Vec<f64>], beta: &[f64]) -> Vec<f64> {
-    let mut out = vec![0.0_f64; x.len()];
+fn mat_vec_mul_into(x: &[Vec<f64>], beta: &[f64], out: &mut [f64]) {
+    debug_assert_eq!(x.len(), out.len());
     for (i, row) in x.iter().enumerate() {
         let mut s = 0.0_f64;
         for (v, b) in row.iter().zip(beta.iter()) {
@@ -3713,7 +3717,21 @@ fn mat_vec_mul(x: &[Vec<f64>], beta: &[f64]) -> Vec<f64> {
         }
         out[i] = s;
     }
-    out
+}
+
+fn mat_t_vec_mul_into(x: &[Vec<f64>], v: &[f64], out: &mut [f64]) {
+    if x.is_empty() {
+        return;
+    }
+    debug_assert_eq!(x.len(), v.len());
+    debug_assert_eq!(x[0].len(), out.len());
+    out.fill(0.0_f64);
+    for (i, row) in x.iter().enumerate() {
+        let vi = v[i];
+        for (j, xij) in row.iter().enumerate() {
+            out[j] += xij * vi;
+        }
+    }
 }
 
 fn mat_t_vec_mul(x: &[Vec<f64>], v: &[f64]) -> Vec<f64> {
@@ -3722,12 +3740,7 @@ fn mat_t_vec_mul(x: &[Vec<f64>], v: &[f64]) -> Vec<f64> {
     }
     let p = x[0].len();
     let mut out = vec![0.0_f64; p];
-    for (i, row) in x.iter().enumerate() {
-        let vi = v[i];
-        for (j, xij) in row.iter().enumerate() {
-            out[j] += xij * vi;
-        }
-    }
+    mat_t_vec_mul_into(x, v, &mut out);
     out
 }
 
