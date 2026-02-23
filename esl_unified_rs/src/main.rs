@@ -629,6 +629,7 @@ fn main() -> Result<()> {
             } else {
                 estimate_lipschitz(&prep.x, use_continuous)
             };
+            let lambda_rows = lambda_row_ranges(&lambda_grid);
 
             for penalty in &penalty_terms {
                 let effective_group_penalty_kind = if args.use_default_gp {
@@ -644,76 +645,41 @@ fn main() -> Result<()> {
                     combo.combo_tag.clone()
                 };
 
-                // Solve model grid in bounded parallel chunks so workers share the
-                // same read-only matrices while keeping peak result memory bounded.
-                let chunk_size = model_workers.max(1);
-                for lambda_chunk in lambda_grid.chunks(chunk_size) {
-                    let results: Vec<ModelResult> = if lambda_chunk.len() == 1 {
-                        let (lambda1, lambda2) = lambda_chunk[0];
-                        let mut result = if prep.features.is_empty() {
-                            intercept_only_model(&prep, lambda1, lambda2, *penalty, use_continuous)
-                        } else {
-                            let mut r = solve_sparse_group_lasso(
-                                &prep.x,
-                                &prep.y_model,
-                                &prep.features,
-                                &prep.genes,
-                                &group_weights,
-                                lambda1,
-                                lambda2,
-                                use_continuous,
-                                args.maxiter,
-                                1e-4,
-                                lipschitz,
-                                &[],
-                                0.0,
-                            )?;
-                            r.penalty_term = *penalty;
-                            r
-                        };
-                        if prep.features.is_empty() {
-                            result.penalty_term = *penalty;
-                        }
-                        vec![result]
+                // Solve lambda grids by lambda1 rows while parallelizing rows.
+                let row_results: Vec<Vec<ModelResult>> =
+                    if lambda_rows.len() <= 1 || model_workers <= 1 {
+                        lambda_rows
+                            .iter()
+                            .map(|row| {
+                                solve_lambda_row(
+                                    &prep,
+                                    &group_weights,
+                                    &lambda_grid[row.clone()],
+                                    *penalty,
+                                    use_continuous,
+                                    args.maxiter,
+                                    lipschitz,
+                                )
+                            })
+                            .collect::<Result<Vec<_>>>()?
                     } else {
-                        lambda_chunk
+                        lambda_rows
                             .par_iter()
-                            .map(|(lambda1, lambda2)| -> Result<ModelResult> {
-                                let mut result = if prep.features.is_empty() {
-                                    intercept_only_model(
-                                        &prep,
-                                        *lambda1,
-                                        *lambda2,
-                                        *penalty,
-                                        use_continuous,
-                                    )
-                                } else {
-                                    let mut r = solve_sparse_group_lasso(
-                                        &prep.x,
-                                        &prep.y_model,
-                                        &prep.features,
-                                        &prep.genes,
-                                        &group_weights,
-                                        *lambda1,
-                                        *lambda2,
-                                        use_continuous,
-                                        args.maxiter,
-                                        1e-4,
-                                        lipschitz,
-                                        &[],
-                                        0.0,
-                                    )?;
-                                    r.penalty_term = *penalty;
-                                    r
-                                };
-                                if prep.features.is_empty() {
-                                    result.penalty_term = *penalty;
-                                }
-                                Ok(result)
+                            .map(|row| {
+                                solve_lambda_row(
+                                    &prep,
+                                    &group_weights,
+                                    &lambda_grid[row.clone()],
+                                    *penalty,
+                                    use_continuous,
+                                    args.maxiter,
+                                    lipschitz,
+                                )
                             })
                             .collect::<Result<Vec<_>>>()?
                     };
 
+                for results in row_results {
                     for result in &results {
                         if args.keep_raw_output {
                             write_model_file(
@@ -3119,6 +3085,66 @@ fn build_lambda_grid(args: &Args) -> Result<Vec<(f64, f64)>> {
             args.lambda_step,
         )
     }
+}
+
+fn lambda_row_ranges(lambda_grid: &[(f64, f64)]) -> Vec<std::ops::Range<usize>> {
+    let mut rows = Vec::new();
+    if lambda_grid.is_empty() {
+        return rows;
+    }
+    let mut start = 0usize;
+    while start < lambda_grid.len() {
+        let l1 = lambda_grid[start].0;
+        let mut end = start + 1;
+        while end < lambda_grid.len() && (lambda_grid[end].0 - l1).abs() <= 1e-12 {
+            end += 1;
+        }
+        rows.push(start..end);
+        start = end;
+    }
+    rows
+}
+
+fn solve_lambda_row(
+    prep: &PreprocessedData,
+    group_weights: &[f64],
+    lambda_row: &[(f64, f64)],
+    penalty: f64,
+    continuous: bool,
+    maxiter: usize,
+    lipschitz: f64,
+) -> Result<Vec<ModelResult>> {
+    let mut out = Vec::with_capacity(lambda_row.len());
+
+    for (lambda1, lambda2) in lambda_row {
+        let mut result = if prep.features.is_empty() {
+            intercept_only_model(prep, *lambda1, *lambda2, penalty, continuous)
+        } else {
+            let mut r = solve_sparse_group_lasso(
+                &prep.x,
+                &prep.y_model,
+                &prep.features,
+                &prep.genes,
+                group_weights,
+                *lambda1,
+                *lambda2,
+                continuous,
+                maxiter,
+                1e-4,
+                lipschitz,
+                &[],
+                0.0,
+            )?;
+            r.penalty_term = penalty;
+            r
+        };
+        if prep.features.is_empty() {
+            result.penalty_term = penalty;
+        }
+        out.push(result);
+    }
+
+    Ok(out)
 }
 
 fn build_penalty_terms(args: &Args, genes: &[GeneMeta]) -> Result<Vec<f64>> {
