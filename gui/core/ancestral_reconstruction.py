@@ -1,4 +1,4 @@
-"""Parsimony-based ancestral sequence reconstruction for Fast Scan.
+"""Parsimony-based ancestral sequence reconstruction for Site Counter.
 
 This module provides functionality to:
 1. Parse and prune phylogenetic trees to match alignment species
@@ -72,7 +72,7 @@ def parse_tree(tree_path: str) -> Clade:
 
             # Quick sanity check for Newick-like content. Biopython will happily
             # parse arbitrary text as a one-leaf "tree" (leaf label), which is
-            # not useful for Fast Scan and breaks expectations in tests.
+            # not useful for Site Counter and breaks expectations in tests.
             stripped = text.strip()
             if not stripped:
                 raise AncestralReconstructionError("Failed to parse tree file: empty file")
@@ -295,7 +295,7 @@ def find_mrca(tree: Clade, species: Set[str]) -> Clade:
 def is_mrca_at_root(tree: Clade, mrca: Clade) -> bool:
     """Check if the MRCA is at the root of the tree.
     
-    For Fast Scan purposes, if the MRCA of analysis species is the root,
+    For Site Counter purposes, if the MRCA of analysis species is the root,
     there are no outgroup species in the alignment, so reconstruction is invalid.
     
     Parameters
@@ -575,7 +575,7 @@ def get_ancestral_outgroup_for_alignment(
 ) -> Tuple[str, str]:
     """Get reconstructed ancestral outgroup sequence for an alignment.
     
-    This is the main entry point for Fast Scan integration.
+    This is the main entry point for Site Counter integration.
     
     Parameters
     ----------
@@ -643,11 +643,11 @@ def get_ancestral_outgroup_for_alignment(
     return ancestral_seq, identifier
 
 
-def validate_tree_for_fast_scan(
+def validate_tree_for_site_counter(
     tree_path: str,
     species_groups_file: str
 ) -> Tuple[bool, str]:
-    """Validate that a tree is suitable for Fast Scan ancestral reconstruction.
+    """Validate that a tree is suitable for Site Counter ancestral reconstruction.
     
     Parameters
     ----------
@@ -682,7 +682,7 @@ def validate_tree_for_fast_scan(
             if base_children != 2:
                 return False, (
                     "The tree does not appear to be properly rooted: the basal split is not a bifurcation. "
-                    "Please root your tree (e.g., midpoint or outgroup rooting) before running Fast Scan."
+                    "Please root your tree (e.g., midpoint or outgroup rooting) before running Site Counter."
                 )
         except Exception:
             # If detection fails, do not block; continue with other validations
@@ -719,3 +719,7 @@ def validate_tree_for_fast_scan(
         
     except Exception as e:
         return False, f"Validation error: {e}"
+
+
+# Backward compatibility alias.
+validate_tree_for_fast_scan = validate_tree_for_site_counter

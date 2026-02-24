@@ -26,7 +26,7 @@ jobs:
         run: |
           cargo build --release
 
-      - name: Build fast_scan_rs (release)
+      - name: Build site_counter_rs (release)
         working-directory: fast_scan_rs
         run: |
           cargo build --release
@@ -44,12 +44,12 @@ jobs:
             esl_unified_rs/target/release/esl_unified_rs
           if-no-files-found: error
 
-      - name: "Upload artifact: fast_scan_rs (Linux)"
+      - name: "Upload artifact: site_counter_rs (Linux)"
         uses: actions/upload-artifact@v4
         with:
-          name: fast_scan_rs-linux-x86_64
+          name: site_counter_rs-linux-x86_64
           path: |
-            fast_scan_rs/target/release/fast_scan_rs
+            fast_scan_rs/target/release/site_counter_rs
           if-no-files-found: error
 
   build-macos:
@@ -70,7 +70,7 @@ jobs:
         run: |
           cargo build --release
 
-      - name: Build fast_scan_rs (release)
+      - name: Build site_counter_rs (release)
         working-directory: fast_scan_rs
         run: |
           cargo build --release
@@ -83,7 +83,7 @@ jobs:
       - name: Rename macOS binaries for artifacts
         run: |
           cp esl_unified_rs/target/release/esl_unified_rs esl_unified_rs/target/release/esl_unified_rs_mac
-          cp fast_scan_rs/target/release/fast_scan_rs fast_scan_rs/target/release/fast_scan_rs_mac
+          cp fast_scan_rs/target/release/site_counter_rs fast_scan_rs/target/release/site_counter_rs_mac
 
       - name: "Upload artifact: esl_unified_rs (macOS)"
         uses: actions/upload-artifact@v4
@@ -93,12 +93,12 @@ jobs:
             esl_unified_rs/target/release/esl_unified_rs_mac
           if-no-files-found: error
 
-      - name: "Upload artifact: fast_scan_rs (macOS)"
+      - name: "Upload artifact: site_counter_rs (macOS)"
         uses: actions/upload-artifact@v4
         with:
-          name: fast_scan_rs-macos
+          name: site_counter_rs-macos
           path: |
-            fast_scan_rs/target/release/fast_scan_rs_mac
+            fast_scan_rs/target/release/site_counter_rs_mac
           if-no-files-found: error
 
   build-windows:
@@ -124,7 +124,7 @@ jobs:
         run: |
           cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Build fast_scan_rs (release)
+      - name: Build site_counter_rs (release)
         working-directory: fast_scan_rs
         run: |
           cargo build --release --target x86_64-pc-windows-msvc
@@ -142,10 +142,10 @@ jobs:
             esl_unified_rs/target/x86_64-pc-windows-msvc/release/esl_unified_rs.exe
           if-no-files-found: error
 
-      - name: "Upload artifact: fast_scan_rs (Windows)"
+      - name: "Upload artifact: site_counter_rs (Windows)"
         uses: actions/upload-artifact@v4
         with:
-          name: fast_scan_rs-windows-x86_64
+          name: site_counter_rs-windows-x86_64
           path: |
-            fast_scan_rs/target/x86_64-pc-windows-msvc/release/fast_scan_rs.exe
+            fast_scan_rs/target/x86_64-pc-windows-msvc/release/site_counter_rs.exe
           if-no-files-found: error

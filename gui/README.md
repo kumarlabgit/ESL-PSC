@@ -46,7 +46,7 @@ Full support for numeric (continuous) phenotypes:
 - **Site viewer**: Display phenotype values alongside species names, sortable by phenotype magnitude
 - **Continuous plots**: Phenotype vs SPS density plot (2D heatmap) instead of binary violin/KDE plots
 
-### Fast Scan
+### Site Counter
 
 Quick convergence screening of alignments without running full ESL-PSC:
 
@@ -103,7 +103,7 @@ The wizard window will appear. Navigate through the pages and click **Run** on t
 
 ### Overview
 
-Fast Scan now supports using a **parsimony-reconstructed ancestral sequence** as the outgroup instead of selecting a single species. This provides more robust convergence detection when no single species serves as an ideal outgroup, or when you want to infer the ancestral state at the MRCA of your analysis species.
+Site Counter now supports using a **parsimony-reconstructed ancestral sequence** as the outgroup instead of selecting a single species. This provides more robust convergence detection when no single species serves as an ideal outgroup, or when you want to infer the ancestral state at the MRCA of your analysis species.
 
 ### How It Works
 
@@ -117,13 +117,13 @@ Fast Scan now supports using a **parsimony-reconstructed ancestral sequence** as
 
 ### Usage in GUI
 
-1. **Start Fast Scan** from the Input Page
+1. **Start Site Counter** from the Input Page
 2. In the **Outgroup Dialog**, select **"Use parsimony ancestral reconstruction"**
 3. Click **Browse** to select a tree file (Newick or NEXUS format)
 4. The tree is validated automatically:
    - ✓ **Green check**: Tree is valid for ancestral reconstruction
    - ✗ **Red X**: Tree is missing species or has other issues (see error message)
-5. Continue with Fast Scan as normal
+5. Continue with Site Counter as normal
 
 ### Tree File Requirements
 
@@ -145,9 +145,9 @@ Your tree must:
 **Scenario**: Studying photosynthesis loss across 4 plant species with a phylogeny including 2 outgroups.
 
 1. Create species groups file with your 4 analysis species
-2. Launch Fast Scan, choose ancestral reconstruction
+2. Launch Site Counter, choose ancestral reconstruction
 3. Select your tree file (e.g., `plants_tree.nwk`)
-4. Fast Scan will:
+4. Site Counter will:
    - Prune tree to present species per alignment
    - Identify MRCA of analysis species
    - Skip alignments where MRCA is at root
@@ -183,7 +183,7 @@ This ensures only alignments with appropriate outgroup context are analyzed.
   - `gui/ui/pages/` - Wizard pages (InputPage, ParametersPage, RunPage, ResultsPage)
   - `gui/ui/widgets/` - Reusable UI widgets (TreeViewer, dialogs, file selectors, etc.)
 - `gui/core/` - Business logic and data handling
-  - `gui/core/fast_scan.py` - Fast Scan implementation
+  - `gui/core/fast_scan.py` - Site Counter implementation
   - `gui/core/ancestral_reconstruction.py` - Parsimony-based ancestral reconstruction
   - `gui/core/worker.py` - Background task execution
   - `gui/core/config.py` - Configuration management

@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 from contextlib import redirect_stdout, redirect_stderr # noqa: F401
-from esl_psc_cli.esl_multimatrix import main as esl_main
 from esl_psc_cli import esl_psc_functions as ecf
 
 class WorkerSignals(QObject):
@@ -435,6 +434,9 @@ class ESLWorker(QRunnable):
             try:
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
+                # Import only in fallback path to avoid eagerly pulling the full
+                # Python CLI stack into packaged apps that run Rust by default.
+                from esl_psc_cli.esl_multimatrix import main as esl_main
 
                 with redirect_stdout(out_stream), redirect_stderr(err_stream):
                     esl_main(self.command_args)

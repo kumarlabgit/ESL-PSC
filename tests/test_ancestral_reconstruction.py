@@ -1,4 +1,4 @@
-"""Tests for parsimony-based ancestral reconstruction for Fast Scan."""
+"""Tests for parsimony-based ancestral reconstruction for Site Counter."""
 import pytest
 import tempfile
 import os
@@ -586,7 +586,7 @@ def test_get_ancestral_outgroup_partial_analysis_species(outgroup_tree_file):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test tree validation for Fast Scan
+# Test tree validation for Site Counter
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_validate_tree_valid(outgroup_tree_file, species_groups_file):

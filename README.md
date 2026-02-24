@@ -5,7 +5,7 @@
 1. [Description](#description)
 2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
 3. [Command Line Usage](#command-line-usage)
-   - [Fast Scan Rust CLI](#fast-scan-rust-cli)
+   - [Site Counter Rust CLI](#site-counter-rust-cli)
 4. [Installation and Dependencies](#installation-and-dependencies)
 5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 6. [Input Data](#input-data)
@@ -152,11 +152,11 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
 
-### Fast Scan Rust CLI
+### Site Counter Rust CLI
 
-Looking for the high-performance fast scan backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
+Looking for the high-performance site counter backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
 
-**Parsimony-based ancestral reconstruction** is now available in Fast Scan via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Fast Scan will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Fast Scan Rust CLI README for examples.
+**Parsimony-based ancestral reconstruction** is now available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Site Counter Rust CLI README for examples.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 

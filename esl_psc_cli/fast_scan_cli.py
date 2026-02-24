@@ -4,7 +4,7 @@ import os
 import sys
 from typing import List, Dict
 
-# Reuse the GUI core fast_scan implementation for parsing, Rust detection, and Python fallback
+# Reuse the GUI core fast_scan implementation for parsing, Rust detection, and Python fallback.
 from gui.core import fast_scan as fs
 from esl_psc_cli import esl_psc_functions as ecf
 
@@ -46,7 +46,7 @@ def _print_progress(cur: int, total: int) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="Fast scan alignments for CCS and related metrics (prefers Rust backend)."
+        description="Site Counter alignments for CCS and related metrics (prefers Rust backend)."
     )
     parser.add_argument(
         "--alignments_dir",
@@ -163,23 +163,27 @@ def main(argv=None) -> int:
     used_rust = False
 
     # Attempt Rust path unless disabled
-    rs_bin = fs._detect_fast_scan_rs()
+    detect_rs = getattr(fs, "_detect_site_counter_rs", fs._detect_fast_scan_rs)
+    run_rs = getattr(fs, "_run_site_counter_rs", fs._run_fast_scan_rs)
+    rs_bin = detect_rs()
     # If fractional agreement or tree is requested, prefer a newer target build if present
     if rs_bin and (min_agree != 1.0 or tree_file):
         try:
             repo_root = os.path.abspath(os.path.join(os.path.dirname(fs.__file__), "..", ".."))
-            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
-            if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                rs_bin = cand
-            else:
-                # If we cannot find a build known to support fractional agreement, fall back to Python
-                rs_bin = None
+            candidates = [
+                os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs"),
+                os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs"),
+            ]
+            rs_bin = next(
+                (cand for cand in candidates if os.path.isfile(cand) and os.access(cand, os.X_OK)),
+                None,
+            )
         except Exception:
             rs_bin = None
 
     if rs_bin:
         try:
-            results = fs._run_fast_scan_rs(
+            results = run_rs(
                 rs_bin,
                 align_dir,
                 files,
@@ -200,10 +204,11 @@ def main(argv=None) -> int:
         except Exception as e:
             # Warn and fall back to Python path
             print(
-                f"Warning: Rust fast_scan_rs failed ({e}). Falling back to Python implementation...",
+                f"Warning: Rust Site Counter backend failed ({e}). Falling back to Python implementation...",
                 file=sys.stderr,
             )
             # Ensure Python fallback is used for this invocation
+            os.environ["SITE_COUNTER_RS_DISABLE"] = "1"
             os.environ["FAST_SCAN_RS_DISABLE"] = "1"
             results = fs.fast_scan_alignments(
                 align_dir,
@@ -218,6 +223,7 @@ def main(argv=None) -> int:
             )
     else:
         # Direct Python path (or forced)
+        os.environ["SITE_COUNTER_RS_DISABLE"] = "1"
         os.environ["FAST_SCAN_RS_DISABLE"] = "1"
         results = fs.fast_scan_alignments(
             align_dir,
@@ -257,7 +263,7 @@ def main(argv=None) -> int:
     with open(args.output_path, "w", encoding="utf-8") as fh:
         fh.write(text + ("\n" if not text.endswith("\n") else ""))
     # Print a small footer noting the backend used (stderr so it doesn't corrupt stdout)
-    sys.stderr.write(f"Finished fast scan using {'Rust' if used_rust else 'Python'} backend.\n")
+    sys.stderr.write(f"Finished Site Counter using {'Rust' if used_rust else 'Python'} backend.\n")
     return 0
 
 

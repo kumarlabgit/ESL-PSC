@@ -3,6 +3,14 @@ name = "fast_scan_rs"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "fast_scan_rs"
+path = "src/main.rs"
+
+[[bin]]
+name = "site_counter_rs"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
