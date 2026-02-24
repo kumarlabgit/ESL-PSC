@@ -150,8 +150,8 @@ where the MRCA is at the root (no outgroup context) are skipped.
 
 ## Integration with the Python CLI
 
-`python -m esl_psc_cli.fast_scan_cli` wraps this binary. When a compatible
-`site_counter_rs` build is available, the CLI streams the required JSON over
-stdin and performs the same post-processing, CSV export, and ranking logic as
-the GUI site counter workflow. Set `SITE_COUNTER_RS_DISABLE=1` to force the
-Python fallback if needed.
+`python -m esl_psc_cli.fast_scan_cli` (or packaged command `site-counter`)
+wraps this binary. When a compatible `site_counter_rs` build is available, the
+CLI streams the required JSON over stdin and performs the same post-processing,
+CSV export, and ranking logic as the GUI site counter workflow. Set
+`SITE_COUNTER_RS_DISABLE=1` to force the Python fallback if needed.

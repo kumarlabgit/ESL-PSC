@@ -1609,6 +1609,39 @@ fn run_python_plot_command(
     min_genes: usize,
     pheno_names: Option<Vec<String>>,
 ) -> Result<()> {
+    for plotter in plotter_command_candidates() {
+        let mut cmd = Command::new(&plotter);
+        cmd.arg("--mode")
+            .arg(mode)
+            .arg("--pred_csv")
+            .arg(pred_csv_path)
+            .arg("--title")
+            .arg(title)
+            .arg("--min_genes")
+            .arg(min_genes.to_string());
+        if let Some(names) = &pheno_names {
+            if names.len() == 2 {
+                cmd.arg("--pheno_name1")
+                    .arg(&names[0])
+                    .arg("--pheno_name2")
+                    .arg(&names[1]);
+            }
+        }
+        match cmd.status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => {
+                eprintln!(
+                    "plot helper '{}' exited with status {}; trying fallback",
+                    plotter.display(),
+                    status
+                );
+            }
+            Err(_) => {
+                // Try the next candidate.
+            }
+        }
+    }
+
     let script = r#"
 import sys
 from esl_psc_cli import esl_psc_functions as ecf
@@ -1624,23 +1657,108 @@ else:
         pheno = (sys.argv[5], sys.argv[6])
     ecf.rmse_range_pred_plots(pred, title, pheno_names=pheno, min_genes=min_genes, plot_type=mode)
 "#;
-    let mut cmd = Command::new("python3");
-    cmd.arg("-c")
-        .arg(script)
-        .arg(mode)
-        .arg(pred_csv_path)
-        .arg(title)
-        .arg(min_genes.to_string());
-    if let Some(names) = pheno_names {
-        if names.len() == 2 {
-            cmd.arg(&names[0]).arg(&names[1]);
+    for python_cmd in python_command_candidates() {
+        let mut cmd = Command::new(&python_cmd);
+        cmd.arg("-c")
+            .arg(script)
+            .arg(mode)
+            .arg(pred_csv_path)
+            .arg(title)
+            .arg(min_genes.to_string());
+        if let Some(names) = &pheno_names {
+            if names.len() == 2 {
+                cmd.arg(&names[0]).arg(&names[1]);
+            }
+        }
+        match cmd.status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => {
+                eprintln!(
+                    "python plot fallback '{}' exited with status {}; trying next fallback",
+                    python_cmd, status
+                );
+            }
+            Err(_) => {
+                // Try the next candidate.
+            }
         }
     }
-    let status = cmd.status().context("failed to spawn python for plot generation")?;
-    if !status.success() {
-        bail!("plot generation failed with status {}", status);
+    bail!(
+        "plot generation failed: no working plot helper or python interpreter was found"
+    );
+}
+
+fn plotter_command_candidates() -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(path) = std::env::var("ESL_PSC_PLOTTER") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed));
+        }
     }
-    Ok(())
+
+    let names: &[&str] = if cfg!(windows) {
+        &["esl-psc-plot.exe", "esl-psc-plot", "esl_plot.exe", "esl_plot"]
+    } else {
+        &["esl-psc-plot", "esl_plot"]
+    };
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            for name in names {
+                candidates.push(exe_dir.join(name));
+                candidates.push(exe_dir.join("bin").join(name));
+            }
+        }
+    }
+
+    for name in names {
+        candidates.push(PathBuf::from(name));
+    }
+
+    dedupe_pathbufs(candidates)
+}
+
+fn python_command_candidates() -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(path) = std::env::var("ESL_PSC_PYTHON") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            candidates.push(trimmed.to_string());
+        }
+    }
+    if cfg!(windows) {
+        candidates.push("python".to_string());
+        candidates.push("python3".to_string());
+    } else {
+        candidates.push("python3".to_string());
+        candidates.push("python".to_string());
+    }
+    dedupe_strings(candidates)
+}
+
+fn dedupe_pathbufs(items: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for item in items {
+        let key = item.to_string_lossy().to_string();
+        if seen.insert(key) {
+            out.push(item);
+        }
+    }
+    out
+}
+
+fn dedupe_strings(items: Vec<String>) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for item in items {
+        if seen.insert(item.clone()) {
+            out.push(item);
+        }
+    }
+    out
 }
 
 fn maybe_dump_preprocess_features(output_dir: &Path, combo_label: &str, prep: &PreprocessedData) -> Result<()> {

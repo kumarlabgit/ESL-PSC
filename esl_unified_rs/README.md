@@ -60,6 +60,12 @@ Outputs:
 - `<base>_species_predictions.csv` (unless `--no-pred-output`)
 - `models_unified_rs/*.txt` (non-zero feature weights + intercept)
 
+Plot flags (`--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`) use this helper resolution order:
+
+1. `ESL_PSC_PLOTTER` env var (path or command)
+2. bundled `esl-psc-plot` executable next to `esl-psc_cli` (or in sibling `bin/`)
+3. Python fallback via `ESL_PSC_PYTHON`, then `python3`, then `python`
+
 ## Baseline comparison
 
 Single-response parity check against Python `esl_integrator`:

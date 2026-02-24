@@ -69,16 +69,8 @@ class ESLWorker(QRunnable):
                 "esl-psc_cli.exe",
                 "esl-psc_cli",
             ]
-        elif sys.platform == "darwin":
-            exe_names = [
-                "esl-psc_cli_mac",
-                "esl-psc_cli",
-            ]
         else:
-            exe_names = [
-                "esl-psc_cli",
-                "esl-psc_cli_mac",
-            ]
+            exe_names = ["esl-psc_cli"]
 
         candidates: list[Path] = []
         seen: set[str] = set()

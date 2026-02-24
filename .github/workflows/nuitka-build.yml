@@ -13,7 +13,7 @@ on:
           - windows
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: "3.11"
 
 jobs:
   build-macos:
@@ -29,12 +29,20 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-gui.txt
+          pip install -r requirements-toolkit.txt
           pip install nuitka
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_unified_rs/Cargo.toml
           cargo build --release --manifest-path fast_scan_rs/Cargo.toml
-      - name: Build with Nuitka
+      - name: Build toolkit helper CLIs
+        run: |
+          mkdir -p toolkit_helpers
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-plot esl_psc_cli/plot_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename site-counter esl_psc_cli/fast_scan_cli.py
+          ls -la toolkit_helpers
+      - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
@@ -49,7 +57,7 @@ jobs:
           macos-app-icon: assets/icons/app.icns
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
-      - name: Add CLI helpers
+      - name: Add runtime helpers to app bundle
         run: |
           mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
           cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
@@ -57,10 +65,23 @@ jobs:
           # Linear-regression backend for continuous phenotypes
           cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
-          # Add Rust binaries built in this workflow
-          cp esl_unified_rs/target/release/esl-psc_cli build/ESL-PSC.app/Contents/MacOS/bin/esl-psc_cli_mac
-          cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs_mac
+          cp esl_unified_rs/target/release/esl-psc_cli build/ESL-PSC.app/Contents/MacOS/bin/esl-psc_cli
+          cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs
+          cp toolkit_helpers/esl-psc-plot build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-plot
+          cp toolkit_helpers/esl-psc-pairs build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-pairs
+          cp toolkit_helpers/site-counter build/ESL-PSC.app/Contents/MacOS/bin/site-counter
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Stage toolkit artifact
+        run: |
+          mkdir -p build/esl-psc-toolkit/bin
+          cp esl_unified_rs/target/release/esl-psc_cli build/esl-psc-toolkit/bin/esl-psc_cli
+          cp fast_scan_rs/target/release/site_counter_rs build/esl-psc-toolkit/bin/site_counter_rs
+          cp toolkit_helpers/esl-psc-plot build/esl-psc-toolkit/bin/esl-psc-plot
+          cp toolkit_helpers/esl-psc-pairs build/esl-psc-toolkit/bin/esl-psc-pairs
+          cp toolkit_helpers/site-counter build/esl-psc-toolkit/bin/site-counter
+          cp packaging/toolkit/README.md build/esl-psc-toolkit/README.md
+          chmod +x build/esl-psc-toolkit/bin/*
+          tar -czf build/ESL-PSC-toolkit-macOS.tar.gz -C build esl-psc-toolkit
       - name: Create DMG
         run: |
           hdiutil create -volname "ESL-PSC" \
@@ -70,6 +91,10 @@ jobs:
         with:
           name: ESL-PSC-macOS
           path: build/ESL-PSC.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-toolkit-macOS
+          path: build/ESL-PSC-toolkit-macOS.tar.gz
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
@@ -86,50 +111,68 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-gui.txt
+          pip install -r requirements-toolkit.txt
           pip install nuitka
       - name: Build Rust binaries
         shell: bash
         run: |
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_unified_rs/Cargo.toml
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path fast_scan_rs/Cargo.toml
-      - name: Stage and Verify Windows Binaries
+      - name: Build toolkit helper CLIs
+        shell: bash
+        run: |
+          mkdir -p toolkit_helpers
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-plot esl_psc_cli/plot_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename site-counter esl_psc_cli/fast_scan_cli.py
+      - name: Stage and verify Windows binaries
         shell: pwsh
         run: |
-          # Define absolute paths using GitHub's workspace variable for reliability
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
           $RustUnified = "$env:GITHUB_WORKSPACE\esl_unified_rs\target\x86_64-pc-windows-msvc\release\esl-psc_cli.exe"
           $RustSiteCounter = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\site_counter_rs.exe"
+          $HelperPlot = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-plot.exe"
+          $HelperPairs = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-pairs.exe"
+          $HelperSiteCounter = "$env:GITHUB_WORKSPACE\toolkit_helpers\site-counter.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
-  
-          Write-Host "--- Verifying source files exist at: $SourceDir ---"
+          $ToolkitDir = "$env:GITHUB_WORKSPACE\stage_toolkit"
+
           if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
-            Get-ChildItem -Path $SourceDir # Show what's actually there
+            Get-ChildItem -Path $SourceDir
             throw "FATAL: Cannot find preprocess.exe in the source directory."
           }
-          Write-Host "✅ Source files found."
-  
-          Write-Host "--- Staging files to: $StageDir ---"
-          New-Item -ItemType Directory -Force -Path $StageDir
+          if (-not (Test-Path -Path $HelperPlot)) {
+            Get-ChildItem -Path "$env:GITHUB_WORKSPACE\toolkit_helpers"
+            throw "FATAL: helper binary esl-psc-plot.exe is missing."
+          }
+
+          New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
+          New-Item -ItemType Directory -Force -Path "$ToolkitDir\bin" | Out-Null
+
           Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
-          # Linear-regression backend for continuous phenotypes
           Copy-Item -Path "$SourceDir\sg_lasso_leastr.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
-          # Copy Rust binaries built in this workflow
           Copy-Item -Path $RustUnified -Destination $StageDir
           Copy-Item -Path $RustSiteCounter -Destination $StageDir
-
-          # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
+          Copy-Item -Path $HelperPlot -Destination $StageDir
+          Copy-Item -Path $HelperPairs -Destination $StageDir
+          Copy-Item -Path $HelperSiteCounter -Destination $StageDir
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
-  
-          Write-Host "--- Verifying files in stage directory ---"
+
+          Copy-Item -Path $RustUnified -Destination "$ToolkitDir\bin\esl-psc_cli.exe"
+          Copy-Item -Path $RustSiteCounter -Destination "$ToolkitDir\bin\site_counter_rs.exe"
+          Copy-Item -Path $HelperPlot -Destination "$ToolkitDir\bin\esl-psc-plot.exe"
+          Copy-Item -Path $HelperPairs -Destination "$ToolkitDir\bin\esl-psc-pairs.exe"
+          Copy-Item -Path $HelperSiteCounter -Destination "$ToolkitDir\bin\site-counter.exe"
+          Copy-Item -Path "$env:GITHUB_WORKSPACE\packaging\toolkit\README.md" -Destination "$ToolkitDir\README.md"
+
           Get-ChildItem -Path $StageDir
           if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
-            throw "FATAL: File copy failed. The stage directory is empty or the file is missing."
+            throw "FATAL: stage verification failed; preprocess.exe missing."
           }
-          Write-Host "✅ Staging verification successful."
-      - name: Build with Nuitka
+      - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
@@ -142,15 +185,21 @@ jobs:
             matplotlib
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
-          # This command includes the external helper binaries inside the .exe
           include-raw-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
-      - name: Compress build to ZIP
+      - name: Compress GUI build to ZIP
         shell: pwsh
         run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
+      - name: Compress toolkit build to ZIP
+        shell: pwsh
+        run: Compress-Archive -Path stage_toolkit\\* -DestinationPath ESL-PSC-toolkit-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
           path: ESL-PSC-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-toolkit-Windows
+          path: ESL-PSC-toolkit-Windows.zip
