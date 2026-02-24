@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
-#[command(name = "esl_unified_rs")]
+#[command(name = "esl-psc_cli")]
 #[command(about = "Unified in-memory ESL-PSC CLI (preprocess + sparse-group-lasso + multimatrix orchestration)")]
 struct Args {
     #[arg(long = "input_alignments_dir", alias = "input-alignments-dir")]
@@ -890,7 +890,7 @@ fn parse_args_with_config() -> Args {
         cli_args
             .first()
             .cloned()
-            .unwrap_or_else(|| "esl_unified_rs".to_string()),
+            .unwrap_or_else(|| "esl-psc_cli".to_string()),
     );
     merged.extend(cfg_text.split_whitespace().map(|s| s.to_string()));
     merged.extend(cli_args.into_iter().skip(1));

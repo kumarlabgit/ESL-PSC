@@ -58,7 +58,7 @@ jobs:
           cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
           # Add Rust binaries built in this workflow
-          cp esl_unified_rs/target/release/esl_unified_rs build/ESL-PSC.app/Contents/MacOS/bin/esl_unified_rs_mac
+          cp esl_unified_rs/target/release/esl-psc_cli build/ESL-PSC.app/Contents/MacOS/bin/esl-psc_cli_mac
           cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs_mac
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Create DMG
@@ -97,7 +97,7 @@ jobs:
         run: |
           # Define absolute paths using GitHub's workspace variable for reliability
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
-          $RustUnified = "$env:GITHUB_WORKSPACE\esl_unified_rs\target\x86_64-pc-windows-msvc\release\esl_unified_rs.exe"
+          $RustUnified = "$env:GITHUB_WORKSPACE\esl_unified_rs\target\x86_64-pc-windows-msvc\release\esl-psc_cli.exe"
           $RustSiteCounter = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\site_counter_rs.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
   

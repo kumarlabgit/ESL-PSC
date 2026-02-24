@@ -1,6 +1,6 @@
-# esl_unified_rs
+# esl-psc_cli
 
-`esl_unified_rs` is a unified Rust executable that runs:
+`esl-psc_cli` is a unified Rust executable that runs:
 
 1. Multimatrix orchestration (`species_groups_file` or `response_dir`)
 2. Gap-cancel + preprocess in memory
@@ -39,7 +39,7 @@ cargo build --release
 Example (multimatrix):
 
 ```bash
-./target/release/esl_unified_rs \
+./target/release/esl-psc_cli \
   --species-groups-file ../photo_multi_species_groups.txt \
   --alignments-dir ../photosynthesis_alignments \
   --prediction-alignments-dir ../photosynthesis_alignments \
@@ -92,4 +92,4 @@ You can verify flag-surface parity against Python ESL-PSC with:
 python3 scripts/check_cli_parity.py
 ```
 
-This checks that all Python CLI long options are present in `esl_unified_rs`.
+This checks that all Python CLI long options are present in `esl-psc_cli`.

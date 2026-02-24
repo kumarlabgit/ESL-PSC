@@ -65,11 +65,26 @@ class ESLWorker(QRunnable):
     @staticmethod
     def _resolve_unified_rust_binary() -> Path | None:
         if os.name == "nt":
-            exe_names = ["esl_unified_rs.exe", "esl_unified_rs"]
+            exe_names = [
+                "esl-psc_cli.exe",
+                "esl-psc_cli",
+                "esl_unified_rs.exe",
+                "esl_unified_rs",
+            ]
         elif sys.platform == "darwin":
-            exe_names = ["esl_unified_rs_mac", "esl_unified_rs"]
+            exe_names = [
+                "esl-psc_cli_mac",
+                "esl-psc_cli",
+                "esl_unified_rs_mac",
+                "esl_unified_rs",
+            ]
         else:
-            exe_names = ["esl_unified_rs", "esl_unified_rs_mac"]
+            exe_names = [
+                "esl-psc_cli",
+                "esl-psc_cli_mac",
+                "esl_unified_rs",
+                "esl_unified_rs_mac",
+            ]
 
         candidates: list[Path] = []
         seen: set[str] = set()

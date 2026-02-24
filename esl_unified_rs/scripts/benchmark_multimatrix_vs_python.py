@@ -135,8 +135,11 @@ def main():
         "--no_checkpoint",
     ]
 
+    rust_bin = root / "esl_unified_rs" / "target" / "release" / "esl-psc_cli"
+    if not rust_bin.exists():
+        rust_bin = root / "esl_unified_rs" / "target" / "release" / "esl_unified_rs"
     rs_cmd = [
-        str(root / "esl_unified_rs" / "target" / "release" / "esl_unified_rs"),
+        str(rust_bin),
         "--species-groups-file",
         str(species_groups_file),
         "--alignments-dir",
