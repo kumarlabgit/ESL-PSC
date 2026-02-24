@@ -2,16 +2,17 @@ use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use clap::Parser;
 use csv::Writer;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use rand::Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(name = "esl_unified_rs")]
@@ -312,18 +313,32 @@ struct CheckpointState {
     prediction_rows: Vec<PredictionRowOut>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CheckpointRunAudit {
+    combo: usize,
+    lambda1: f64,
+    lambda2: f64,
+    penalty_term: f64,
+    input_rmse: f64,
+}
+
 fn main() -> Result<()> {
     let start = Instant::now();
     let args = parse_args_with_config();
 
-    let mut resolved_alignments = resolve_alignments_dir(&args)?;
-    if args.auto_convert_to_2line {
-        resolved_alignments = ensure_two_line_dir(&resolved_alignments, false)?;
-    }
-    let mut resolved_prediction = resolve_prediction_alignments_dir(&args, &resolved_alignments);
-    if args.auto_convert_to_2line && resolved_prediction != resolved_alignments {
-        resolved_prediction = ensure_two_line_dir(&resolved_prediction, false)?;
-    }
+    let base_alignments = resolve_alignments_dir(&args)?;
+    let base_prediction = resolve_prediction_alignments_dir(&args, &base_alignments);
+    let (resolved_alignments, resolved_prediction) = if args.auto_convert_to_2line {
+        let converted_alignments = ensure_two_line_dir(&base_alignments, false)?;
+        let converted_prediction = if base_prediction == base_alignments {
+            converted_alignments.clone()
+        } else {
+            ensure_two_line_dir(&base_prediction, false)?
+        };
+        (converted_alignments, converted_prediction)
+    } else {
+        (base_alignments, base_prediction)
+    };
     validate_args(&args, &resolved_alignments)?;
     report_compat_warnings(&args);
     let lambda_grid = build_lambda_grid(&args)?;
@@ -332,9 +347,6 @@ fn main() -> Result<()> {
     let output_dir = resolve_output_dir(&args)?;
     fs::create_dir_all(&output_dir)
         .with_context(|| format!("failed to create output dir {}", output_dir.display()))?;
-    let model_dir = output_dir.join("models_unified_rs");
-    fs::create_dir_all(&model_dir)
-        .with_context(|| format!("failed to create model dir {}", model_dir.display()))?;
     let preprocess_root = args
         .esl_inputs_outputs_dir
         .clone()
@@ -342,7 +354,8 @@ fn main() -> Result<()> {
     let use_preprocess_dirs = args.use_existing_preprocess
         || args.esl_inputs_outputs_dir.is_some()
         || args.preprocessed_dir_name.is_some()
-        || args.delete_preprocess;
+        || args.delete_preprocess
+        || args.keep_raw_output;
     if use_preprocess_dirs {
         fs::create_dir_all(&preprocess_root).with_context(|| {
             format!(
@@ -351,6 +364,8 @@ fn main() -> Result<()> {
             )
         })?;
     }
+    let model_dir = preprocess_root.clone();
+    write_run_config_txt(&output_dir, &args)?;
 
     let limited_gene_set = if let Some(path) = &args.limited_genes_list {
         Some(read_limited_gene_set(path)?)
@@ -473,6 +488,9 @@ fn main() -> Result<()> {
     let mut total_model_runs = 0usize;
     let mut start_combo_index = 0usize;
     let checkpoint_enabled = !args.no_checkpoint && combos.len() > 1;
+    let checkpoint_min_interval = Duration::from_secs(60);
+    let mut checkpoint_last_save = Instant::now();
+    let mut pending_checkpoint_audits: Vec<CheckpointRunAudit> = Vec::new();
     if checkpoint_enabled {
         if let Some(restored) = restore_checkpoint_if_available(
             &args,
@@ -559,6 +577,7 @@ fn main() -> Result<()> {
         } else {
             1
         };
+        let mut combo_run_audits: Vec<CheckpointRunAudit> = Vec::new();
 
         for random_rep in 0..random_repeats {
             let preprocess_name =
@@ -650,6 +669,7 @@ fn main() -> Result<()> {
                 } else {
                     combo.combo_tag.clone()
                 };
+                println!("Building models...");
 
                 // Solve lambda grids by lambda1 rows while parallelizing rows.
                 let row_results: Vec<Vec<ModelResult>> =
@@ -685,8 +705,18 @@ fn main() -> Result<()> {
                             .collect::<Result<Vec<_>>>()?
                     };
 
+                let mut grid_run_idx = 0usize;
+                let grid_run_total = lambda_grid.len();
                 for results in row_results {
                     for result in &results {
+                        grid_run_idx += 1;
+                        println!(
+                            "run {} of {} in current grid;  time: {}",
+                            grid_run_idx,
+                            grid_run_total,
+                            Local::now().format("%H:%M:%S")
+                        );
+
                         if args.keep_raw_output {
                             write_model_file(
                                 &model_dir,
@@ -723,6 +753,13 @@ fn main() -> Result<()> {
                         }
 
                         total_model_runs += 1;
+                        combo_run_audits.push(CheckpointRunAudit {
+                            combo: combo.index,
+                            lambda1: result.lambda1,
+                            lambda2: result.lambda2,
+                            penalty_term: result.penalty_term,
+                            input_rmse: result.rmse,
+                        });
                     }
                 }
             }
@@ -748,14 +785,22 @@ fn main() -> Result<()> {
         }
 
         if checkpoint_enabled {
-            save_checkpoint_state(
-                &args,
-                &output_dir,
-                combo.index + 1,
-                total_model_runs,
-                &gene_aggregates,
-                &all_prediction_rows,
-            )?;
+            pending_checkpoint_audits.extend(combo_run_audits.into_iter());
+            let is_last_combo = combo.index + 1 >= combos.len();
+            let save_due = checkpoint_last_save.elapsed() >= checkpoint_min_interval;
+            if is_last_combo || save_due {
+                save_checkpoint_state(
+                    &args,
+                    &output_dir,
+                    combo.index + 1,
+                    total_model_runs,
+                    &gene_aggregates,
+                    &all_prediction_rows,
+                    &pending_checkpoint_audits,
+                )?;
+                pending_checkpoint_audits.clear();
+                checkpoint_last_save = Instant::now();
+            }
         }
     }
 
@@ -868,6 +913,63 @@ fn resolve_output_dir(args: &Args) -> Result<PathBuf> {
         "{}_{}",
         args.output_file_base_name, timestamp
     )))
+}
+
+fn write_run_config_txt(output_dir: &Path, args: &Args) -> Result<()> {
+    let path = output_dir.join(format!("{}_run_config.txt", args.output_file_base_name));
+    let value = serde_json::to_value(args)?;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| anyhow!("failed to serialize args object"))?;
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+
+    let mut out = String::new();
+    for key in keys {
+        if key.starts_with('_') {
+            continue;
+        }
+        let flag = format!("--{key}");
+        let Some(v) = obj.get(key) else {
+            continue;
+        };
+        match v {
+            serde_json::Value::Bool(true) => {
+                out.push_str(&flag);
+                out.push('\n');
+            }
+            serde_json::Value::Bool(false) | serde_json::Value::Null => {}
+            serde_json::Value::String(s) => {
+                out.push_str(&flag);
+                out.push(' ');
+                out.push_str(s);
+                out.push('\n');
+            }
+            serde_json::Value::Number(n) => {
+                out.push_str(&flag);
+                out.push(' ');
+                out.push_str(&n.to_string());
+                out.push('\n');
+            }
+            serde_json::Value::Array(arr) => {
+                if arr.is_empty() {
+                    continue;
+                }
+                out.push_str(&flag);
+                for item in arr {
+                    out.push(' ');
+                    match item {
+                        serde_json::Value::String(s) => out.push_str(s),
+                        _ => out.push_str(&item.to_string()),
+                    }
+                }
+                out.push('\n');
+            }
+            _ => {}
+        }
+    }
+    fs::write(&path, out).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
 }
 
 fn derive_canceled_alignments_dir(args: &Args, output_dir: &Path) -> PathBuf {
@@ -1098,11 +1200,13 @@ fn choose_k_indices(items: &[usize], k: usize) -> Vec<Vec<usize>> {
     out
 }
 
-fn checkpoint_paths(output_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
+fn checkpoint_paths(output_dir: &Path) -> (PathBuf, PathBuf, PathBuf, PathBuf, PathBuf) {
     let dir = output_dir.join("checkpoint");
-    let state = dir.join("state_unified.json");
-    let cmd = dir.join("command_unified.json");
-    (dir, state, cmd)
+    let state = dir.join("state.json.gz");
+    let cmd = dir.join("command.json");
+    let meta = dir.join("meta.txt");
+    let runs = dir.join("runs.jsonl");
+    (dir, state, cmd, meta, runs)
 }
 
 fn normalized_command_value(args: &Args) -> Result<serde_json::Value> {
@@ -1124,19 +1228,35 @@ fn restore_checkpoint_if_available(
     prediction_rows: &mut Vec<PredictionRowOut>,
     total_model_runs: &mut usize,
 ) -> Result<Option<usize>> {
-    let (cp_dir, state_path, cmd_path) = checkpoint_paths(output_dir);
+    let (cp_dir, state_path, cmd_path, meta_path, _runs_path) = checkpoint_paths(output_dir);
+    let legacy_uncompressed_state_path = cp_dir.join("state.json");
+    let legacy_state_path = cp_dir.join("state_unified.json");
+    let legacy_cmd_path = cp_dir.join("command_unified.json");
     if args.force_from_beginning && cp_dir.exists() {
         fs::remove_dir_all(&cp_dir)
             .with_context(|| format!("failed to clear checkpoint dir {}", cp_dir.display()))?;
         return Ok(Some(0));
     }
-    if !state_path.exists() {
+    let active_state_path = if state_path.exists() {
+        state_path.clone()
+    } else if legacy_uncompressed_state_path.exists() {
+        legacy_uncompressed_state_path
+    } else if legacy_state_path.exists() {
+        legacy_state_path
+    } else {
         return Ok(None);
-    }
+    };
 
-    if cmd_path.exists() {
+    let active_cmd_path = if cmd_path.exists() {
+        Some(cmd_path.clone())
+    } else if legacy_cmd_path.exists() {
+        Some(legacy_cmd_path)
+    } else {
+        None
+    };
+    if let Some(cmd_to_read) = active_cmd_path {
         let old_cmd: serde_json::Value = serde_json::from_reader(
-            File::open(&cmd_path).with_context(|| format!("failed to read {}", cmd_path.display()))?,
+            File::open(&cmd_to_read).with_context(|| format!("failed to read {}", cmd_to_read.display()))?,
         )?;
         let cur_cmd = normalized_command_value(args)?;
         if old_cmd != cur_cmd {
@@ -1146,15 +1266,39 @@ fn restore_checkpoint_if_available(
         }
     }
 
-    let state: CheckpointState = serde_json::from_reader(
-        File::open(&state_path).with_context(|| format!("failed to read {}", state_path.display()))?,
-    )?;
+    let state_file = File::open(&active_state_path)
+        .with_context(|| format!("failed to read {}", active_state_path.display()))?;
+    let state: CheckpointState = if active_state_path
+        .extension()
+        .and_then(|s| s.to_str())
+        == Some("gz")
+    {
+        serde_json::from_reader(GzDecoder::new(state_file)).with_context(|| {
+            format!("failed to decode gzip checkpoint {}", active_state_path.display())
+        })?
+    } else {
+        serde_json::from_reader(state_file)
+            .with_context(|| format!("failed to parse checkpoint {}", active_state_path.display()))?
+    };
     if state.gene_aggregates.len() == gene_aggregates.len() {
         *gene_aggregates = state.gene_aggregates;
     }
     *prediction_rows = state.prediction_rows;
     *total_model_runs = state.total_model_runs;
-    Ok(Some(state.next_combo_index))
+
+    // Python parity: meta.txt stores last completed combo index.
+    let next_combo_index = if meta_path.exists() {
+        match fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<usize>().ok())
+        {
+            Some(last_done) => last_done.saturating_add(1),
+            None => state.next_combo_index,
+        }
+    } else {
+        state.next_combo_index
+    };
+    Ok(Some(next_combo_index))
 }
 
 fn save_checkpoint_state(
@@ -1164,10 +1308,14 @@ fn save_checkpoint_state(
     total_model_runs: usize,
     gene_aggregates: &[GeneAggregate],
     prediction_rows: &[PredictionRowOut],
+    run_audits: &[CheckpointRunAudit],
 ) -> Result<()> {
-    let (cp_dir, state_path, cmd_path) = checkpoint_paths(output_dir);
+    let (cp_dir, state_path, cmd_path, meta_path, runs_path) = checkpoint_paths(output_dir);
     fs::create_dir_all(&cp_dir)
         .with_context(|| format!("failed to create checkpoint dir {}", cp_dir.display()))?;
+    let legacy_uncompressed_state_path = cp_dir.join("state.json");
+    let legacy_state_path = cp_dir.join("state_unified.json");
+    let legacy_cmd_path = cp_dir.join("command_unified.json");
 
     let state = CheckpointState {
         next_combo_index,
@@ -1176,11 +1324,15 @@ fn save_checkpoint_state(
         prediction_rows: prediction_rows.to_vec(),
     };
     {
-        let tmp = state_path.with_extension("tmp");
-        serde_json::to_writer_pretty(
-            File::create(&tmp).with_context(|| format!("failed to write {}", tmp.display()))?,
-            &state,
-        )?;
+        let tmp = cp_dir.join("state.json.gz.tmp");
+        let tmp_file =
+            File::create(&tmp).with_context(|| format!("failed to write {}", tmp.display()))?;
+        let mut encoder = GzEncoder::new(tmp_file, Compression::default());
+        serde_json::to_writer_pretty(&mut encoder, &state)
+            .with_context(|| format!("failed to serialize {}", tmp.display()))?;
+        encoder
+            .finish()
+            .with_context(|| format!("failed to finalize {}", tmp.display()))?;
         fs::rename(&tmp, &state_path).with_context(|| {
             format!(
                 "failed to move checkpoint {} -> {}",
@@ -1197,6 +1349,33 @@ fn save_checkpoint_state(
             &cmd,
         )?;
     }
+
+    // Python parity: meta.txt stores last completed combo index.
+    let last_completed = next_combo_index.saturating_sub(1);
+    fs::write(&meta_path, format!("{last_completed}\n"))
+        .with_context(|| format!("failed to write {}", meta_path.display()))?;
+
+    if !run_audits.is_empty() {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&runs_path)
+            .with_context(|| format!("failed to open {}", runs_path.display()))?;
+        for rec in run_audits {
+            serde_json::to_writer(&mut f, rec)?;
+            writeln!(f)?;
+        }
+    }
+    if legacy_state_path.exists() {
+        let _ = fs::remove_file(&legacy_state_path);
+    }
+    if legacy_uncompressed_state_path.exists() {
+        let _ = fs::remove_file(&legacy_uncompressed_state_path);
+    }
+    if legacy_cmd_path.exists() {
+        let _ = fs::remove_file(&legacy_cmd_path);
+    }
+
     Ok(())
 }
 
@@ -4061,12 +4240,13 @@ fn estimate_lipschitz(x: &[Vec<f64>], continuous: bool) -> f64 {
     l.max(1e-6)
 }
 
-fn sanitize_float_tag(x: f64) -> String {
-    let s = format!("{:.6}", x);
-    s.trim_end_matches('0')
-        .trim_end_matches('.')
-        .replace('-', "m")
-        .replace('.', "p")
+fn python_round5_tag(x: f64) -> String {
+    let rounded = (x * 100000.0).round() / 100000.0;
+    let mut s = rounded.to_string();
+    if !s.contains('.') && !s.contains('e') && !s.contains('E') {
+        s.push_str(".0");
+    }
+    s
 }
 
 fn write_model_file(
@@ -4076,17 +4256,16 @@ fn write_model_file(
     run: &ModelResult,
     combo_label: Option<&str>,
 ) -> Result<()> {
-    let l1 = sanitize_float_tag(run.lambda1);
-    let l2 = sanitize_float_tag(run.lambda2);
-    let gp = sanitize_float_tag(run.penalty_term);
+    let l1 = python_round5_tag(run.lambda1);
+    let l2 = python_round5_tag(run.lambda2);
 
     let fname = if let Some(combo) = combo_label {
         format!(
-            "{}_{}_l1_{}_l2_{}_gp_{}_out_feature_weights.txt",
-            base, combo, l1, l2, gp
+            "{}_{}_l1_{}_l2_{}_out_feature_weights.txt",
+            base, combo, l1, l2
         )
     } else {
-        format!("{}_l1_{}_l2_{}_gp_{}_out_feature_weights.txt", base, l1, l2, gp)
+        format!("{}_l1_{}_l2_{}_out_feature_weights.txt", base, l1, l2)
     };
 
     let path = model_dir.join(fname);

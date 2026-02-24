@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QWidget, QScrollArea, QApplication, QFileDialog
 )
 
+from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from .run_page import RunPage
 
@@ -139,9 +140,8 @@ class CommandPage(BaseWizardPage):
         except ValueError as e:
             cmd_str = f"Error generating command: {str(e)}"
             
-        # Display the command
-        # Prefix with the full python invocation for display
-        full_cmd = f"python -m esl_multimatrix {cmd_str}"
+        # Display the command with the actual preferred runner.
+        full_cmd = f"{ESLWorker.get_command_preview_prefix()} {cmd_str}"
         self.cmd_display.setPlainText(full_cmd)
         
         # Update the configuration summary

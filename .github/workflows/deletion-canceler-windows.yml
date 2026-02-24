@@ -1,4 +1,4 @@
-name: Build Rust Helpers
+name: Build Unified Rust CLI
 
 on:
   # Allow manual triggering from the GitHub UI
@@ -8,6 +8,36 @@ permissions:
   contents: read
 
 jobs:
+  build-linux:
+    name: Build (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build esl_unified_rs (release)
+        working-directory: esl_unified_rs
+        run: |
+          cargo build --release
+
+      - name: Verify built binary
+        run: |
+          ls -la esl_unified_rs/target/release/
+
+      - name: "Upload artifact: esl_unified_rs (Linux)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl_unified_rs-linux-x86_64
+          path: |
+            esl_unified_rs/target/release/esl_unified_rs
+          if-no-files-found: error
+
   build-macos:
     name: Build (macOS)
     runs-on: macos-latest
@@ -21,39 +51,25 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build deletion_canceler (release)
-        working-directory: deletion_canceler_rs
+      - name: Build esl_unified_rs (release)
+        working-directory: esl_unified_rs
         run: |
           cargo build --release
 
-      - name: Build fast_scan_rs (release)
-        working-directory: fast_scan_rs
+      - name: Verify built binary
         run: |
-          cargo build --release
+          ls -la esl_unified_rs/target/release/
 
-      - name: Verify built binaries
+      - name: Rename macOS binary for artifact
         run: |
-          ls -la deletion_canceler_rs/target/release/
-          ls -la fast_scan_rs/target/release/
+          cp esl_unified_rs/target/release/esl_unified_rs esl_unified_rs/target/release/esl_unified_rs_mac
 
-      - name: Rename macOS fast_scan_rs for artifact
-        run: |
-          cp fast_scan_rs/target/release/fast_scan_rs fast_scan_rs/target/release/fast_scan_rs_mac
-
-      - name: "Upload artifact: deletion_canceler (macOS)"
+      - name: "Upload artifact: esl_unified_rs (macOS)"
         uses: actions/upload-artifact@v4
         with:
-          name: deletion_canceler-macos
+          name: esl_unified_rs-macos
           path: |
-            deletion_canceler_rs/target/release/deletion_canceler
-          if-no-files-found: error
-
-      - name: "Upload artifact: fast_scan_rs (macOS)"
-        uses: actions/upload-artifact@v4
-        with:
-          name: fast_scan_rs-macos
-          path: |
-            fast_scan_rs/target/release/fast_scan_rs_mac
+            esl_unified_rs/target/release/esl_unified_rs_mac
           if-no-files-found: error
 
   build-windows:
@@ -74,33 +90,19 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build deletion_canceler (release)
-        working-directory: deletion_canceler_rs
+      - name: Build esl_unified_rs (release)
+        working-directory: esl_unified_rs
         run: |
           cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Build fast_scan_rs (release)
-        working-directory: fast_scan_rs
+      - name: Verify built binary
         run: |
-          cargo build --release --target x86_64-pc-windows-msvc
+          ls -la esl_unified_rs/target/x86_64-pc-windows-msvc/release/
 
-      - name: Verify built binaries
-        run: |
-          ls -la deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/
-          ls -la fast_scan_rs/target/x86_64-pc-windows-msvc/release/
-
-      - name: "Upload artifact: deletion_canceler (Windows)"
+      - name: "Upload artifact: esl_unified_rs (Windows)"
         uses: actions/upload-artifact@v4
         with:
-          name: deletion_canceler-windows-x86_64
+          name: esl_unified_rs-windows-x86_64
           path: |
-            deletion_canceler_rs/target/x86_64-pc-windows-msvc/release/deletion_canceler.exe
-          if-no-files-found: error
-
-      - name: "Upload artifact: fast_scan_rs (Windows)"
-        uses: actions/upload-artifact@v4
-        with:
-          name: fast_scan_rs-windows-x86_64
-          path: |
-            fast_scan_rs/target/x86_64-pc-windows-msvc/release/fast_scan_rs.exe
+            esl_unified_rs/target/x86_64-pc-windows-msvc/release/esl_unified_rs.exe
           if-no-files-found: error
