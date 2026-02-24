@@ -17,7 +17,7 @@
 12. [Citation](#citation)
 
 ## Description ##
-The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc_cli`, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
+The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
@@ -120,7 +120,7 @@ Feedback on the beta is welcome! Please open an issue on the [GitHub repository]
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.3.0). The GUI package runs the app directly. We also publish a toolkit package containing CLI tools (`esl-psc_cli`, `esl-psc-pairs`, `site-counter`, `esl-psc-plot`) for terminal use.
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.3.0). The GUI package runs the app directly. We also publish a toolkit package containing CLI tools (`esl-psc`, `esl-psc-pairs`, `site-counter`, `esl-psc-plot`) for terminal use.
 
 #### macOS build (Apple-notarized)
 1. Download **`ESL-PSC-MacOS.zip`**.
@@ -138,13 +138,13 @@ If you are on Linux or prefer to run from source, continue with the installation
 
 
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), run `esl-psc_cli` with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
-`esl-psc_cli --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
+`esl-psc --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
-To list CLI options, run `esl-psc_cli --help`.
+To list CLI options, run `esl-psc --help`.
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
@@ -352,7 +352,7 @@ You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
 3. Navigate to the `ESL_PSC/` directory on your computer
-4. Run this command from the ESL-PSC directory: `esl-psc_cli --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
+4. Run this command from the ESL-PSC directory: `esl-psc --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
 5. The expected run time is approximately 30 seconds on a standard desktop computer.
 6. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
 the plot should look like this:

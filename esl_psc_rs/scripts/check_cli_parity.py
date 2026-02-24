@@ -38,7 +38,7 @@ def collect_rust_flags(repo_root: Path, bin_path: str | None):
         cmd = [bin_path, "--help"]
         cwd = repo_root
     else:
-        cmd = ["cargo", "run", "--quiet", "--manifest-path", str(repo_root / "esl_unified_rs" / "Cargo.toml"), "--", "--help"]
+        cmd = ["cargo", "run", "--quiet", "--manifest-path", str(repo_root / "esl_psc_rs" / "Cargo.toml"), "--", "--help"]
         cwd = repo_root
 
     out = subprocess.check_output(cmd, cwd=cwd, text=True)
@@ -50,7 +50,7 @@ def collect_rust_flags(repo_root: Path, bin_path: str | None):
 def main():
     p = argparse.ArgumentParser(description="Check CLI flag parity between Python ESL-PSC and Rust unified CLI")
     p.add_argument("--repo-root", default=str(Path(__file__).resolve().parents[2]))
-    p.add_argument("--rust-bin", default=None, help="Path to esl-psc_cli binary (optional)")
+    p.add_argument("--rust-bin", default=None, help="Path to esl-psc binary (optional)")
     args = p.parse_args()
 
     root = Path(args.repo_root).resolve()

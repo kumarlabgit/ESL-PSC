@@ -138,7 +138,7 @@ def main():
             "--show-selected-sites",
         ]
 
-        subprocess.run(rs_cmd, cwd=root / "esl_unified_rs", check=True)
+        subprocess.run(rs_cmd, cwd=root / "esl_psc_rs", check=True)
 
         py_gene = load_gene_gss(py_out / "pybase_gene_ranks.csv")
         rs_gene = load_gene_gss(rs_out / "rustbase_gene_ranks.csv")

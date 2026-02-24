@@ -135,7 +135,7 @@ def main():
         "--no_checkpoint",
     ]
 
-    rust_bin = root / "esl_unified_rs" / "target" / "release" / "esl-psc_cli"
+    rust_bin = root / "esl_psc_rs" / "target" / "release" / "esl-psc"
     rs_cmd = [
         str(rust_bin),
         "--species-groups-file",

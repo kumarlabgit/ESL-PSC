@@ -1,6 +1,6 @@
-# esl-psc_cli
+# esl-psc
 
-`esl-psc_cli` is a unified Rust executable that runs:
+`esl-psc` is a unified Rust executable that runs:
 
 1. Multimatrix orchestration (`species_groups_file` or `response_dir`)
 2. Gap-cancel + preprocess in memory
@@ -30,7 +30,7 @@ Important options:
 ## Build
 
 ```bash
-cd esl_unified_rs
+cd esl_psc_rs
 cargo build --release
 ```
 
@@ -39,7 +39,7 @@ cargo build --release
 Example (multimatrix):
 
 ```bash
-./target/release/esl-psc_cli \
+./target/release/esl-psc \
   --species-groups-file ../photo_multi_species_groups.txt \
   --alignments-dir ../photosynthesis_alignments \
   --prediction-alignments-dir ../photosynthesis_alignments \
@@ -63,7 +63,7 @@ Outputs:
 Plot flags (`--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`) use this helper resolution order:
 
 1. `ESL_PSC_PLOTTER` env var (path or command)
-2. bundled `esl-psc-plot` executable next to `esl-psc_cli` (or in sibling `bin/`)
+2. bundled `esl-psc-plot` executable next to `esl-psc` (or in sibling `bin/`)
 3. Python fallback via `ESL_PSC_PYTHON`, then `python3`, then `python`
 
 ## Baseline comparison
@@ -98,4 +98,4 @@ You can verify flag-surface parity against Python ESL-PSC with:
 python3 scripts/check_cli_parity.py
 ```
 
-This checks that all Python CLI long options are present in `esl-psc_cli`.
+This checks that all Python CLI long options are present in `esl-psc`.

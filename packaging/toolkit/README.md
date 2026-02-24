@@ -2,16 +2,16 @@
 
 This package contains command-line tools for ESL-PSC:
 
-- `esl-psc_cli` - unified main ESL-PSC CLI
+- `esl-psc` - unified main ESL-PSC CLI
 - `esl-psc-pairs` - auto pair-selection CLI
 - `site-counter` - site counter CLI
-- `esl-psc-plot` - plotting helper CLI used by `esl-psc_cli` plot flags
+- `esl-psc-plot` - plotting helper CLI used by `esl-psc` plot flags
 - `site_counter_rs` - Rust backend used by `site-counter`
 
 ## Basic usage
 
 ```bash
-esl-psc_cli --help
+esl-psc --help
 esl-psc-pairs --help
 site-counter --help
 esl-psc-plot --help

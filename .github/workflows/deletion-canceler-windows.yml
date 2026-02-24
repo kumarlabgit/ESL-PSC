@@ -35,8 +35,8 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build esl-psc_cli (release)
-        working-directory: esl_unified_rs
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
         run: |
           cargo build --release
 
@@ -47,7 +47,7 @@ jobs:
 
       - name: Verify built binaries
         run: |
-          ls -la esl_unified_rs/target/release/
+          ls -la esl_psc_rs/target/release/
           ls -la fast_scan_rs/target/release/
 
       - name: Build toolkit helper CLIs (Linux)
@@ -61,7 +61,7 @@ jobs:
       - name: Package toolkit (Linux)
         run: |
           mkdir -p dist/esl-psc-toolkit/bin
-          cp esl_unified_rs/target/release/esl-psc_cli dist/esl-psc-toolkit/bin/esl-psc_cli
+          cp esl_psc_rs/target/release/esl-psc dist/esl-psc-toolkit/bin/esl-psc
           cp fast_scan_rs/target/release/site_counter_rs dist/esl-psc-toolkit/bin/site_counter_rs
           cp toolkit_helpers/esl-psc-plot dist/esl-psc-toolkit/bin/esl-psc-plot
           cp toolkit_helpers/esl-psc-pairs dist/esl-psc-toolkit/bin/esl-psc-pairs
@@ -70,12 +70,12 @@ jobs:
           chmod +x dist/esl-psc-toolkit/bin/*
           tar -czf esl-psc-toolkit-linux-x86_64.tar.gz -C dist esl-psc-toolkit
 
-      - name: "Upload artifact: esl-psc_cli (Linux)"
+      - name: "Upload artifact: esl-psc (Linux)"
         uses: actions/upload-artifact@v4
         with:
-          name: esl-psc_cli-linux-x86_64
+          name: esl-psc-linux-x86_64
           path: |
-            esl_unified_rs/target/release/esl-psc_cli
+            esl_psc_rs/target/release/esl-psc
           if-no-files-found: error
 
       - name: "Upload artifact: site_counter_rs (Linux)"
@@ -107,8 +107,8 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build esl-psc_cli (release)
-        working-directory: esl_unified_rs
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
         run: |
           cargo build --release
 
@@ -119,15 +119,15 @@ jobs:
 
       - name: Verify built binaries
         run: |
-          ls -la esl_unified_rs/target/release/
+          ls -la esl_psc_rs/target/release/
           ls -la fast_scan_rs/target/release/
 
-      - name: "Upload artifact: esl-psc_cli (macOS)"
+      - name: "Upload artifact: esl-psc (macOS)"
         uses: actions/upload-artifact@v4
         with:
-          name: esl-psc_cli-macos
+          name: esl-psc-macos
           path: |
-            esl_unified_rs/target/release/esl-psc_cli
+            esl_psc_rs/target/release/esl-psc
           if-no-files-found: error
 
       - name: "Upload artifact: site_counter_rs (macOS)"
@@ -156,8 +156,8 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build esl-psc_cli (release)
-        working-directory: esl_unified_rs
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
         run: |
           cargo build --release --target x86_64-pc-windows-msvc
 
@@ -168,15 +168,15 @@ jobs:
 
       - name: Verify built binaries
         run: |
-          ls -la esl_unified_rs/target/x86_64-pc-windows-msvc/release/
+          ls -la esl_psc_rs/target/x86_64-pc-windows-msvc/release/
           ls -la fast_scan_rs/target/x86_64-pc-windows-msvc/release/
 
-      - name: "Upload artifact: esl-psc_cli (Windows)"
+      - name: "Upload artifact: esl-psc (Windows)"
         uses: actions/upload-artifact@v4
         with:
-          name: esl-psc_cli-windows-x86_64
+          name: esl-psc-windows-x86_64
           path: |
-            esl_unified_rs/target/x86_64-pc-windows-msvc/release/esl-psc_cli.exe
+            esl_psc_rs/target/x86_64-pc-windows-msvc/release/esl-psc.exe
           if-no-files-found: error
 
       - name: "Upload artifact: site_counter_rs (Windows)"

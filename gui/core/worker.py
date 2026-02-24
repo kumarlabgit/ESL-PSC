@@ -66,11 +66,11 @@ class ESLWorker(QRunnable):
     def _resolve_unified_rust_binary() -> Path | None:
         if os.name == "nt":
             exe_names = [
-                "esl-psc_cli.exe",
-                "esl-psc_cli",
+                "esl-psc.exe",
+                "esl-psc",
             ]
         else:
-            exe_names = ["esl-psc_cli"]
+            exe_names = ["esl-psc"]
 
         candidates: list[Path] = []
         seen: set[str] = set()
@@ -79,7 +79,7 @@ class ESLWorker(QRunnable):
         try:
             repo_root = Path(__file__).resolve().parents[2]
             for exe_name in exe_names:
-                candidates.append(repo_root / "esl_unified_rs" / "target" / "release" / exe_name)
+                candidates.append(repo_root / "esl_psc_rs" / "target" / "release" / exe_name)
                 candidates.append(repo_root / "bin" / exe_name)
         except Exception:
             pass

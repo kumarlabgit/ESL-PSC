@@ -153,7 +153,7 @@ def main():
             def _warm_up_cli():
                 try:
                     launcher = Path(os.path.realpath(sys.argv[0]))
-                    names = ["esl-psc_cli" + (".exe" if os.name == "nt" else "")]
+                    names = ["esl-psc" + (".exe" if os.name == "nt" else "")]
                     candidates = [launcher.with_name(names[0]), launcher.parent / "bin" / names[0]]
                     for exe in candidates:
                         if not exe.is_file():

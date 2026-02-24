@@ -33,7 +33,7 @@ jobs:
           pip install nuitka
       - name: Build Rust binaries
         run: |
-          cargo build --release --manifest-path esl_unified_rs/Cargo.toml
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
           cargo build --release --manifest-path fast_scan_rs/Cargo.toml
       - name: Build toolkit helper CLIs
         run: |
@@ -65,7 +65,7 @@ jobs:
           # Linear-regression backend for continuous phenotypes
           cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
-          cp esl_unified_rs/target/release/esl-psc_cli build/ESL-PSC.app/Contents/MacOS/bin/esl-psc_cli
+          cp esl_psc_rs/target/release/esl-psc build/ESL-PSC.app/Contents/MacOS/bin/esl-psc
           cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs
           cp toolkit_helpers/esl-psc-plot build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-plot
           cp toolkit_helpers/esl-psc-pairs build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-pairs
@@ -74,7 +74,7 @@ jobs:
       - name: Stage toolkit artifact
         run: |
           mkdir -p build/esl-psc-toolkit/bin
-          cp esl_unified_rs/target/release/esl-psc_cli build/esl-psc-toolkit/bin/esl-psc_cli
+          cp esl_psc_rs/target/release/esl-psc build/esl-psc-toolkit/bin/esl-psc
           cp fast_scan_rs/target/release/site_counter_rs build/esl-psc-toolkit/bin/site_counter_rs
           cp toolkit_helpers/esl-psc-plot build/esl-psc-toolkit/bin/esl-psc-plot
           cp toolkit_helpers/esl-psc-pairs build/esl-psc-toolkit/bin/esl-psc-pairs
@@ -116,7 +116,7 @@ jobs:
       - name: Build Rust binaries
         shell: bash
         run: |
-          cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_unified_rs/Cargo.toml
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_psc_rs/Cargo.toml
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path fast_scan_rs/Cargo.toml
       - name: Build toolkit helper CLIs
         shell: bash
@@ -129,7 +129,7 @@ jobs:
         shell: pwsh
         run: |
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
-          $RustUnified = "$env:GITHUB_WORKSPACE\esl_unified_rs\target\x86_64-pc-windows-msvc\release\esl-psc_cli.exe"
+          $RustUnified = "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe"
           $RustSiteCounter = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\site_counter_rs.exe"
           $HelperPlot = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-plot.exe"
           $HelperPairs = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-pairs.exe"
@@ -161,7 +161,7 @@ jobs:
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
 
-          Copy-Item -Path $RustUnified -Destination "$ToolkitDir\bin\esl-psc_cli.exe"
+          Copy-Item -Path $RustUnified -Destination "$ToolkitDir\bin\esl-psc.exe"
           Copy-Item -Path $RustSiteCounter -Destination "$ToolkitDir\bin\site_counter_rs.exe"
           Copy-Item -Path $HelperPlot -Destination "$ToolkitDir\bin\esl-psc-plot.exe"
           Copy-Item -Path $HelperPairs -Destination "$ToolkitDir\bin\esl-psc-pairs.exe"
