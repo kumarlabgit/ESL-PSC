@@ -21,6 +21,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -29,6 +30,10 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_unified_rs/Cargo.toml
+          cargo build --release --manifest-path fast_scan_rs/Cargo.toml
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -53,8 +58,9 @@ jobs:
           # Linear-regression backend for continuous phenotypes
           cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
-          # Add Rust fast scan binary
-          cp bin/fast_scan_rs_mac build/ESL-PSC.app/Contents/MacOS/bin/fast_scan_rs_mac
+          # Add Rust binaries built in this workflow
+          cp esl_unified_rs/target/release/esl_unified_rs build/ESL-PSC.app/Contents/MacOS/bin/esl_unified_rs_mac
+          cp fast_scan_rs/target/release/fast_scan_rs build/ESL-PSC.app/Contents/MacOS/bin/fast_scan_rs_mac
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Create DMG
         run: |
@@ -71,6 +77,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -79,11 +88,18 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
+      - name: Build Rust binaries
+        shell: bash
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_unified_rs/Cargo.toml
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path fast_scan_rs/Cargo.toml
       - name: Stage and Verify Windows Binaries
         shell: pwsh
         run: |
           # Define absolute paths using GitHub's workspace variable for reliability
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
+          $RustUnified = "$env:GITHUB_WORKSPACE\esl_unified_rs\target\x86_64-pc-windows-msvc\release\esl_unified_rs.exe"
+          $RustFastScan = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\fast_scan_rs.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
   
           Write-Host "--- Verifying source files exist at: $SourceDir ---"
@@ -100,8 +116,9 @@ jobs:
           # Linear-regression backend for continuous phenotypes
           Copy-Item -Path "$SourceDir\sg_lasso_leastr.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
-          # Copy Rust fast scan binary from repo
-          Copy-Item -Path "$SourceDir\fast_scan_rs.exe" -Destination $StageDir
+          # Copy Rust binaries built in this workflow
+          Copy-Item -Path $RustUnified -Destination $StageDir
+          Copy-Item -Path $RustFastScan -Destination $StageDir
 
           # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force

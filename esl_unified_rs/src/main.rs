@@ -12,6 +12,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
@@ -670,6 +672,40 @@ fn main() -> Result<()> {
                     combo.combo_tag.clone()
                 };
                 println!("Building models...");
+                let grid_run_total = lambda_grid.len();
+                let progress_counter = Arc::new(AtomicUsize::new(0));
+                let progress_done = Arc::new(AtomicBool::new(false));
+                let progress_counter_for_thread = Arc::clone(&progress_counter);
+                let progress_done_for_thread = Arc::clone(&progress_done);
+                let progress_handle = std::thread::spawn(move || {
+                    let mut last_reported = 0usize;
+                    loop {
+                        let current = progress_counter_for_thread
+                            .load(AtomicOrdering::Relaxed)
+                            .min(grid_run_total);
+                        if current != last_reported {
+                            println!(
+                                "run {} of {} in current grid;  time: {}",
+                                current,
+                                grid_run_total,
+                                Local::now().format("%H:%M:%S")
+                            );
+                            last_reported = current;
+                        }
+                        if progress_done_for_thread.load(AtomicOrdering::Relaxed) {
+                            if last_reported < grid_run_total {
+                                println!(
+                                    "run {} of {} in current grid;  time: {}",
+                                    grid_run_total,
+                                    grid_run_total,
+                                    Local::now().format("%H:%M:%S")
+                                );
+                            }
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                });
 
                 // Solve lambda grids by lambda1 rows while parallelizing rows.
                 let row_results: Vec<Vec<ModelResult>> =
@@ -685,6 +721,7 @@ fn main() -> Result<()> {
                                     use_continuous,
                                     args.maxiter,
                                     lipschitz,
+                                    Some(Arc::clone(&progress_counter)),
                                 )
                             })
                             .collect::<Result<Vec<_>>>()?
@@ -700,23 +737,18 @@ fn main() -> Result<()> {
                                     use_continuous,
                                     args.maxiter,
                                     lipschitz,
+                                    Some(Arc::clone(&progress_counter)),
                                 )
                             })
                             .collect::<Result<Vec<_>>>()?
                     };
+                progress_done.store(true, AtomicOrdering::Relaxed);
+                if let Err(e) = progress_handle.join() {
+                    bail!("model-progress thread failed: {:?}", e);
+                }
 
-                let mut grid_run_idx = 0usize;
-                let grid_run_total = lambda_grid.len();
                 for results in row_results {
                     for result in &results {
-                        grid_run_idx += 1;
-                        println!(
-                            "run {} of {} in current grid;  time: {}",
-                            grid_run_idx,
-                            grid_run_total,
-                            Local::now().format("%H:%M:%S")
-                        );
-
                         if args.keep_raw_output {
                             write_model_file(
                                 &model_dir,
@@ -3345,6 +3377,7 @@ fn solve_lambda_row(
     continuous: bool,
     maxiter: usize,
     lipschitz: f64,
+    progress_counter: Option<Arc<AtomicUsize>>,
 ) -> Result<Vec<ModelResult>> {
     let mut out = Vec::with_capacity(lambda_row.len());
 
@@ -3374,6 +3407,9 @@ fn solve_lambda_row(
             result.penalty_term = penalty;
         }
         out.push(result);
+        if let Some(counter) = &progress_counter {
+            counter.fetch_add(1, AtomicOrdering::Relaxed);
+        }
     }
 
     Ok(out)
