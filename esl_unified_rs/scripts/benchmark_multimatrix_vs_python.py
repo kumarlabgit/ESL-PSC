@@ -136,8 +136,6 @@ def main():
     ]
 
     rust_bin = root / "esl_unified_rs" / "target" / "release" / "esl-psc_cli"
-    if not rust_bin.exists():
-        rust_bin = root / "esl_unified_rs" / "target" / "release" / "esl_unified_rs"
     rs_cmd = [
         str(rust_bin),
         "--species-groups-file",

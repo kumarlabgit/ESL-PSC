@@ -163,27 +163,22 @@ def main(argv=None) -> int:
     used_rust = False
 
     # Attempt Rust path unless disabled
-    detect_rs = getattr(fs, "_detect_site_counter_rs", fs._detect_fast_scan_rs)
-    run_rs = getattr(fs, "_run_site_counter_rs", fs._run_fast_scan_rs)
-    rs_bin = detect_rs()
+    rs_bin = fs._detect_site_counter_rs()
     # If fractional agreement or tree is requested, prefer a newer target build if present
     if rs_bin and (min_agree != 1.0 or tree_file):
         try:
             repo_root = os.path.abspath(os.path.join(os.path.dirname(fs.__file__), "..", ".."))
-            candidates = [
-                os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs"),
-                os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs"),
-            ]
-            rs_bin = next(
-                (cand for cand in candidates if os.path.isfile(cand) and os.access(cand, os.X_OK)),
-                None,
-            )
+            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                rs_bin = cand
+            else:
+                rs_bin = None
         except Exception:
             rs_bin = None
 
     if rs_bin:
         try:
-            results = run_rs(
+            results = fs._run_site_counter_rs(
                 rs_bin,
                 align_dir,
                 files,
@@ -209,7 +204,6 @@ def main(argv=None) -> int:
             )
             # Ensure Python fallback is used for this invocation
             os.environ["SITE_COUNTER_RS_DISABLE"] = "1"
-            os.environ["FAST_SCAN_RS_DISABLE"] = "1"
             results = fs.fast_scan_alignments(
                 align_dir,
                 groups_path,
@@ -224,7 +218,6 @@ def main(argv=None) -> int:
     else:
         # Direct Python path (or forced)
         os.environ["SITE_COUNTER_RS_DISABLE"] = "1"
-        os.environ["FAST_SCAN_RS_DISABLE"] = "1"
         results = fs.fast_scan_alignments(
             align_dir,
             groups_path,

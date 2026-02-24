@@ -17,12 +17,10 @@ cd fast_scan_rs
 cargo build --release
 ```
 
-The optimized binaries will be created at
-`fast_scan_rs/target/release/site_counter_rs` (preferred) and
-`fast_scan_rs/target/release/fast_scan_rs` (legacy-compatible). The Python CLI
-(`esl_psc_cli/fast_scan_cli.py`) automatically prefers the Site Counter binary
-when it is present and executable; otherwise it falls back to the pure-Python
-implementation.
+The optimized binary will be created at
+`fast_scan_rs/target/release/site_counter_rs`. The Python CLI
+(`esl_psc_cli/fast_scan_cli.py`) uses this binary when it is present and
+executable; otherwise it falls back to the pure-Python implementation.
 
 ## JSON input schema
 
@@ -153,8 +151,7 @@ where the MRCA is at the root (no outgroup context) are skipped.
 ## Integration with the Python CLI
 
 `python -m esl_psc_cli.fast_scan_cli` wraps this binary. When a compatible
-`site_counter_rs` (or legacy `fast_scan_rs`) build is available, the CLI streams
-the required JSON over stdin and performs the same post-processing, CSV export,
-and ranking logic as the GUI site counter workflow. Set
-`SITE_COUNTER_RS_DISABLE=1` (or legacy `FAST_SCAN_RS_DISABLE=1`) to force the
+`site_counter_rs` build is available, the CLI streams the required JSON over
+stdin and performs the same post-processing, CSV export, and ranking logic as
+the GUI site counter workflow. Set `SITE_COUNTER_RS_DISABLE=1` to force the
 Python fallback if needed.

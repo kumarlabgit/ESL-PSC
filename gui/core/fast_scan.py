@@ -1,8 +1,7 @@
 """Site Counter scanning of alignments for CCS, control convergence, and CS-derived significance.
 
-Optionally uses a Rust backend binary (site_counter_rs preferred, fast_scan_rs
-supported for compatibility) to accelerate per-file scanning. Falls back to
-the Python implementation otherwise.
+Optionally uses a Rust backend binary (site_counter_rs) to accelerate per-file
+scanning. Falls back to the Python implementation otherwise.
 """
 from __future__ import annotations
 
@@ -441,14 +440,11 @@ def fast_scan_alignments(
         if float(min_out_ctrl_agreement) != 1.0 or tree_file:
             # For ancestral reconstruction or fractional agreement, use local build
             repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            candidates = [
-                os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs"),
-                os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs"),
-            ]
-            rs_bin = next(
-                (cand for cand in candidates if os.path.isfile(cand) and os.access(cand, os.X_OK)),
-                None,
-            )
+            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                rs_bin = cand
+            else:
+                rs_bin = None
     except Exception:
         rs_bin = None
     
@@ -563,52 +559,45 @@ def _detect_site_counter_rs() -> str | None:
     """Return path to Rust Site Counter backend binary if available, else None.
 
     Detection priority:
-      1) Environment variable SITE_COUNTER_RS (fallback: FAST_SCAN_RS)
-      2) bin/site_counter_rs (fallback: fast_scan_rs) relative to repo root
-      3) fast_scan_rs/target/release/site_counter_rs (fallback: fast_scan_rs)
+      1) Environment variable SITE_COUNTER_RS
+      2) bin/site_counter_rs (relative to repo root)
+      3) fast_scan_rs/target/release/site_counter_rs (relative to repo root)
       4) bin/ next to the executable (packaged app/onefile)
     """
     # Allow disabling via env for testing or debugging.
     if os.environ.get("SITE_COUNTER_RS_DISABLE", "0") in {"1", "true", "True"}:
         return None
-    if os.environ.get("FAST_SCAN_RS_DISABLE", "0") in {"1", "true", "True"}:
-        return None
     # 1) Env var
-    env_path = os.environ.get("SITE_COUNTER_RS") or os.environ.get("FAST_SCAN_RS")
+    env_path = os.environ.get("SITE_COUNTER_RS")
     if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
         return env_path
     # Compute repo root from this file (editable/source check)
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    # 2) bin/site_counter_rs[_mac] (fallback: fast_scan_rs[_mac]) relative to repo root.
+    # 2) bin/site_counter_rs[_mac] relative to repo root.
     if sys.platform == "darwin":
-        for name in ("site_counter_rs_mac", "fast_scan_rs_mac"):
-            cand = os.path.join(repo_root, "bin", name)
-            if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                return cand
-    for name in ("site_counter_rs", "fast_scan_rs"):
-        cand = os.path.join(repo_root, "bin", name)
+        cand = os.path.join(repo_root, "bin", "site_counter_rs_mac")
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
+    cand = os.path.join(repo_root, "bin", "site_counter_rs")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
     # 3) target/release binaries (relative to repo root).
-    for name in ("site_counter_rs", "fast_scan_rs"):
-        cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", name)
-        if os.path.isfile(cand) and os.access(cand, os.X_OK):
-            return cand
+    cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
     # Also try Windows .exe (even on WSL).
-    for name in ("site_counter_rs.exe", "fast_scan_rs.exe"):
-        cand = os.path.join(repo_root, "bin", name)
-        if os.path.isfile(cand) and os.access(cand, os.X_OK):
-            return cand
+    cand = os.path.join(repo_root, "bin", "site_counter_rs.exe")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
     # 4) Packaged app path: bin/ next to the executable
     try:
         exe_dir = os.path.abspath(os.path.dirname(getattr(sys, 'executable', sys.argv[0])))
         # Prefer mac-suffixed name on macOS bundles
         if sys.platform == "darwin":
-            for name in ("site_counter_rs_mac", "fast_scan_rs_mac"):
-                cand = os.path.join(exe_dir, "bin", name)
-                if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                    return cand
-        for name in ("site_counter_rs", "fast_scan_rs", "site_counter_rs.exe", "fast_scan_rs.exe"):
+            cand = os.path.join(exe_dir, "bin", "site_counter_rs_mac")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
+        for name in ("site_counter_rs", "site_counter_rs.exe"):
             cand = os.path.join(exe_dir, "bin", name)
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 return cand
@@ -633,7 +622,7 @@ def _run_site_counter_rs(
     require_unambiguous_mrca: bool = False,
     compute_mrca_representative: bool = False,
 ) -> List[Dict[str, float | int]]:
-    """Invoke the Rust site_counter_rs/fast_scan_rs binary and parse JSON output.
+    """Invoke the Rust site_counter_rs binary and parse JSON output.
 
     Returns a list of rows with the same schema as the Python worker.
     """
@@ -655,7 +644,7 @@ def _run_site_counter_rs(
     # Add tree metadata for ancestral reconstruction. Prefer embedding the parsed
     # tree (JSON) to avoid Rust-side parsing and any temp files.
     if tree_file:
-        spec["tree_file"] = tree_file  # keep for backward-compat/fallback
+        spec["tree_file"] = tree_file
         try:
             root = _load_tree(tree_file)
             spec["tree_json"] = clade_to_json(root)
@@ -736,11 +725,6 @@ def _run_site_counter_rs(
             "per_combo_diff": row.get("per_combo_diff", []),
         })
     return out
-
-
-# Backward compatibility aliases.
-_detect_fast_scan_rs = _detect_site_counter_rs
-_run_fast_scan_rs = _run_site_counter_rs
 
 def _apply_combo_top_ranking(results: List[Dict[str, float | int]], n_combos: int, top_frac: float) -> None:
     """For multiple combos, compute per-gene count of combos where the gene is in the
