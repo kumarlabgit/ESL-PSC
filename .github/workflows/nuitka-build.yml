@@ -11,11 +11,52 @@ on:
         options:
           - macos
           - windows
+          - linux_toolkit
 
 env:
   PYTHON_VERSION: "3.11"
 
 jobs:
+  build-linux-toolkit:
+    if: ${{ github.event.inputs.target_os == 'linux_toolkit' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
+          pip install nuitka
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+          cargo build --release --manifest-path fast_scan_rs/Cargo.toml
+      - name: Build toolkit helper CLIs
+        run: |
+          mkdir -p toolkit_helpers
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-plot esl_psc_cli/plot_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir toolkit_helpers --output-filename site-counter esl_psc_cli/fast_scan_cli.py
+      - name: Stage toolkit artifact
+        run: |
+          mkdir -p build/esl-psc-toolkit/bin
+          cp esl_psc_rs/target/release/esl-psc build/esl-psc-toolkit/bin/esl-psc
+          cp fast_scan_rs/target/release/site_counter_rs build/esl-psc-toolkit/bin/site_counter_rs
+          cp toolkit_helpers/esl-psc-plot build/esl-psc-toolkit/bin/esl-psc-plot
+          cp toolkit_helpers/esl-psc-pairs build/esl-psc-toolkit/bin/esl-psc-pairs
+          cp toolkit_helpers/site-counter build/esl-psc-toolkit/bin/site-counter
+          cp packaging/toolkit/README.md build/esl-psc-toolkit/README.md
+          chmod +x build/esl-psc-toolkit/bin/*
+          tar -czf build/ESL-PSC-toolkit-linux-x86_64.tar.gz -C build esl-psc-toolkit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-toolkit-linux-x86_64
+          path: build/ESL-PSC-toolkit-linux-x86_64.tar.gz
+
   build-macos:
     if: ${{ github.event.inputs.target_os == 'macos' }}
     runs-on: macos-latest
