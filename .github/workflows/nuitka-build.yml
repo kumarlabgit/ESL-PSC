@@ -108,9 +108,6 @@ jobs:
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
           cp esl_psc_rs/target/release/esl-psc build/ESL-PSC.app/Contents/MacOS/bin/esl-psc
           cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs
-          cp toolkit_helpers/esl-psc-plot build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-plot
-          cp toolkit_helpers/esl-psc-pairs build/ESL-PSC.app/Contents/MacOS/bin/esl-psc-pairs
-          cp toolkit_helpers/site-counter build/ESL-PSC.app/Contents/MacOS/bin/site-counter
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Stage toolkit artifact
         run: |
@@ -196,9 +193,6 @@ jobs:
           Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
           Copy-Item -Path $RustUnified -Destination $StageDir
           Copy-Item -Path $RustSiteCounter -Destination $StageDir
-          Copy-Item -Path $HelperPlot -Destination $StageDir
-          Copy-Item -Path $HelperPairs -Destination $StageDir
-          Copy-Item -Path $HelperSiteCounter -Destination $StageDir
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
 

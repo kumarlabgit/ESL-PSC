@@ -115,6 +115,109 @@ class ESLWorker(QRunnable):
         if rust_bin is not None:
             return str(rust_bin)
         return f"{sys.executable} -u -m esl_psc_cli.esl_multimatrix"
+
+    @staticmethod
+    def _split_plot_flags(command_args: list[str]) -> tuple[str | None, list[str]]:
+        """Return (plot_mode, args_without_plot_flags)."""
+        has_cont = "--make_continuous_plot" in command_args or "--make-continuous-plot" in command_args
+        has_violin = "--make_sps_plot" in command_args or "--make-sps-plot" in command_args
+        has_kde = "--make_sps_kde_plot" in command_args or "--make-sps-kde-plot" in command_args
+
+        mode: str | None = None
+        if has_cont:
+            mode = "continuous"
+        elif has_violin:
+            mode = "violin"
+        elif has_kde:
+            mode = "kde"
+
+        plot_flags = {
+            "--make_continuous_plot",
+            "--make-continuous-plot",
+            "--make_sps_plot",
+            "--make-sps-plot",
+            "--make_sps_kde_plot",
+            "--make-sps-kde-plot",
+        }
+        filtered = [arg for arg in command_args if arg not in plot_flags]
+        return mode, filtered
+
+    @staticmethod
+    def _arg_value(command_args: list[str], *names: str, default: str | None = None) -> str | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 1 < len(command_args):
+                return command_args[i + 1]
+        return default
+
+    @staticmethod
+    def _arg_pair(command_args: list[str], *names: str) -> tuple[str, str] | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 2 < len(command_args):
+                return command_args[i + 1], command_args[i + 2]
+        return None
+
+    def _run_inprocess_plot(self, mode: str, command_args: list[str]) -> bool:
+        """Generate plots using the GUI's Python runtime (no extra bundled runtime)."""
+        if "--no_pred_output" in command_args or "--no-pred-output" in command_args:
+            self.signals.output.emit("[INFO] Plot requested, but --no_pred_output is set; skipping plot generation.")
+            return True
+
+        output_dir = self._arg_value(command_args, "--output_dir", "--output-dir")
+        output_base = self._arg_value(
+            command_args,
+            "--output_file_base_name",
+            "--output-file-base-name",
+        )
+        if not output_dir or not output_base:
+            self.signals.error.emit(
+                "Unable to generate plots: missing --output_dir or --output_file_base_name."
+            )
+            return False
+
+        min_genes_raw = self._arg_value(command_args, "--min_genes", "--min-genes", default="0")
+        try:
+            min_genes = int(min_genes_raw or "0")
+        except ValueError:
+            min_genes = 0
+
+        pred_csv = Path(output_dir) / f"{output_base}_species_predictions.csv"
+        if not pred_csv.is_file():
+            self.signals.error.emit(
+                f"Unable to generate plots: predictions CSV not found: {pred_csv}"
+            )
+            return False
+
+        plot_args = [
+            "--mode", mode,
+            "--pred_csv", str(pred_csv),
+            "--title", output_base,
+            "--min_genes", str(min_genes),
+        ]
+        if mode != "continuous":
+            pheno_names = self._arg_pair(command_args, "--pheno_names", "--pheno-names")
+            if pheno_names:
+                plot_args.extend([
+                    "--pheno_name1", pheno_names[0],
+                    "--pheno_name2", pheno_names[1],
+                ])
+
+        try:
+            from esl_psc_cli.plot_cli import main as plot_cli_main
+
+            self.signals.output.emit(
+                f"[INFO] Generating {mode} prediction plot with bundled Python runtime..."
+            )
+            rc = int(plot_cli_main(plot_args))
+            if rc != 0:
+                self.signals.error.emit(
+                    f"Plot generation failed with exit code {rc}."
+                )
+                return False
+            self.signals.output.emit("[INFO] Plot generation completed.")
+            return True
+        except Exception as exc:
+            self.signals.error.emit(f"Plot generation failed: {exc}")
+            return False
     
     @Slot()
     def run(self):
@@ -407,9 +510,17 @@ class ESLWorker(QRunnable):
 
         if rust_bin is not None:
             try:
-                command = [str(rust_bin), *self.command_args]
+                plot_mode, rust_args = self._split_plot_flags(self.command_args)
+                command = [str(rust_bin), *rust_args]
                 self.signals.output.emit(f"[INFO] Running unified Rust CLI: {rust_bin}")
+                if plot_mode is not None:
+                    self.signals.output.emit(
+                        "[INFO] Plot flags will be handled in-process by the GUI Python runtime."
+                    )
                 exit_code = _run_subprocess(command)
+                if exit_code == 0 and plot_mode is not None:
+                    if not self._run_inprocess_plot(plot_mode, rust_args):
+                        exit_code = 1
             except Exception as e:
                 import traceback
                 if not self.was_stopped:
