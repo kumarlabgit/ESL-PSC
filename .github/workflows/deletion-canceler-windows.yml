@@ -53,9 +53,9 @@ jobs:
       - name: Build toolkit helper CLIs (Linux)
         run: |
           mkdir -p toolkit_helpers
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename esl-psc-plot esl_psc_cli/plot_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename site-counter esl_psc_cli/fast_scan_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-plot esl_psc_cli/plot_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
+          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=site-counter esl_psc_cli/fast_scan_cli.py
           ls -la toolkit_helpers
 
       - name: Package toolkit (Linux)
