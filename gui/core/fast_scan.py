@@ -556,13 +556,13 @@ def fast_scan_alignments(
 
 
 def _detect_site_counter_rs() -> str | None:
-    """Return path to Rust Site Counter backend binary if available, else None.
+    """Return path to Rust Site Counter backend executable if available, else None.
 
     Detection priority:
       1) Environment variable SITE_COUNTER_RS
       2) bin/site_counter_rs (relative to repo root)
       3) fast_scan_rs/target/release/site_counter_rs (relative to repo root)
-      4) bin/ next to the executable (packaged app/onefile)
+      4) esl-psc executable (repo build or packaged app)
     """
     # Allow disabling via env for testing or debugging.
     if os.environ.get("SITE_COUNTER_RS_DISABLE", "0") in {"1", "true", "True"}:
@@ -585,6 +585,15 @@ def _detect_site_counter_rs() -> str | None:
     cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
+    # Unified Rust CLI can host the backend directly.
+    for cand in (
+        os.path.join(repo_root, "bin", "esl-psc"),
+        os.path.join(repo_root, "bin", "esl-psc.exe"),
+        os.path.join(repo_root, "esl_psc_rs", "target", "release", "esl-psc"),
+        os.path.join(repo_root, "esl_psc_rs", "target", "release", "esl-psc.exe"),
+    ):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
     # Also try Windows .exe (even on WSL).
     cand = os.path.join(repo_root, "bin", "site_counter_rs.exe")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
@@ -597,7 +606,7 @@ def _detect_site_counter_rs() -> str | None:
             cand = os.path.join(exe_dir, "bin", "site_counter_rs_mac")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 return cand
-        for name in ("site_counter_rs", "site_counter_rs.exe"):
+        for name in ("site_counter_rs", "site_counter_rs.exe", "esl-psc", "esl-psc.exe"):
             cand = os.path.join(exe_dir, "bin", name)
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 return cand
@@ -622,10 +631,14 @@ def _run_site_counter_rs(
     require_unambiguous_mrca: bool = False,
     compute_mrca_representative: bool = False,
 ) -> List[Dict[str, float | int]]:
-    """Invoke the Rust site_counter_rs binary and parse JSON output.
+    """Invoke the Rust site-counter backend and parse JSON output.
 
     Returns a list of rows with the same schema as the Python worker.
     """
+    cmd = [bin_path]
+    base = os.path.basename(bin_path).lower()
+    if base in {"esl-psc", "esl-psc.exe"}:
+        cmd.append("site-counter-backend")
     # Build JSON spec
     spec = {
         "alignment_dir": alignment_dir,
@@ -662,7 +675,7 @@ def _run_site_counter_rs(
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:
         try:
             proc = subprocess.Popen(
-                [bin_path],
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=tmp_out,
                 stderr=subprocess.PIPE,

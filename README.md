@@ -156,13 +156,13 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 ### Auto Pair Selection CLI
 
-Toolkit command: `esl-psc-pairs --help`
+Toolkit command: `esl-psc pairs --help` (alias: `esl-psc-pairs --help`)
 
 Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
 
 ### Site Counter CLI
 
-Toolkit command: `site-counter --help`
+Toolkit command: `esl-psc site-counter --help` (alias: `site-counter --help`)
 
 Looking for the high-performance site counter backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
 

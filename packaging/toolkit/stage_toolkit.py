@@ -24,7 +24,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Stage ESL-PSC toolkit payload.")
     parser.add_argument("--dest", required=True, help="Toolkit output directory")
     parser.add_argument("--rust-main", required=True, help="Path to esl-psc binary")
-    parser.add_argument("--site-counter-rs", required=True, help="Path to site_counter_rs binary")
     parser.add_argument(
         "--platform",
         required=True,
@@ -43,14 +42,10 @@ def main() -> int:
     gui_core_dir.mkdir(parents=True, exist_ok=True)
 
     rust_main = Path(args.rust_main).resolve()
-    site_counter_rs = Path(args.site_counter_rs).resolve()
     if not rust_main.is_file():
         raise FileNotFoundError(f"missing Rust main binary: {rust_main}")
-    if not site_counter_rs.is_file():
-        raise FileNotFoundError(f"missing site_counter_rs binary: {site_counter_rs}")
 
     shutil.copy2(rust_main, bin_dir / rust_main.name)
-    shutil.copy2(site_counter_rs, bin_dir / site_counter_rs.name)
 
     wrappers_dir = repo_root / "packaging" / "toolkit" / "bin"
     if args.platform == "windows":

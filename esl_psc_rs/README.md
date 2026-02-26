@@ -7,6 +7,12 @@
 3. Sparse-group-lasso model fitting over lambda grids (in memory)
 4. ESL-style outputs (gene ranks, selected sites, species predictions, model files)
 
+It also exposes utility subcommands through the same executable:
+
+- `esl-psc pairs ...`
+- `esl-psc site-counter ...`
+- `esl-psc plot ...`
+
 This removes the repeated Python/C file handoff loop (`paths.txt`, preprocess dirs,
 group-penalty rewrites, repeated solver input/output parsing) and keeps each combo
 in memory while sweeping lambdas/penalties.
@@ -51,6 +57,12 @@ Example (multimatrix):
   --lambda-step 0.1 \
   --group-penalty-type std \
   --show-selected-sites
+```
+
+You can also call the run pipeline explicitly as:
+
+```bash
+./target/release/esl-psc run ...
 ```
 
 Outputs:

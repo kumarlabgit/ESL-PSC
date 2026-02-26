@@ -171,10 +171,8 @@ def main(argv=None) -> int:
             cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 rs_bin = cand
-            else:
-                rs_bin = None
         except Exception:
-            rs_bin = None
+            pass
 
     if rs_bin:
         try:

@@ -18,7 +18,9 @@ use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(name = "esl-psc")]
-#[command(about = "Unified in-memory ESL-PSC CLI (preprocess + sparse-group-lasso + multimatrix orchestration)")]
+#[command(
+    about = "Unified in-memory ESL-PSC CLI (preprocess + sparse-group-lasso + multimatrix orchestration)"
+)]
 struct Args {
     #[arg(long = "input_alignments_dir", alias = "input-alignments-dir")]
     input_alignments_dir: Option<PathBuf>,
@@ -26,7 +28,10 @@ struct Args {
     #[arg(long = "alignments_dir", alias = "alignments-dir")]
     alignments_dir: Option<PathBuf>,
 
-    #[arg(long = "prediction_alignments_dir", alias = "prediction-alignments-dir")]
+    #[arg(
+        long = "prediction_alignments_dir",
+        alias = "prediction-alignments-dir"
+    )]
     prediction_alignments_dir: Option<PathBuf>,
 
     #[arg(long = "response_matrix_path", alias = "response-matrix-path")]
@@ -50,16 +55,32 @@ struct Args {
     #[arg(long = "output_file_base_name", alias = "output-file-base-name")]
     output_file_base_name: String,
 
-    #[arg(long = "initial_lambda1", alias = "initial-lambda1", default_value_t = 0.01)]
+    #[arg(
+        long = "initial_lambda1",
+        alias = "initial-lambda1",
+        default_value_t = 0.01
+    )]
     initial_lambda1: f64,
 
-    #[arg(long = "final_lambda1", alias = "final-lambda1", default_value_t = 0.99)]
+    #[arg(
+        long = "final_lambda1",
+        alias = "final-lambda1",
+        default_value_t = 0.99
+    )]
     final_lambda1: f64,
 
-    #[arg(long = "initial_lambda2", alias = "initial-lambda2", default_value_t = 0.01)]
+    #[arg(
+        long = "initial_lambda2",
+        alias = "initial-lambda2",
+        default_value_t = 0.01
+    )]
     initial_lambda2: f64,
 
-    #[arg(long = "final_lambda2", alias = "final-lambda2", default_value_t = 0.99)]
+    #[arg(
+        long = "final_lambda2",
+        alias = "final-lambda2",
+        default_value_t = 0.99
+    )]
     final_lambda2: f64,
 
     #[arg(long = "lambda_step", alias = "lambda-step", default_value_t = 0.05)]
@@ -68,22 +89,42 @@ struct Args {
     #[arg(long = "use_logspace", alias = "use-logspace", default_value_t = false)]
     use_logspace: bool,
 
-    #[arg(long = "num_log_points", alias = "num-log-points", default_value_t = 20)]
+    #[arg(
+        long = "num_log_points",
+        alias = "num-log-points",
+        default_value_t = 20
+    )]
     num_log_points: usize,
 
-    #[arg(long = "group_penalty_type", alias = "group-penalty-type", default_value = "median")]
+    #[arg(
+        long = "group_penalty_type",
+        alias = "group-penalty-type",
+        default_value = "median"
+    )]
     group_penalty_type: String,
 
-    #[arg(long = "initial_gp_value", alias = "initial-gp-value", default_value_t = 1.0)]
+    #[arg(
+        long = "initial_gp_value",
+        alias = "initial-gp-value",
+        default_value_t = 1.0
+    )]
     initial_gp_value: f64,
 
-    #[arg(long = "final_gp_value", alias = "final-gp-value", default_value_t = 1.0)]
+    #[arg(
+        long = "final_gp_value",
+        alias = "final-gp-value",
+        default_value_t = 1.0
+    )]
     final_gp_value: f64,
 
     #[arg(long = "gp_step", alias = "gp-step", default_value_t = 6.0)]
     gp_step: f64,
 
-    #[arg(long = "use_continuous_phenotypes", alias = "use-continuous-phenotypes", default_value_t = false)]
+    #[arg(
+        long = "use_continuous_phenotypes",
+        alias = "use-continuous-phenotypes",
+        default_value_t = false
+    )]
     use_continuous_phenotypes: bool,
 
     #[arg(long = "maxiter", default_value_t = 100)]
@@ -92,31 +133,63 @@ struct Args {
     #[arg(long = "num_threads", alias = "num-threads")]
     num_threads: Option<usize>,
 
-    #[arg(long = "top_rank_frac", alias = "top-rank-frac", default_value_t = 0.01)]
+    #[arg(
+        long = "top_rank_frac",
+        alias = "top-rank-frac",
+        default_value_t = 0.01
+    )]
     top_rank_frac: f64,
 
-    #[arg(long = "no_pred_output", alias = "no-pred-output", default_value_t = false)]
+    #[arg(
+        long = "no_pred_output",
+        alias = "no-pred-output",
+        default_value_t = false
+    )]
     no_pred_output: bool,
 
-    #[arg(long = "no_genes_output", alias = "no-genes-output", default_value_t = false)]
+    #[arg(
+        long = "no_genes_output",
+        alias = "no-genes-output",
+        default_value_t = false
+    )]
     no_genes_output: bool,
 
-    #[arg(long = "show_selected_sites", alias = "show-selected-sites", default_value_t = false)]
+    #[arg(
+        long = "show_selected_sites",
+        alias = "show-selected-sites",
+        default_value_t = false
+    )]
     show_selected_sites: bool,
 
-    #[arg(long = "use_uncanceled_alignments", alias = "use-uncanceled-alignments", default_value_t = false)]
+    #[arg(
+        long = "use_uncanceled_alignments",
+        alias = "use-uncanceled-alignments",
+        default_value_t = false
+    )]
     use_uncanceled_alignments: bool,
 
-    #[arg(long = "cancel_tri_allelic", alias = "cancel-tri-allelic", default_value_t = false)]
+    #[arg(
+        long = "cancel_tri_allelic",
+        alias = "cancel-tri-allelic",
+        default_value_t = false
+    )]
     cancel_tri_allelic: bool,
 
-    #[arg(long = "nix_full_deletions", alias = "nix-full-deletions", default_value_t = false)]
+    #[arg(
+        long = "nix_full_deletions",
+        alias = "nix-full-deletions",
+        default_value_t = false
+    )]
     nix_full_deletions: bool,
 
     #[arg(long = "outgroup_species", alias = "outgroup-species")]
     outgroup_species: Option<String>,
 
-    #[arg(long = "cancel_only_partner", alias = "cancel-only-partner", default_value_t = false)]
+    #[arg(
+        long = "cancel_only_partner",
+        alias = "cancel-only-partner",
+        default_value_t = false
+    )]
     cancel_only_partner: bool,
 
     #[arg(long = "min_pairs", alias = "min-pairs", default_value_t = 2)]
@@ -144,52 +217,112 @@ struct Args {
     #[arg(long = "min_genes", alias = "min-genes", default_value_t = 0)]
     min_genes: usize,
 
-    #[arg(long = "use_existing_preprocess", alias = "use-existing-preprocess", default_value_t = false)]
+    #[arg(
+        long = "use_existing_preprocess",
+        alias = "use-existing-preprocess",
+        default_value_t = false
+    )]
     use_existing_preprocess: bool,
 
-    #[arg(long = "use_default_gp", alias = "use-default-gp", default_value_t = false)]
+    #[arg(
+        long = "use_default_gp",
+        alias = "use-default-gp",
+        default_value_t = false
+    )]
     use_default_gp: bool,
 
-    #[arg(long = "keep_raw_output", alias = "keep-raw-output", default_value_t = false)]
+    #[arg(
+        long = "keep_raw_output",
+        alias = "keep-raw-output",
+        default_value_t = false
+    )]
     keep_raw_output: bool,
 
-    #[arg(long = "make_sps_plot", alias = "make-sps-plot", default_value_t = false)]
+    #[arg(
+        long = "make_sps_plot",
+        alias = "make-sps-plot",
+        default_value_t = false
+    )]
     make_sps_plot: bool,
 
-    #[arg(long = "make_sps_kde_plot", alias = "make-sps-kde-plot", default_value_t = false)]
+    #[arg(
+        long = "make_sps_kde_plot",
+        alias = "make-sps-kde-plot",
+        default_value_t = false
+    )]
     make_sps_kde_plot: bool,
 
-    #[arg(long = "make_continuous_plot", alias = "make-continuous-plot", default_value_t = false)]
+    #[arg(
+        long = "make_continuous_plot",
+        alias = "make-continuous-plot",
+        default_value_t = false
+    )]
     make_continuous_plot: bool,
 
     #[arg(long = "canceled_alignments_dir", alias = "canceled-alignments-dir")]
     canceled_alignments_dir: Option<PathBuf>,
 
-    #[arg(long = "use_existing_alignments", alias = "use-existing-alignments", default_value_t = false)]
+    #[arg(
+        long = "use_existing_alignments",
+        alias = "use-existing-alignments",
+        default_value_t = false
+    )]
     use_existing_alignments: bool,
 
-    #[arg(long = "delete_preprocess", alias = "delete-preprocess", default_value_t = false)]
+    #[arg(
+        long = "delete_preprocess",
+        alias = "delete-preprocess",
+        default_value_t = false
+    )]
     delete_preprocess: bool,
 
-    #[arg(long = "preserve_canceled_alignments", alias = "preserve-canceled-alignments", default_value_t = false)]
+    #[arg(
+        long = "preserve_canceled_alignments",
+        alias = "preserve-canceled-alignments",
+        default_value_t = false
+    )]
     preserve_canceled_alignments: bool,
 
-    #[arg(long = "make_null_models", alias = "make-null-models", default_value_t = false)]
+    #[arg(
+        long = "make_null_models",
+        alias = "make-null-models",
+        default_value_t = false
+    )]
     make_null_models: bool,
 
-    #[arg(long = "make_pair_randomized_null_models", alias = "make-pair-randomized-null-models", default_value_t = false)]
+    #[arg(
+        long = "make_pair_randomized_null_models",
+        alias = "make-pair-randomized-null-models",
+        default_value_t = false
+    )]
     make_pair_randomized_null_models: bool,
 
-    #[arg(long = "num_randomized_alignments", alias = "num-randomized-alignments", default_value_t = 10)]
+    #[arg(
+        long = "num_randomized_alignments",
+        alias = "num-randomized-alignments",
+        default_value_t = 10
+    )]
     num_randomized_alignments: usize,
 
-    #[arg(long = "auto_convert_to_2line", alias = "auto-convert-to-2line", default_value_t = false)]
+    #[arg(
+        long = "auto_convert_to_2line",
+        alias = "auto-convert-to-2line",
+        default_value_t = false
+    )]
     auto_convert_to_2line: bool,
 
-    #[arg(long = "no_checkpoint", alias = "no-checkpoint", default_value_t = false)]
+    #[arg(
+        long = "no_checkpoint",
+        alias = "no-checkpoint",
+        default_value_t = false
+    )]
     no_checkpoint: bool,
 
-    #[arg(long = "force_from_beginning", alias = "force-from-beginning", default_value_t = false)]
+    #[arg(
+        long = "force_from_beginning",
+        alias = "force-from-beginning",
+        default_value_t = false
+    )]
     force_from_beginning: bool,
 }
 
@@ -326,8 +459,48 @@ struct CheckpointRunAudit {
 
 fn main() -> Result<()> {
     let start = Instant::now();
-    let args = parse_args_with_config();
+    let raw_args: Vec<String> = std::env::args().collect();
+    if let Some(subcommand) = raw_args.get(1).map(|s| s.as_str()) {
+        match subcommand {
+            "pairs" => {
+                return run_python_module_subcommand(
+                    "esl_psc_cli.auto_pairs_cli",
+                    &raw_args[2..],
+                    &[],
+                )
+            }
+            "plot" => {
+                return run_python_module_subcommand("esl_psc_cli.plot_cli", &raw_args[2..], &[])
+            }
+            "site-counter" => {
+                let current_exe = std::env::current_exe()
+                    .context("unable to determine path to current esl-psc executable")?;
+                let envs = vec![
+                    ("SITE_COUNTER_RS", current_exe.to_string_lossy().to_string()),
+                    ("SITE_COUNTER_RS_DISABLE", "0".to_string()),
+                ];
+                return run_python_module_subcommand(
+                    "esl_psc_cli.fast_scan_cli",
+                    &raw_args[2..],
+                    &envs,
+                );
+            }
+            "site-counter-backend" => {
+                return fast_scan_rs::run_backend_stdio().map_err(|e| anyhow!(e));
+            }
+            "run" => {
+                let args = parse_args_with_config(&raw_args[2..]);
+                return run_unified_pipeline(args, start);
+            }
+            _ => {}
+        }
+    }
 
+    let args = parse_args_with_config(raw_args.get(1..).unwrap_or(&[]));
+    run_unified_pipeline(args, start)
+}
+
+fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
     let base_alignments = resolve_alignments_dir(&args)?;
     let base_prediction = resolve_prediction_alignments_dir(&args, &base_alignments);
     let (resolved_alignments, resolved_prediction) = if args.auto_convert_to_2line {
@@ -375,7 +548,10 @@ fn main() -> Result<()> {
         None
     };
 
-    println!("Loading input alignments from {}", resolved_alignments.display());
+    println!(
+        "Loading input alignments from {}",
+        resolved_alignments.display()
+    );
     let path_file_order = if let Some(path_file) = &args.path_file_path {
         Some(read_path_file_order(path_file, &resolved_alignments)?)
     } else {
@@ -393,7 +569,10 @@ fn main() -> Result<()> {
                 "No FASTA files found in base alignments directory; using per-combo existing alignments."
             );
         } else {
-            bail!("no usable alignments found in {}", resolved_alignments.display());
+            bail!(
+                "no usable alignments found in {}",
+                resolved_alignments.display()
+            );
         }
     } else {
         println!("Loaded {} gene alignments", train_alignments.len());
@@ -403,7 +582,10 @@ fn main() -> Result<()> {
         if args.no_pred_output || resolved_prediction == resolved_alignments {
             None
         } else {
-            println!("Loading prediction alignments from {}", resolved_prediction.display());
+            println!(
+                "Loading prediction alignments from {}",
+                resolved_prediction.display()
+            );
             Some(load_alignments(
                 &resolved_prediction,
                 limited_gene_set.as_ref(),
@@ -450,9 +632,7 @@ fn main() -> Result<()> {
     let use_continuous = args.use_continuous_phenotypes || auto_continuous;
 
     if auto_continuous && !args.use_continuous_phenotypes {
-        println!(
-            "Detected non-binary response values; using continuous solver mode automatically"
-        );
+        println!("Detected non-binary response values; using continuous solver mode automatically");
     }
     let preserve_canceled_root = if args.preserve_canceled_alignments
         && is_multimatrix_mode
@@ -460,8 +640,9 @@ fn main() -> Result<()> {
         && !args.make_pair_randomized_null_models
     {
         let dir = derive_canceled_alignments_dir(&args, &output_dir);
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("failed to create canceled alignments dir {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| {
+            format!("failed to create canceled alignments dir {}", dir.display())
+        })?;
         Some(dir)
     } else {
         None
@@ -582,16 +763,15 @@ fn main() -> Result<()> {
         let mut combo_run_audits: Vec<CheckpointRunAudit> = Vec::new();
 
         for random_rep in 0..random_repeats {
-            let preprocess_name =
-                preprocess_dir_name_for_combo(&args, combo, &resolved_alignments, is_multimatrix_mode);
+            let preprocess_name = preprocess_dir_name_for_combo(
+                &args,
+                combo,
+                &resolved_alignments,
+                is_multimatrix_mode,
+            );
             let preprocess_dir = preprocess_root.join(&preprocess_name);
             let prep = if args.use_existing_preprocess {
-                load_preprocessed_data(
-                    &preprocess_dir,
-                    combo,
-                    combo_alignments,
-                    use_continuous,
-                )?
+                load_preprocessed_data(&preprocess_dir, combo, combo_alignments, use_continuous)?
             } else {
                 let p = preprocess_combo_alignments(
                     combo_alignments,
@@ -806,12 +986,19 @@ fn main() -> Result<()> {
             );
         }
         if use_preprocess_dirs && args.delete_preprocess && preprocess_root.exists() {
-            let preprocess_name =
-                preprocess_dir_name_for_combo(&args, combo, &resolved_alignments, is_multimatrix_mode);
+            let preprocess_name = preprocess_dir_name_for_combo(
+                &args,
+                combo,
+                &resolved_alignments,
+                is_multimatrix_mode,
+            );
             let preprocess_dir = preprocess_root.join(preprocess_name);
             if preprocess_dir.is_dir() {
                 fs::remove_dir_all(&preprocess_dir).with_context(|| {
-                    format!("failed deleting preprocess dir {}", preprocess_dir.display())
+                    format!(
+                        "failed deleting preprocess dir {}",
+                        preprocess_dir.display()
+                    )
                 })?;
             }
         }
@@ -877,24 +1064,111 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse_args_with_config() -> Args {
+fn parse_args_with_config(cli_tail: &[String]) -> Args {
     let cfg = Path::new("esl_psc_config.txt");
     if !cfg.is_file() {
-        return Args::parse();
+        let mut argv = vec!["esl-psc".to_string()];
+        argv.extend(cli_tail.iter().cloned());
+        return Args::parse_from(argv);
     }
     println!("getting args from esl_psc_config.txt...");
     let cfg_text = fs::read_to_string(cfg).unwrap_or_default();
-    let cli_args: Vec<String> = std::env::args().collect();
-    let mut merged: Vec<String> = Vec::with_capacity(1 + cli_args.len() + cfg_text.len() / 4);
-    merged.push(
-        cli_args
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "esl-psc".to_string()),
-    );
+    let mut merged: Vec<String> = Vec::with_capacity(1 + cli_tail.len() + cfg_text.len() / 4);
+    merged.push("esl-psc".to_string());
     merged.extend(cfg_text.split_whitespace().map(|s| s.to_string()));
-    merged.extend(cli_args.into_iter().skip(1));
+    merged.extend(cli_tail.iter().cloned());
     Args::parse_from(merged)
+}
+
+fn run_python_module_subcommand(
+    module_name: &str,
+    module_args: &[String],
+    extra_env: &[(&str, String)],
+) -> Result<()> {
+    let mut last_error: Option<String> = None;
+    for python_cmd in python_command_candidates() {
+        let mut cmd = Command::new(&python_cmd);
+        cmd.arg("-m").arg(module_name);
+        cmd.args(module_args);
+        configure_python_env_for_toolkit(&mut cmd);
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
+        match cmd.status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => {
+                last_error = Some(format!(
+                    "python module '{}' via '{}' exited with status {}",
+                    module_name, python_cmd, status
+                ));
+            }
+            Err(e) => {
+                last_error = Some(format!(
+                    "failed to launch python '{}' for module '{}': {}",
+                    python_cmd, module_name, e
+                ));
+            }
+        }
+    }
+
+    bail!(
+        "{}",
+        last_error.unwrap_or_else(|| {
+            format!(
+                "could not execute python module '{}' (no working python interpreter found)",
+                module_name
+            )
+        })
+    );
+}
+
+fn configure_python_env_for_toolkit(cmd: &mut Command) {
+    let candidate_paths = toolkit_pythonpath_candidates();
+    if candidate_paths.is_empty() {
+        return;
+    }
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+    let mut pieces: Vec<String> = Vec::new();
+    for path in candidate_paths {
+        pieces.push(path.to_string_lossy().to_string());
+    }
+    if !existing.trim().is_empty() {
+        pieces.push(existing);
+    }
+    cmd.env("PYTHONPATH", pieces.join(sep));
+}
+
+fn toolkit_pythonpath_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(path) = std::env::var("ESL_PSC_PYTHONPATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            let from_env = PathBuf::from(trimmed);
+            if from_env.is_dir() {
+                candidates.push(from_env);
+            }
+        }
+    }
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let direct = exe_dir.join("python");
+            if direct.is_dir() {
+                candidates.push(direct);
+            }
+            if let Some(parent) = exe_dir.parent() {
+                let sibling = parent.join("python");
+                if sibling.is_dir() {
+                    candidates.push(sibling);
+                }
+                let lib_layout = parent.join("lib").join("esl-psc").join("python");
+                if lib_layout.is_dir() {
+                    candidates.push(lib_layout);
+                }
+            }
+        }
+    }
+    dedupe_pathbufs(candidates)
 }
 
 fn resolve_alignments_dir(args: &Args) -> Result<PathBuf> {
@@ -941,10 +1215,7 @@ fn resolve_output_dir(args: &Args) -> Result<PathBuf> {
         .map(Path::to_path_buf)
         .unwrap_or(esl_main_dir.clone());
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    Ok(parent.join(format!(
-        "{}_{}",
-        args.output_file_base_name, timestamp
-    )))
+    Ok(parent.join(format!("{}_{}", args.output_file_base_name, timestamp)))
 }
 
 fn write_run_config_txt(output_dir: &Path, args: &Args) -> Result<()> {
@@ -1059,7 +1330,10 @@ fn auto_model_workers(lambda_pairs: usize) -> usize {
 
 fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
     if !alignments_dir.is_dir() {
-        bail!("alignments directory does not exist: {}", alignments_dir.display());
+        bail!(
+            "alignments directory does not exist: {}",
+            alignments_dir.display()
+        );
     }
 
     let mut sources = 0usize;
@@ -1212,7 +1486,13 @@ fn make_null_combo_jobs(combos: &[ComboJob]) -> Result<Vec<ComboJob>> {
 }
 
 fn choose_k_indices(items: &[usize], k: usize) -> Vec<Vec<usize>> {
-    fn rec(items: &[usize], k: usize, start: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    fn rec(
+        items: &[usize],
+        k: usize,
+        start: usize,
+        cur: &mut Vec<usize>,
+        out: &mut Vec<Vec<usize>>,
+    ) {
         if cur.len() == k {
             out.push(cur.clone());
             return;
@@ -1288,7 +1568,8 @@ fn restore_checkpoint_if_available(
     };
     if let Some(cmd_to_read) = active_cmd_path {
         let old_cmd: serde_json::Value = serde_json::from_reader(
-            File::open(&cmd_to_read).with_context(|| format!("failed to read {}", cmd_to_read.display()))?,
+            File::open(&cmd_to_read)
+                .with_context(|| format!("failed to read {}", cmd_to_read.display()))?,
         )?;
         let cur_cmd = normalized_command_value(args)?;
         if old_cmd != cur_cmd {
@@ -1300,18 +1581,19 @@ fn restore_checkpoint_if_available(
 
     let state_file = File::open(&active_state_path)
         .with_context(|| format!("failed to read {}", active_state_path.display()))?;
-    let state: CheckpointState = if active_state_path
-        .extension()
-        .and_then(|s| s.to_str())
-        == Some("gz")
-    {
-        serde_json::from_reader(GzDecoder::new(state_file)).with_context(|| {
-            format!("failed to decode gzip checkpoint {}", active_state_path.display())
-        })?
-    } else {
-        serde_json::from_reader(state_file)
-            .with_context(|| format!("failed to parse checkpoint {}", active_state_path.display()))?
-    };
+    let state: CheckpointState =
+        if active_state_path.extension().and_then(|s| s.to_str()) == Some("gz") {
+            serde_json::from_reader(GzDecoder::new(state_file)).with_context(|| {
+                format!(
+                    "failed to decode gzip checkpoint {}",
+                    active_state_path.display()
+                )
+            })?
+        } else {
+            serde_json::from_reader(state_file).with_context(|| {
+                format!("failed to parse checkpoint {}", active_state_path.display())
+            })?
+        };
     if state.gene_aggregates.len() == gene_aggregates.len() {
         *gene_aggregates = state.gene_aggregates;
     }
@@ -1377,7 +1659,8 @@ fn save_checkpoint_state(
     if !cmd_path.exists() {
         let cmd = normalized_command_value(args)?;
         serde_json::to_writer_pretty(
-            File::create(&cmd_path).with_context(|| format!("failed to write {}", cmd_path.display()))?,
+            File::create(&cmd_path)
+                .with_context(|| format!("failed to write {}", cmd_path.display()))?,
             &cmd,
         )?;
     }
@@ -1426,9 +1709,16 @@ fn resolve_combo_alignments<'a>(
         .as_ref()
         .ok_or_else(|| anyhow!("--use_existing_alignments requires --canceled_alignments_dir"))?;
     let candidate = base.join(format!("{}-alignments", combo.combo_label));
-    let dir = if candidate.is_dir() { candidate } else { base.clone() };
+    let dir = if candidate.is_dir() {
+        candidate
+    } else {
+        base.clone()
+    };
     if !dir.is_dir() {
-        bail!("existing alignments directory does not exist: {}", dir.display());
+        bail!(
+            "existing alignments directory does not exist: {}",
+            dir.display()
+        );
     }
     let use_dir = if args.auto_convert_to_2line {
         ensure_two_line_dir(&dir, true)?
@@ -1543,20 +1833,26 @@ fn convert_dir_to_two_line(src: &Path, dst: &Path, recursive: bool) -> Result<()
                 fs::create_dir_all(&out_sub)?;
                 convert_dir_to_two_line(&p, &out_sub, true)?;
             } else if p.is_file() && is_fasta_path(&p) {
-                convert_single_fasta_to_two_line(&p, &dst.join(
-                    p.file_name()
-                        .ok_or_else(|| anyhow!("invalid file name {}", p.display()))?,
-                ))?;
+                convert_single_fasta_to_two_line(
+                    &p,
+                    &dst.join(
+                        p.file_name()
+                            .ok_or_else(|| anyhow!("invalid file name {}", p.display()))?,
+                    ),
+                )?;
             }
         }
     } else {
         for ent in fs::read_dir(src).with_context(|| format!("unable to read {}", src.display()))? {
             let p = ent?.path();
             if p.is_file() && is_fasta_path(&p) {
-                convert_single_fasta_to_two_line(&p, &dst.join(
-                    p.file_name()
-                        .ok_or_else(|| anyhow!("invalid file name {}", p.display()))?,
-                ))?;
+                convert_single_fasta_to_two_line(
+                    &p,
+                    &dst.join(
+                        p.file_name()
+                            .ok_or_else(|| anyhow!("invalid file name {}", p.display()))?,
+                    ),
+                )?;
             }
         }
     }
@@ -1565,7 +1861,8 @@ fn convert_dir_to_two_line(src: &Path, dst: &Path, recursive: bool) -> Result<()
 
 fn convert_single_fasta_to_two_line(src: &Path, dst: &Path) -> Result<()> {
     let (seqs, _) = read_fasta_map(src)?;
-    let mut out = File::create(dst).with_context(|| format!("failed to create {}", dst.display()))?;
+    let mut out =
+        File::create(dst).with_context(|| format!("failed to create {}", dst.display()))?;
     for (species, seq) in seqs {
         writeln!(out, ">{species}")?;
         writeln!(out, "{}", String::from_utf8_lossy(&seq))?;
@@ -1683,9 +1980,7 @@ else:
             }
         }
     }
-    bail!(
-        "plot generation failed: no working plot helper or python interpreter was found"
-    );
+    bail!("plot generation failed: no working plot helper or python interpreter was found");
 }
 
 fn plotter_command_candidates() -> Vec<PathBuf> {
@@ -1768,7 +2063,11 @@ fn dedupe_strings(items: Vec<String>) -> Vec<String> {
     out
 }
 
-fn maybe_dump_preprocess_features(output_dir: &Path, combo_label: &str, prep: &PreprocessedData) -> Result<()> {
+fn maybe_dump_preprocess_features(
+    output_dir: &Path,
+    combo_label: &str,
+    prep: &PreprocessedData,
+) -> Result<()> {
     let enabled = std::env::var("ESL_UNIFIED_DUMP_FEATURES")
         .ok()
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -1890,8 +2189,8 @@ fn write_preprocessed_data(dir: &Path, prep: &PreprocessedData) -> Result<()> {
         .ok_or_else(|| anyhow!("invalid preprocess directory name {}", dir.display()))?;
 
     let feature_path = dir.join(format!("feature_{}.txt", base));
-    let mut ff =
-        File::create(&feature_path).with_context(|| format!("failed to create {}", feature_path.display()))?;
+    let mut ff = File::create(&feature_path)
+        .with_context(|| format!("failed to create {}", feature_path.display()))?;
     for row in &prep.x {
         let mut first = true;
         for v in row {
@@ -1926,14 +2225,14 @@ fn write_preprocessed_data(dir: &Path, prep: &PreprocessedData) -> Result<()> {
     }
 
     let stats_path = dir.join(format!("feature_stats_{}.txt", base));
-    let mut sf =
-        File::create(&stats_path).with_context(|| format!("failed to create {}", stats_path.display()))?;
+    let mut sf = File::create(&stats_path)
+        .with_context(|| format!("failed to create {}", stats_path.display()))?;
     writeln!(sf, "Samples\t{}", prep.species.len())?;
     writeln!(sf, "Features\t{}", prep.features.len())?;
 
     let field_path = dir.join(format!("field_{}.txt", base));
-    let mut fld =
-        File::create(&field_path).with_context(|| format!("failed to create {}", field_path.display()))?;
+    let mut fld = File::create(&field_path)
+        .with_context(|| format!("failed to create {}", field_path.display()))?;
     for i in 1..=prep.features.len() {
         if i > 1 {
             write!(fld, ",")?;
@@ -1943,7 +2242,8 @@ fn write_preprocessed_data(dir: &Path, prep: &PreprocessedData) -> Result<()> {
     writeln!(fld)?;
 
     let miss_path = dir.join(format!("missing_seqs_{}.txt", base));
-    File::create(&miss_path).with_context(|| format!("failed to create {}", miss_path.display()))?;
+    File::create(&miss_path)
+        .with_context(|| format!("failed to create {}", miss_path.display()))?;
 
     let mut starts = Vec::new();
     let mut ends = Vec::new();
@@ -1963,8 +2263,8 @@ fn write_preprocessed_data(dir: &Path, prep: &PreprocessedData) -> Result<()> {
         weights.push(format!("{:.6}", (len as f64).sqrt()));
     }
     let group_path = dir.join(format!("group_indices_{}.txt", base));
-    let mut gf =
-        File::create(&group_path).with_context(|| format!("failed to create {}", group_path.display()))?;
+    let mut gf = File::create(&group_path)
+        .with_context(|| format!("failed to create {}", group_path.display()))?;
     writeln!(gf, "{}", starts.join(","))?;
     writeln!(gf, "{}", ends.join(","))?;
     writeln!(gf, "{}", weights.join(","))?;
@@ -2003,7 +2303,8 @@ fn load_preprocessed_data(
         let mut parts = line.splitn(2, '\t');
         let idx_part = parts.next().unwrap_or("").trim();
         let label = parts.next().unwrap_or("").trim();
-        if idx_part.is_empty() || label.is_empty() || !idx_part.chars().all(|c| c.is_ascii_digit()) {
+        if idx_part.is_empty() || label.is_empty() || !idx_part.chars().all(|c| c.is_ascii_digit())
+        {
             continue;
         }
         if idx_part == "0" {
@@ -2034,7 +2335,11 @@ fn load_preprocessed_data(
         let mut row = Vec::new();
         for tok in t.split(',') {
             let v = tok.trim().parse::<f64>().with_context(|| {
-                format!("invalid numeric token '{}' in {}", tok, feature_path.display())
+                format!(
+                    "invalid numeric token '{}' in {}",
+                    tok,
+                    feature_path.display()
+                )
             })?;
             row.push(v);
         }
@@ -2065,8 +2370,9 @@ fn load_preprocessed_data(
             continue;
         }
         y_file.push(
-            t.parse::<f64>()
-                .with_context(|| format!("invalid response '{}' in {}", t, response_path.display()))?,
+            t.parse::<f64>().with_context(|| {
+                format!("invalid response '{}' in {}", t, response_path.display())
+            })?,
         );
     }
 
@@ -2244,7 +2550,11 @@ fn read_fasta_map(path: &Path) -> Result<(HashMap<String, Vec<u8>>, usize)> {
             current_id = rest.trim().to_string();
         } else if !current_id.is_empty() {
             for b in t.as_bytes() {
-                let c = if *b == b'?' { b'-' } else { b.to_ascii_uppercase() };
+                let c = if *b == b'?' {
+                    b'-'
+                } else {
+                    b.to_ascii_uppercase()
+                };
                 current_seq.push(c);
             }
         }
@@ -2330,7 +2640,11 @@ fn binary_pair_labels(n: usize) -> Vec<f64> {
 }
 
 fn build_combo_jobs(args: &Args, phenotype_info: Option<&PhenotypeInfo>) -> Result<Vec<ComboJob>> {
-    if let Some(path) = args.response_matrix_path.as_ref().or(args.response_file.as_ref()) {
+    if let Some(path) = args
+        .response_matrix_path
+        .as_ref()
+        .or(args.response_file.as_ref())
+    {
         let (species, y_raw) = read_response_matrix(path)?;
         let label = "combo_0".to_string();
         return Ok(vec![ComboJob {
@@ -2346,7 +2660,13 @@ fn build_combo_jobs(args: &Args, phenotype_info: Option<&PhenotypeInfo>) -> Resu
         let mut files: Vec<PathBuf> = fs::read_dir(dir)
             .with_context(|| format!("unable to read response_dir {}", dir.display()))?
             .filter_map(|e| e.ok().map(|x| x.path()))
-            .filter(|p| p.is_file() && p.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("txt")).unwrap_or(false))
+            .filter(|p| {
+                p.is_file()
+                    && p.extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.eq_ignore_ascii_case("txt"))
+                        .unwrap_or(false)
+            })
             .collect();
         files.sort();
 
@@ -2470,10 +2790,7 @@ fn make_species_combo_tag(species: &[String], label: &str) -> String {
     if species.len() > 12 {
         return label.to_string();
     }
-    let use_underscore = species
-        .first()
-        .map(|s| s.contains('_'))
-        .unwrap_or(false);
+    let use_underscore = species.first().map(|s| s.contains('_')).unwrap_or(false);
 
     let parts: Vec<String> = species
         .iter()
@@ -2489,7 +2806,10 @@ fn make_species_combo_tag(species: &[String], label: &str) -> String {
     parts.join(".")
 }
 
-fn validate_combo_species_against_alignments(combos: &[ComboJob], alignments: &[GeneAlignment]) -> Result<()> {
+fn validate_combo_species_against_alignments(
+    combos: &[ComboJob],
+    alignments: &[GeneAlignment],
+) -> Result<()> {
     let mut present = HashSet::new();
     for gene in alignments {
         for sp in gene.seqs.keys() {
@@ -2555,7 +2875,10 @@ fn read_response_matrix(path: &Path) -> Result<(Vec<String>, Vec<f64>)> {
     }
 
     if species.is_empty() {
-        bail!("no species/phenotype entries were parsed from {}", path.display());
+        bail!(
+            "no species/phenotype entries were parsed from {}",
+            path.display()
+        );
     }
 
     Ok((species, values))
@@ -3105,7 +3428,11 @@ fn python_style_prediction_scores(
     let mut sum_sq = 0.0_f64;
     let n = prep.species.len().max(1);
     for (i, _) in prep.species.iter().enumerate() {
-        let observed = if input_touched[i] { input_scores[i] } else { 0.0 };
+        let observed = if input_touched[i] {
+            input_scores[i]
+        } else {
+            0.0
+        };
         let expected = prep.y_model[i];
         sum_sq += (expected - observed).powi(2);
     }
@@ -3225,8 +3552,8 @@ fn write_predictions_csv(
     include_true_phenotype: bool,
 ) -> Result<PathBuf> {
     let path = output_dir.join(format!("{}_species_predictions.csv", base_name));
-    let mut wtr = Writer::from_path(&path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    let mut wtr =
+        Writer::from_path(&path).with_context(|| format!("failed to create {}", path.display()))?;
 
     if include_true_phenotype {
         wtr.write_record([
@@ -3303,11 +3630,16 @@ fn write_gene_ranks_csv_single(
     });
 
     let path = output_dir.join(format!("{}_gene_ranks.csv", base_name));
-    let mut wtr = Writer::from_path(&path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    let mut wtr =
+        Writer::from_path(&path).with_context(|| format!("failed to create {}", path.display()))?;
 
     if show_selected_sites {
-        wtr.write_record(["gene_name", "highest_gss", "best_rank", "num_selected_sites"])?;
+        wtr.write_record([
+            "gene_name",
+            "highest_gss",
+            "best_rank",
+            "num_selected_sites",
+        ])?;
     } else {
         wtr.write_record(["gene_name", "highest_gss", "best_rank"])?;
     }
@@ -3368,8 +3700,8 @@ fn write_gene_ranks_csv_multimatrix(
     });
 
     let path = output_dir.join(format!("{}_gene_ranks.csv", base_name));
-    let mut wtr = Writer::from_path(&path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    let mut wtr =
+        Writer::from_path(&path).with_context(|| format!("failed to create {}", path.display()))?;
 
     if show_selected_sites {
         wtr.write_record([
@@ -3420,10 +3752,14 @@ fn write_gene_ranks_csv_multimatrix(
     Ok(())
 }
 
-fn write_selected_sites_csv(output_dir: &Path, base_name: &str, genes: &[GeneAggregate]) -> Result<()> {
+fn write_selected_sites_csv(
+    output_dir: &Path,
+    base_name: &str,
+    genes: &[GeneAggregate],
+) -> Result<()> {
     let path = output_dir.join(format!("{}_selected_sites.csv", base_name));
-    let mut wtr = Writer::from_path(&path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    let mut wtr =
+        Writer::from_path(&path).with_context(|| format!("failed to create {}", path.display()))?;
 
     wtr.write_record(["gene_name", "position", "pss"])?;
 
@@ -3578,9 +3914,7 @@ fn median_var_sites_from_alignments(alignments: &[GeneAlignment]) -> Result<f64>
         }
     }
     if vars.is_empty() {
-        bail!(
-            "no alignments with variable sites found for median group penalty calculation"
-        );
+        bail!("no alignments with variable sites found for median group penalty calculation");
     }
     vars.sort_unstable();
     let median = if vars.len() % 2 == 1 {
@@ -3669,7 +4003,10 @@ fn lambda_logspace_grid(
     let mut out = Vec::with_capacity(lambda1_values.len() * lambda2_values.len());
     for l1 in lambda1_values {
         for l2 in &lambda2_values {
-            out.push((round_to(l1, digits_to_round as usize), round_to(*l2, digits_to_round as usize)));
+            out.push((
+                round_to(l1, digits_to_round as usize),
+                round_to(*l2, digits_to_round as usize),
+            ));
         }
     }
     Ok(out)
@@ -3682,7 +4019,8 @@ fn round_to(x: f64, digits: usize) -> f64 {
 
 fn compute_group_weights(kind: &str, penalty_term: f64, genes: &[GeneMeta]) -> Vec<f64> {
     let k = kind.to_lowercase();
-    genes.iter()
+    genes
+        .iter()
         .map(|g| {
             let feature_len = if g.feature_end >= g.feature_start {
                 g.feature_end - g.feature_start + 1
@@ -3796,7 +4134,13 @@ fn solve_sparse_group_lasso(
                 for j in 0..p {
                     v[j] = s[j] - g[j] / l_const;
                 }
-                beta = altra_vector(&v, lambda1_abs / l_const, lambda2_abs / l_const, genes, group_weights);
+                beta = altra_vector(
+                    &v,
+                    lambda1_abs / l_const,
+                    lambda2_abs / l_const,
+                    genes,
+                    group_weights,
+                );
 
                 for j in 0..p {
                     dv[j] = beta[j] - s[j];
@@ -3848,12 +4192,24 @@ fn solve_sparse_group_lasso(
         let p_flag: Vec<usize> = y
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| if (*v - 1.0).abs() < 1e-12 { Some(i) } else { None })
+            .filter_map(|(i, v)| {
+                if (*v - 1.0).abs() < 1e-12 {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
             .collect();
         let not_p_flag: Vec<usize> = y
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| if (*v - 1.0).abs() < 1e-12 { None } else { Some(i) })
+            .filter_map(|(i, v)| {
+                if (*v - 1.0).abs() < 1e-12 {
+                    None
+                } else {
+                    Some(i)
+                }
+            })
             .collect();
 
         let sum_w: f64 = sample_weights.iter().sum();
@@ -3924,7 +4280,8 @@ fn solve_sparse_group_lasso(
             }
             let mut fun_s = 0.0_f64;
             for i in 0..n {
-                fun_s += sample_weights[i] * (((-bb[i]).exp() + (aa[i] - bb[i]).exp()).ln() + bb[i]);
+                fun_s +=
+                    sample_weights[i] * (((-bb[i]).exp() + (aa[i] - bb[i]).exp()).ln() + bb[i]);
             }
 
             for i in 0..n {
@@ -3943,7 +4300,13 @@ fn solve_sparse_group_lasso(
                     v[j] = s[j] - g[j] / l_const;
                 }
                 intercept64 = sc - gc / l_const;
-                beta64 = altra_vector(&v, lambda1_abs / l_const, lambda2_abs / l_const, genes, group_weights);
+                beta64 = altra_vector(
+                    &v,
+                    lambda1_abs / l_const,
+                    lambda2_abs / l_const,
+                    genes,
+                    group_weights,
+                );
 
                 for j in 0..p {
                     dv[j] = beta64[j] - s[j];
@@ -3956,7 +4319,8 @@ fn solve_sparse_group_lasso(
                 }
                 let mut fun_x = 0.0_f64;
                 for i in 0..n {
-                    fun_x += sample_weights[i] * (((-bb[i]).exp() + (aa[i] - bb[i]).exp()).ln() + bb[i]);
+                    fun_x +=
+                        sample_weights[i] * (((-bb[i]).exp() + (aa[i] - bb[i]).exp()).ln() + bb[i]);
                 }
 
                 let r_sum = (dot(&dv, &dv) + (intercept64 - sc) * (intercept64 - sc)) / 2.0_f64;
@@ -4052,7 +4416,11 @@ fn collect_selected_sites(features: &[FeatureMeta], beta: &[f64]) -> Vec<Selecte
             pss,
         })
         .collect();
-    out.sort_by(|a, b| a.gene_idx.cmp(&b.gene_idx).then(a.position.cmp(&b.position)));
+    out.sort_by(|a, b| {
+        a.gene_idx
+            .cmp(&b.gene_idx)
+            .then(a.position.cmp(&b.position))
+    });
     out
 }
 

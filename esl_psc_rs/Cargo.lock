@@ -233,8 +233,18 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "fast_scan_rs",
  "flate2",
  "rand",
+ "rayon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fast_scan_rs"
+version = "0.1.0"
+dependencies = [
  "rayon",
  "serde",
  "serde_json",

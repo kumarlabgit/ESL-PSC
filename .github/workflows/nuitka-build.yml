@@ -30,13 +30,11 @@ jobs:
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
-          cargo build --release --manifest-path fast_scan_rs/Cargo.toml
       - name: Stage toolkit artifact
         run: |
           python packaging/toolkit/stage_toolkit.py \
             --dest build/esl-psc-toolkit \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --site-counter-rs fast_scan_rs/target/release/site_counter_rs \
             --platform posix
           tar -czf build/ESL-PSC-toolkit-linux-x86_64.tar.gz -C build esl-psc-toolkit
       - uses: actions/upload-artifact@v4
@@ -61,7 +59,6 @@ jobs:
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
-          cargo build --release --manifest-path fast_scan_rs/Cargo.toml
       - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -86,14 +83,12 @@ jobs:
           cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
           cp esl_psc_rs/target/release/esl-psc build/ESL-PSC.app/Contents/MacOS/bin/esl-psc
-          cp fast_scan_rs/target/release/site_counter_rs build/ESL-PSC.app/Contents/MacOS/bin/site_counter_rs
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Stage toolkit artifact
         run: |
           python packaging/toolkit/stage_toolkit.py \
             --dest build/esl-psc-toolkit \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --site-counter-rs fast_scan_rs/target/release/site_counter_rs \
             --platform posix
           tar -czf build/ESL-PSC-toolkit-macOS.tar.gz -C build esl-psc-toolkit
       - name: Create DMG
@@ -130,13 +125,11 @@ jobs:
         shell: bash
         run: |
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_psc_rs/Cargo.toml
-          cargo build --release --target x86_64-pc-windows-msvc --manifest-path fast_scan_rs/Cargo.toml
       - name: Stage and verify Windows binaries
         shell: pwsh
         run: |
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
           $RustUnified = "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe"
-          $RustSiteCounter = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\site_counter_rs.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
           $ToolkitDir = "$env:GITHUB_WORKSPACE\stage_toolkit"
 
@@ -152,14 +145,12 @@ jobs:
           Copy-Item -Path "$SourceDir\sg_lasso_leastr.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
           Copy-Item -Path $RustUnified -Destination $StageDir
-          Copy-Item -Path $RustSiteCounter -Destination $StageDir
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
 
           python "$env:GITHUB_WORKSPACE\packaging\toolkit\stage_toolkit.py" `
             --dest "$ToolkitDir" `
             --rust-main "$RustUnified" `
-            --site-counter-rs "$RustSiteCounter" `
             --platform windows
 
           Get-ChildItem -Path $StageDir
