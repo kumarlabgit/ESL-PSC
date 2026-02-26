@@ -3,29 +3,46 @@
 ## Table of Contents ##
 
 1. [Description](#description)
-2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
-3. [Command Line Usage](#command-line-usage)
+2. [New: High performance reimplementation and packaging](#new-high-performance-reimplementation-and-packaging)
+3. [Graphical User Interface](#graphical-user-interface)
+4. [Command Line Usage](#command-line-usage)
    - [Site Counter CLI](#site-counter-cli)
-4. [Installation and Dependencies](#installation-and-dependencies)
-5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-6. [Input Data](#input-data)
-7. [Output Data](#output-data)
-8. [Additional Options and Parameters](#additional-options-and-parameters)
-9. [Included Data](#included-data)
-10. [Demo](#demo)
-11. [Troubleshooting](#troubleshooting)
-12. [Citation](#citation)
+5. [Installation and Dependencies](#installation-and-dependencies)
+6. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
+7. [Input Data](#input-data)
+8. [Output Data](#output-data)
+9. [Additional Options and Parameters](#additional-options-and-parameters)
+10. [Included Data](#included-data)
+11. [Demo](#demo)
+12. [Troubleshooting](#troubleshooting)
+13. [Citation](#citation)
 
 ## Description ##
 The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
-## *New:* Graphical User Interface (beta) ##
+## New: High performance reimplementation and packaging ##
+
+Updated February 2026:
+
+ESL-PSC now has a high-performance unified Rust implementation of the main pipeline (`esl-psc`) that replaces the previous Python-orchestrated file handoff loop for preprocess/modeling. In practical use, this typically delivers major speedups (often on the order of 10-20x for full analyses, and sometimes higher depending on dataset size and lambda-grid settings), while preserving output behavior and CLI compatibility.
+
+Packaging has also been updated:
+
+- The GUI and toolkit builds now use the unified Rust CLI as the primary runtime backend.
+- The toolkit is distributed as a cross-platform CLI package centered on `esl-psc`, with utility subcommands:
+  - `esl-psc pairs`
+  - `esl-psc site-counter`
+  - `esl-psc plot`
+- Alias commands (`esl-psc-pairs`, `site-counter`, `esl-psc-plot`) are still included for convenience.
+- Toolkit packaging uses system Python dependencies for the Python modules used by pair selection and plotting, avoiding duplicate bundled Python runtimes in the toolkit itself.
+
+## Graphical User Interface ##
 
 June 2025:
 
-We have introduced an experimental GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
+We introduced a GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
 
 Step-by-step workflow guiding you through:
   1. **Input selection** – Select files and directories for each required and optional input 
@@ -116,11 +133,11 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 
-Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
+Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.3.0). The GUI package runs the app directly. We also publish a toolkit package containing CLI tools (`esl-psc`, `esl-psc-pairs`, `site-counter`, `esl-psc-plot`) for terminal use.
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands (`pairs`, `site-counter`, `plot`) and alias commands (`esl-psc-pairs`, `site-counter`, `esl-psc-plot`).
 
 The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
 and is intended to run with your system Python (no duplicate bundled Python runtime).
@@ -144,7 +161,9 @@ If you are on Linux or prefer to run from source, continue with the installation
 
 
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands: `esl-psc pairs`, `esl-psc site-counter`, and `esl-psc plot`.
+
+You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
@@ -164,9 +183,9 @@ Looking for automatic species-pair selection from a tree + phenotype file? See t
 
 Toolkit command: `esl-psc site-counter --help` (alias: `site-counter --help`)
 
-Looking for the high-performance site counter backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
+Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
 
-**Parsimony-based ancestral reconstruction** is now available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Site Counter Rust CLI README for examples.
+**Parsimony-based ancestral reconstruction** is available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 
