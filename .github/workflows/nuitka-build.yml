@@ -27,30 +27,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - name: Install dependencies
-        run: |
-          pip install -r requirements-toolkit.txt
-          pip install nuitka
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
           cargo build --release --manifest-path fast_scan_rs/Cargo.toml
-      - name: Build toolkit helper CLIs
-        run: |
-          mkdir -p toolkit_helpers
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-plot esl_psc_cli/plot_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=site-counter esl_psc_cli/fast_scan_cli.py
       - name: Stage toolkit artifact
         run: |
-          mkdir -p build/esl-psc-toolkit/bin
-          cp esl_psc_rs/target/release/esl-psc build/esl-psc-toolkit/bin/esl-psc
-          cp fast_scan_rs/target/release/site_counter_rs build/esl-psc-toolkit/bin/site_counter_rs
-          cp toolkit_helpers/esl-psc-plot build/esl-psc-toolkit/bin/esl-psc-plot
-          cp toolkit_helpers/esl-psc-pairs build/esl-psc-toolkit/bin/esl-psc-pairs
-          cp toolkit_helpers/site-counter build/esl-psc-toolkit/bin/site-counter
-          cp packaging/toolkit/README.md build/esl-psc-toolkit/README.md
-          chmod +x build/esl-psc-toolkit/bin/*
+          python packaging/toolkit/stage_toolkit.py \
+            --dest build/esl-psc-toolkit \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --site-counter-rs fast_scan_rs/target/release/site_counter_rs \
+            --platform posix
           tar -czf build/ESL-PSC-toolkit-linux-x86_64.tar.gz -C build esl-psc-toolkit
       - uses: actions/upload-artifact@v4
         with:
@@ -70,19 +57,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-gui.txt
-          pip install -r requirements-toolkit.txt
           pip install nuitka
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
           cargo build --release --manifest-path fast_scan_rs/Cargo.toml
-      - name: Build toolkit helper CLIs
-        run: |
-          mkdir -p toolkit_helpers
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-plot esl_psc_cli/plot_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=site-counter esl_psc_cli/fast_scan_cli.py
-          ls -la toolkit_helpers
       - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -111,14 +90,11 @@ jobs:
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Stage toolkit artifact
         run: |
-          mkdir -p build/esl-psc-toolkit/bin
-          cp esl_psc_rs/target/release/esl-psc build/esl-psc-toolkit/bin/esl-psc
-          cp fast_scan_rs/target/release/site_counter_rs build/esl-psc-toolkit/bin/site_counter_rs
-          cp toolkit_helpers/esl-psc-plot build/esl-psc-toolkit/bin/esl-psc-plot
-          cp toolkit_helpers/esl-psc-pairs build/esl-psc-toolkit/bin/esl-psc-pairs
-          cp toolkit_helpers/site-counter build/esl-psc-toolkit/bin/site-counter
-          cp packaging/toolkit/README.md build/esl-psc-toolkit/README.md
-          chmod +x build/esl-psc-toolkit/bin/*
+          python packaging/toolkit/stage_toolkit.py \
+            --dest build/esl-psc-toolkit \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --site-counter-rs fast_scan_rs/target/release/site_counter_rs \
+            --platform posix
           tar -czf build/ESL-PSC-toolkit-macOS.tar.gz -C build esl-psc-toolkit
       - name: Create DMG
         run: |
@@ -149,29 +125,18 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-gui.txt
-          pip install -r requirements-toolkit.txt
           pip install nuitka
       - name: Build Rust binaries
         shell: bash
         run: |
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_psc_rs/Cargo.toml
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path fast_scan_rs/Cargo.toml
-      - name: Build toolkit helper CLIs
-        shell: bash
-        run: |
-          mkdir -p toolkit_helpers
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-plot esl_psc_cli/plot_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=esl-psc-pairs esl_psc_cli/auto_pairs_cli.py
-          python -m nuitka --onefile --assume-yes-for-downloads --output-dir=toolkit_helpers --output-filename=site-counter esl_psc_cli/fast_scan_cli.py
       - name: Stage and verify Windows binaries
         shell: pwsh
         run: |
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
           $RustUnified = "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe"
           $RustSiteCounter = "$env:GITHUB_WORKSPACE\fast_scan_rs\target\x86_64-pc-windows-msvc\release\site_counter_rs.exe"
-          $HelperPlot = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-plot.exe"
-          $HelperPairs = "$env:GITHUB_WORKSPACE\toolkit_helpers\esl-psc-pairs.exe"
-          $HelperSiteCounter = "$env:GITHUB_WORKSPACE\toolkit_helpers\site-counter.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
           $ToolkitDir = "$env:GITHUB_WORKSPACE\stage_toolkit"
 
@@ -179,13 +144,8 @@ jobs:
             Get-ChildItem -Path $SourceDir
             throw "FATAL: Cannot find preprocess.exe in the source directory."
           }
-          if (-not (Test-Path -Path $HelperPlot)) {
-            Get-ChildItem -Path "$env:GITHUB_WORKSPACE\toolkit_helpers"
-            throw "FATAL: helper binary esl-psc-plot.exe is missing."
-          }
 
           New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
-          New-Item -ItemType Directory -Force -Path "$ToolkitDir\bin" | Out-Null
 
           Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
@@ -196,12 +156,11 @@ jobs:
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
 
-          Copy-Item -Path $RustUnified -Destination "$ToolkitDir\bin\esl-psc.exe"
-          Copy-Item -Path $RustSiteCounter -Destination "$ToolkitDir\bin\site_counter_rs.exe"
-          Copy-Item -Path $HelperPlot -Destination "$ToolkitDir\bin\esl-psc-plot.exe"
-          Copy-Item -Path $HelperPairs -Destination "$ToolkitDir\bin\esl-psc-pairs.exe"
-          Copy-Item -Path $HelperSiteCounter -Destination "$ToolkitDir\bin\site-counter.exe"
-          Copy-Item -Path "$env:GITHUB_WORKSPACE\packaging\toolkit\README.md" -Destination "$ToolkitDir\README.md"
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\stage_toolkit.py" `
+            --dest "$ToolkitDir" `
+            --rust-main "$RustUnified" `
+            --site-counter-rs "$RustSiteCounter" `
+            --platform windows
 
           Get-ChildItem -Path $StageDir
           if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {

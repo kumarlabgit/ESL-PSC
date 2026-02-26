@@ -122,6 +122,12 @@ Feedback on the beta is welcome! Please open an issue on the [GitHub repository]
 
 Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases/tag/v2.3.0). The GUI package runs the app directly. We also publish a toolkit package containing CLI tools (`esl-psc`, `esl-psc-pairs`, `site-counter`, `esl-psc-plot`) for terminal use.
 
+The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
+and is intended to run with your system Python (no duplicate bundled Python runtime).
+After extracting the toolkit, install dependencies with:
+
+`python3 -m pip install -r requirements-toolkit.txt`
+
 #### macOS build (Apple-notarized)
 1. Download **`ESL-PSC-MacOS.zip`**.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.

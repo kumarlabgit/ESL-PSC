@@ -8,7 +8,20 @@ This package contains command-line tools for ESL-PSC:
 - `esl-psc-plot` - plotting helper CLI used by `esl-psc` plot flags
 - `site_counter_rs` - Rust backend used by `site-counter`
 
-## Basic usage
+The toolkit is designed to run with your system Python. It does not ship a
+second embedded Python runtime.
+
+## Install
+
+1. Install Python dependencies:
+
+```bash
+python3 -m pip install -r requirements-toolkit.txt
+```
+
+2. Add `bin/` to your `PATH` (or run commands with explicit `bin/...` paths).
+
+## Basic Usage
 
 ```bash
 esl-psc --help
@@ -18,4 +31,3 @@ esl-psc-plot --help
 ```
 
 If these binaries are not on your `PATH`, run them from `bin/` directly.
-

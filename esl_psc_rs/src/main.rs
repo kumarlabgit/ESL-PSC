@@ -1699,7 +1699,14 @@ fn plotter_command_candidates() -> Vec<PathBuf> {
     }
 
     let names: &[&str] = if cfg!(windows) {
-        &["esl-psc-plot.exe", "esl-psc-plot", "esl_plot.exe", "esl_plot"]
+        &[
+            "esl-psc-plot.exe",
+            "esl-psc-plot.cmd",
+            "esl-psc-plot",
+            "esl_plot.exe",
+            "esl_plot.cmd",
+            "esl_plot",
+        ]
     } else {
         &["esl-psc-plot", "esl_plot"]
     };

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLKIT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export PYTHONPATH="${TOOLKIT_ROOT}/python${PYTHONPATH:+:${PYTHONPATH}}"
+export PATH="${TOOLKIT_ROOT}/bin:${PATH}"
+
+PY_CMD="${ESL_PSC_PYTHON:-python3}"
+exec "${PY_CMD}" -m esl_psc_cli.plot_cli "$@"
