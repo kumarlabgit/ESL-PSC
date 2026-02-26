@@ -4,10 +4,10 @@ from pathlib import Path
 
 def test_continuous_pheno_disables_plots(tmp_path):
     project_root = Path(__file__).parent.parent
-    alignments_dir = project_root / "photosynthesis_alignments"
-    species_groups_src = project_root / "photo_single_LC_matrix_species_groups.txt"
+    alignments_dir = project_root / "test_data" / "photosynthesis" / "alignments"
+    species_groups_src = project_root / "test_data" / "photosynthesis" / "photo_single_LC_matrix_species_groups.txt"
     species_groups_file = tmp_path / "groups.txt"
-    species_pheno_src = project_root / "photo_species_phenotypes.txt"
+    species_pheno_src = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     continuous_pheno_file = tmp_path / "continuous_pheno.txt"
     limited_genes_file = tmp_path / "limited_genes.txt"
 
@@ -107,8 +107,8 @@ def test_continuous_pheno_disables_plots(tmp_path):
 
 def test_response_dir_with_continuous_values(tmp_path):
     project_root = Path(__file__).parent.parent
-    alignments_dir = project_root / "photosynthesis_alignments"
-    species_pheno_src = project_root / "photo_species_phenotypes.txt"
+    alignments_dir = project_root / "test_data" / "photosynthesis" / "alignments"
+    species_pheno_src = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     response_dir = tmp_path / "resp"
     response_dir.mkdir()
 

@@ -51,7 +51,7 @@ Step-by-step workflow guiding you through:
   4. **Run** – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
   5. **View results** – View gene rankings and examine convergent sites in an interactive alignment viewer.
 
-Save your configuration in a file and re-load it later. You can load the included `demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
+Save your configuration in a file and re-load it later. You can load the included `test_data/photosynthesis/demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
 
 Now compatible with Windows, Mac, and Linux.
 
@@ -335,10 +335,10 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
+1. `test_data/photosynthesis/photo_single_LC_matrix_species_groups.txt` (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
+2. `test_data/echolocation/orthomam_echo_species_groups.txt` (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
 
-A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
+A species phenotype file for the grass species has also been included: `test_data/photosynthesis/photo_species_phenotypes.txt`
 
 #### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2025). If you use these data, please cite these sources: ####
 
@@ -368,7 +368,7 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 ### Running the demo in the GUI ###
 To run the C3/C4 demo using the graphical interface:
 1. Launch the GUI (see the installation and launch instructions above).
-2. Click **Load Configuration** (bottom left of the page) and open `demo_config_for_gui.json` found in the repository root folder.
+2. Click **Load Configuration** (bottom left of the page) and open `test_data/photosynthesis/demo_config_for_gui.json`.
 3. Click **Next** through the pre-filled wizard pages and press **Run Analysis** on the final page.
 4. When the run finishes, press **Show SPS Plot** to view the violin plot, or **Show Top Gene Ranks** to view the most influential genes. You can double click a gene's name to open the protein sequence alignment in the convergent site viewer and examine the residues present in the input species and other species at the strongest convergent sites.
 
@@ -377,7 +377,7 @@ You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
 3. Navigate to the `ESL_PSC/` directory on your computer
-4. Run this command from the ESL-PSC directory: `esl-psc --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
+4. Run this command from the ESL-PSC directory: `esl-psc --output_file_base_name demo_output --species_groups_file test_data/photosynthesis/photo_single_LC_matrix_species_groups.txt --alignments_dir test_data/photosynthesis/alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path test_data/photosynthesis/photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
 5. The expected run time is approximately 30 seconds on a standard desktop computer.
 6. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
 the plot should look like this:

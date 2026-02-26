@@ -24,7 +24,7 @@ The repository is organized as follows:
 │   ├── core/         # Core GUI logic (e.g., worker threads).
 │   └── ui/           # UI components (windows, pages, widgets).
 ├── images/           # Images used in the README.
-├── photosynthesis_alignments/ # Demo data: alignment files.
+├── test_data/        # Demo/test datasets (photosynthesis + echolocation).
 ├── tests/            # Automated tests for the project.
 │   └── test_cli_smoke.py  # A high-level smoke test for the CLI.
 ├── .gitignore
@@ -92,4 +92,3 @@ pip ...
 ```
 
 Fallback rule for remote agents (CI or ephemeral environments): if `.venv/` does not exist, use system Python.
-

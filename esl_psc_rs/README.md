@@ -46,10 +46,10 @@ Example (multimatrix):
 
 ```bash
 ./target/release/esl-psc \
-  --species-groups-file ../photo_multi_species_groups.txt \
-  --alignments-dir ../photosynthesis_alignments \
-  --prediction-alignments-dir ../photosynthesis_alignments \
-  --species-pheno-path ../photo_species_phenotypes.txt \
+  --species-groups-file ../test_data/photosynthesis/photo_multi_species_groups.txt \
+  --alignments-dir ../test_data/photosynthesis/alignments \
+  --prediction-alignments-dir ../test_data/photosynthesis/alignments \
+  --species-pheno-path ../test_data/photosynthesis/photo_species_phenotypes.txt \
   --output-file-base-name rust_mm \
   --output-dir /tmp/esl_unified_mm \
   --initial-lambda1 0.1 --final-lambda1 0.2 \

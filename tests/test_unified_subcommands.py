@@ -27,9 +27,9 @@ def test_unified_subcommand_help_smoke():
 def test_unified_site_counter_matches_python_cli(tmp_path):
     rust_cli = _rust_cli()
     root = Path(__file__).resolve().parents[1]
-    alignments_dir = root / "photosynthesis_alignments"
-    groups_file = root / "photo_multi_species_groups.txt"
-    tree_file = root / "photo_tree.nwk"
+    alignments_dir = root / "test_data" / "photosynthesis" / "alignments"
+    groups_file = root / "test_data" / "photosynthesis" / "photo_multi_species_groups.txt"
+    tree_file = root / "test_data" / "photosynthesis" / "photo_tree.nwk"
 
     py_out = tmp_path / "site_counter_python.csv"
     rs_out = tmp_path / "site_counter_unified.csv"

@@ -117,7 +117,7 @@ The program prints a JSON array. Each element summarizes one alignment file:
 ```bash
 cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "photosynthesis_alignments",
+  "alignment_dir": "test_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["Maize"], "ctrl": ["Sorghum"]}
   ],
@@ -132,12 +132,12 @@ JSON
 ```bash
 cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "photosynthesis_alignments",
+  "alignment_dir": "test_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["SpeciesA", "SpeciesB"], "ctrl": ["SpeciesC", "SpeciesD"]}
   ],
   "outgroup": "ANCESTRAL_MRCA",
-  "tree_file": "photo_tree.nwk",
+  "tree_file": "test_data/photosynthesis/photo_tree.nwk",
   "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"],
   "emit_progress": true
 }
