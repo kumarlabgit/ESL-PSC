@@ -1,6 +1,6 @@
-# Fast Scan Rust CLI
+# Site Counter Rust CLI
 
-The `fast_scan_rs` crate provides a compiled backend for ESL-PSC's fast scan
+The `fast_scan_rs` crate provides a compiled backend for ESL-PSC's site counter
 workflow. It mirrors the logic used by the Python implementation but uses
 Rust's parallel iterators to dramatically reduce scan time on large alignment
 collections.
@@ -18,15 +18,15 @@ cargo build --release
 ```
 
 The optimized binary will be created at
-`fast_scan_rs/target/release/fast_scan_rs`.  The Python CLI (`esl_psc_cli
-fast_scan_cli.py`) automatically prefers this binary when it is present and
+`fast_scan_rs/target/release/site_counter_rs`. The Python CLI
+(`esl_psc_cli/fast_scan_cli.py`) uses this binary when it is present and
 executable; otherwise it falls back to the pure-Python implementation.
 
 ## JSON input schema
 
 The executable expects a single JSON object that matches the structure below.
 Optional fields may be omitted. The values correspond to the parameters that
-ESL-PSC's Python fast scan uses internally.
+ESL-PSC's Python site counter uses internally.
 
 ```json
 {
@@ -115,9 +115,9 @@ The program prints a JSON array. Each element summarizes one alignment file:
 ### Example 1: Single-species outgroup
 
 ```bash
-cat <<'JSON' | fast_scan_rs/target/release/fast_scan_rs > results.json
+cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "photosynthesis_alignments",
+  "alignment_dir": "test_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["Maize"], "ctrl": ["Sorghum"]}
   ],
@@ -130,14 +130,14 @@ JSON
 ### Example 2: Parsimony ancestral reconstruction
 
 ```bash
-cat <<'JSON' | fast_scan_rs/target/release/fast_scan_rs > results.json
+cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "photosynthesis_alignments",
+  "alignment_dir": "test_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["SpeciesA", "SpeciesB"], "ctrl": ["SpeciesC", "SpeciesD"]}
   ],
   "outgroup": "ANCESTRAL_MRCA",
-  "tree_file": "photo_tree.nwk",
+  "tree_file": "test_data/photosynthesis/photo_tree.nwk",
   "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"],
   "emit_progress": true
 }
@@ -150,8 +150,8 @@ where the MRCA is at the root (no outgroup context) are skipped.
 
 ## Integration with the Python CLI
 
-`python -m esl_psc_cli.fast_scan_cli` wraps this binary. When a compatible
-`fast_scan_rs` build is available, the CLI streams the required JSON over stdin
-and performs the same post-processing, CSV export, and ranking logic as the GUI
-fast scan workflow. Set the environment variable `FAST_SCAN_RS_DISABLE=1` to
-force the Python fallback if needed.
+`python -m esl_psc_cli.fast_scan_cli` (or packaged command `site-counter`)
+wraps this binary. When a compatible `site_counter_rs` build is available, the
+CLI streams the required JSON over stdin and performs the same post-processing,
+CSV export, and ranking logic as the GUI site counter workflow. Set
+`SITE_COUNTER_RS_DISABLE=1` to force the Python fallback if needed.

@@ -7,11 +7,11 @@ import io
 import re
 import threading
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 from contextlib import redirect_stdout, redirect_stderr # noqa: F401
-from esl_psc_cli.esl_multimatrix import main as esl_main
 from esl_psc_cli import esl_psc_functions as ecf
 
 class WorkerSignals(QObject):
@@ -61,6 +61,163 @@ class ESLWorker(QRunnable):
                     self.alignments_dir = self.command_args[idx]
             except Exception:
                 self.alignments_dir = None
+
+    @staticmethod
+    def _resolve_unified_rust_binary() -> Path | None:
+        if os.name == "nt":
+            exe_names = [
+                "esl-psc.exe",
+                "esl-psc",
+            ]
+        else:
+            exe_names = ["esl-psc"]
+
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        # Source-tree location
+        try:
+            repo_root = Path(__file__).resolve().parents[2]
+            for exe_name in exe_names:
+                candidates.append(repo_root / "esl_psc_rs" / "target" / "release" / exe_name)
+                candidates.append(repo_root / "bin" / exe_name)
+        except Exception:
+            pass
+
+        # Packaged app sibling location
+        try:
+            launcher = Path(os.path.realpath(sys.argv[0]))
+            for exe_name in exe_names:
+                candidates.append(launcher.with_name(exe_name))
+                candidates.append(launcher.parent / exe_name)
+                candidates.append(launcher.parent / "bin" / exe_name)
+        except Exception:
+            pass
+
+        # PATH fallback
+        for exe_name in exe_names:
+            which = shutil.which(exe_name)
+            if which:
+                candidates.append(Path(which))
+
+        for cand in candidates:
+            key = str(cand)
+            if key in seen:
+                continue
+            seen.add(key)
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return cand
+        return None
+
+    @staticmethod
+    def get_command_preview_prefix() -> str:
+        rust_bin = ESLWorker._resolve_unified_rust_binary()
+        if rust_bin is not None:
+            return str(rust_bin)
+        return f"{sys.executable} -u -m esl_psc_cli.esl_multimatrix"
+
+    @staticmethod
+    def _split_plot_flags(command_args: list[str]) -> tuple[str | None, list[str]]:
+        """Return (plot_mode, args_without_plot_flags)."""
+        has_cont = "--make_continuous_plot" in command_args or "--make-continuous-plot" in command_args
+        has_violin = "--make_sps_plot" in command_args or "--make-sps-plot" in command_args
+        has_kde = "--make_sps_kde_plot" in command_args or "--make-sps-kde-plot" in command_args
+
+        mode: str | None = None
+        if has_cont:
+            mode = "continuous"
+        elif has_violin:
+            mode = "violin"
+        elif has_kde:
+            mode = "kde"
+
+        plot_flags = {
+            "--make_continuous_plot",
+            "--make-continuous-plot",
+            "--make_sps_plot",
+            "--make-sps-plot",
+            "--make_sps_kde_plot",
+            "--make-sps-kde-plot",
+        }
+        filtered = [arg for arg in command_args if arg not in plot_flags]
+        return mode, filtered
+
+    @staticmethod
+    def _arg_value(command_args: list[str], *names: str, default: str | None = None) -> str | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 1 < len(command_args):
+                return command_args[i + 1]
+        return default
+
+    @staticmethod
+    def _arg_pair(command_args: list[str], *names: str) -> tuple[str, str] | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 2 < len(command_args):
+                return command_args[i + 1], command_args[i + 2]
+        return None
+
+    def _run_inprocess_plot(self, mode: str, command_args: list[str]) -> bool:
+        """Generate plots using the GUI's Python runtime (no extra bundled runtime)."""
+        if "--no_pred_output" in command_args or "--no-pred-output" in command_args:
+            self.signals.output.emit("[INFO] Plot requested, but --no_pred_output is set; skipping plot generation.")
+            return True
+
+        output_dir = self._arg_value(command_args, "--output_dir", "--output-dir")
+        output_base = self._arg_value(
+            command_args,
+            "--output_file_base_name",
+            "--output-file-base-name",
+        )
+        if not output_dir or not output_base:
+            self.signals.error.emit(
+                "Unable to generate plots: missing --output_dir or --output_file_base_name."
+            )
+            return False
+
+        min_genes_raw = self._arg_value(command_args, "--min_genes", "--min-genes", default="0")
+        try:
+            min_genes = int(min_genes_raw or "0")
+        except ValueError:
+            min_genes = 0
+
+        pred_csv = Path(output_dir) / f"{output_base}_species_predictions.csv"
+        if not pred_csv.is_file():
+            self.signals.error.emit(
+                f"Unable to generate plots: predictions CSV not found: {pred_csv}"
+            )
+            return False
+
+        plot_args = [
+            "--mode", mode,
+            "--pred_csv", str(pred_csv),
+            "--title", output_base,
+            "--min_genes", str(min_genes),
+        ]
+        if mode != "continuous":
+            pheno_names = self._arg_pair(command_args, "--pheno_names", "--pheno-names")
+            if pheno_names:
+                plot_args.extend([
+                    "--pheno_name1", pheno_names[0],
+                    "--pheno_name2", pheno_names[1],
+                ])
+
+        try:
+            from esl_psc_cli.plot_cli import main as plot_cli_main
+
+            self.signals.output.emit(
+                f"[INFO] Generating {mode} prediction plot with bundled Python runtime..."
+            )
+            rc = int(plot_cli_main(plot_args))
+            if rc != 0:
+                self.signals.error.emit(
+                    f"Plot generation failed with exit code {rc}."
+                )
+                return False
+            self.signals.output.emit("[INFO] Plot generation completed.")
+            return True
+        except Exception as exc:
+            self.signals.error.emit(f"Plot generation failed: {exc}")
+            return False
     
     @Slot()
     def run(self):
@@ -317,15 +474,81 @@ class ESLWorker(QRunnable):
 
                 return False # Not a progress line
 
+        def _run_subprocess(command: list[str]) -> int:
+            out_stream = StreamEmitter(self, stream_type='stdout')
+            err_stream = StreamEmitter(self, stream_type='stderr')
+
+            self.process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+
+            def _reader(pipe, emitter: StreamEmitter):
+                for line in iter(pipe.readline, ''):
+                    if not self.is_running:
+                        break
+                    emitter.write(line)
+                pipe.close()
+
+            t_out = threading.Thread(target=_reader, args=(self.process.stdout, out_stream), daemon=True)
+            t_err = threading.Thread(target=_reader, args=(self.process.stderr, err_stream), daemon=True)
+            t_out.start()
+            t_err.start()
+
+            self.process.wait()
+            t_out.join()
+            t_err.join()
+            return self.process.returncode
+
+        # Prefer unified Rust runner when available.
+        rust_bin = self._resolve_unified_rust_binary()
         # Detect a packaged run either by sys.frozen or by the launcher not ending in '.py'
         packaged = getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"
 
-        if packaged:
-            # Always run CLI in-process for packaged builds (macOS/Windows) to avoid
-            # shipping a separate CLI binary and onefile decompression delays.
+        if rust_bin is not None:
+            try:
+                plot_mode, rust_args = self._split_plot_flags(self.command_args)
+                command = [str(rust_bin), *rust_args]
+                self.signals.output.emit(f"[INFO] Running unified Rust CLI: {rust_bin}")
+                if plot_mode is not None:
+                    self.signals.output.emit(
+                        "[INFO] Plot flags will be handled in-process by the GUI Python runtime."
+                    )
+                exit_code = _run_subprocess(command)
+                if exit_code == 0 and plot_mode is not None:
+                    if not self._run_inprocess_plot(plot_mode, rust_args):
+                        exit_code = 1
+            except Exception as e:
+                import traceback
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    exit_code = -1
+            finally:
+                self.is_running = False
+                if self.process and self.process.poll() is None:
+                    self.process.kill()
+                self.process = None
+                try:
+                    os.chdir(self.original_cwd)
+                except Exception:
+                    pass
+                if not self.was_stopped:
+                    self.signals.finished.emit(exit_code)
+        elif packaged:
+            # Fallback for packaged builds when Rust CLI isn't present.
             try:
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
+                # Import only in fallback path to avoid eagerly pulling the full
+                # Python CLI stack into packaged apps that run Rust by default.
+                from esl_psc_cli.esl_multimatrix import main as esl_main
 
                 with redirect_stdout(out_stream), redirect_stderr(err_stream):
                     esl_main(self.command_args)
@@ -354,41 +577,15 @@ class ESLWorker(QRunnable):
                 if not self.was_stopped:
                     self.signals.finished.emit(exit_code)
         else:
-            # --- Source run: use python -m to launch the CLI in a subprocess ---
+            # Source fallback when Rust binary is unavailable.
             try:
-                out_stream = StreamEmitter(self, stream_type='stdout')
-                err_stream = StreamEmitter(self, stream_type='stderr')
-
                 command = [
                     sys.executable, "-u", "-m",
                     "esl_psc_cli.esl_multimatrix",
                     *self.command_args,
                 ]
-                self.process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                )
-
-                def _reader(pipe, emitter: StreamEmitter):
-                    for line in iter(pipe.readline, ''):
-                        if not self.is_running:
-                            break
-                        emitter.write(line)
-                    pipe.close()
-
-                t_out = threading.Thread(target=_reader, args=(self.process.stdout, out_stream), daemon=True)
-                t_err = threading.Thread(target=_reader, args=(self.process.stderr, err_stream), daemon=True)
-                t_out.start()
-                t_err.start()
-
-                self.process.wait()
-                t_out.join()
-                t_err.join()
-                exit_code = self.process.returncode
-
+                self.signals.output.emit("[INFO] Unified Rust CLI not found; falling back to Python CLI.")
+                exit_code = _run_subprocess(command)
             except Exception as e:
                 import traceback
                 if not self.was_stopped:

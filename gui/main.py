@@ -133,7 +133,7 @@ def main():
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")
-        app.setApplicationVersion("2.3.0")
+        app.setApplicationVersion("2.4.0")
         app.setOrganizationName("ESL-PSC")
 
         # Make Ctrl+C terminate the Qt event loop when launched from a terminal.
@@ -153,14 +153,18 @@ def main():
             def _warm_up_cli():
                 try:
                     launcher = Path(os.path.realpath(sys.argv[0]))
-                    exe = launcher.with_name("esl_multimatrix" + (".exe" if os.name == "nt" else ""))
-                    if exe.is_file():
+                    names = ["esl-psc" + (".exe" if os.name == "nt" else "")]
+                    candidates = [launcher.with_name(names[0]), launcher.parent / "bin" / names[0]]
+                    for exe in candidates:
+                        if not exe.is_file():
+                            continue
                         bundle_dir = str(launcher.parent)  # Contents/MacOS or exe dir
                         subprocess.run([
                             str(exe),
                             "--esl_main_dir", bundle_dir,
                             "--help",
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                        break
                 except Exception as e:
                     # Log but never interrupt the GUI
                     print(f"[warm-up] CLI pre-extract failed: {e!r}", file=sys.__stderr__)

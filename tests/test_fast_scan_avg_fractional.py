@@ -41,7 +41,7 @@ def test_fast_scan_averages_fractional(tmp_path):
         g.write("A,E\n")
         g.write("C,D\n")
 
-    # Run fast scan
+    # Run site counter
     results = fast_scan.fast_scan_alignments(str(align_dir), str(groups_path), "OG", progress_cb=None)
     assert results, "No results returned from fast_scan"
     # Find gene1

@@ -80,7 +80,7 @@ def _launch_site_viewer(
     ctrl: list[str] = []
 
     # If parent dialog has an explicitly selected groups combo, respect it first.
-    # This enables Fast Scan to open SiteViewer with a user-chosen species grouping
+    # This enables Site Counter to open SiteViewer with a user-chosen species grouping
     # derived from the species groups file.
     try:
         if parent is not None and hasattr(parent, '_selected_groups_combo'):
@@ -234,17 +234,17 @@ def _launch_site_viewer(
             pass
 
     def _save_results(self) -> None:
-        # Build default filename: <align_base>__<groups_base>_fast_scan_results.csv
+        # Build default filename: <align_base>__<groups_base>_site_counter_results.csv
         align_dir = getattr(self.config, 'alignments_dir', '') or ''
         align_base = os.path.basename(os.path.normpath(align_dir)) if align_dir else 'alignments'
         groups_path = getattr(self.config, 'species_groups_file', '') or ''
         groups_base = os.path.splitext(os.path.basename(groups_path))[0] if groups_path else 'groups'
-        default_name = f"{align_base}__{groups_base}_fast_scan_results.csv"
+        default_name = f"{align_base}__{groups_base}_site_counter_results.csv"
         # Prefer output_dir for initial location if available
         initial_dir = getattr(self.config, 'output_dir', '') or os.getcwd()
         default_path = os.path.join(initial_dir, default_name)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Fast Scan Results", default_path, "CSV Files (*.csv)"
+            self, "Save Site Counter Results", default_path, "CSV Files (*.csv)"
         )
         if not path:
             return
@@ -282,7 +282,7 @@ def _launch_site_viewer(
         species_pheno_map=species_pheno_map,
         pheno_name_map=pheno_name_map,
     )
-    # If requested (e.g., when launched from Fast Scan results), default to CCS-only filter
+    # If requested (e.g., when launched from Site Counter results), default to CCS-only filter
     try:
         if prefer_ccs_filter and getattr(viewer, 'has_all_three', False):
             # Ensure filter states reflect available data, then select CCS (idx 2)
@@ -1824,8 +1824,8 @@ class SelectedSitesDialog(QDialog):
         dialog.show()
         _open_dialogs.append(dialog)
 
-class FastScanResultsDialog(QWidget):
-    """Display fast scan gene rankings."""
+class SiteCounterResultsDialog(QWidget):
+    """Display site counter gene rankings."""
 
     def __init__(self, results, config, outgroup, parent=None):
         super().__init__(parent)
@@ -1842,7 +1842,7 @@ class FastScanResultsDialog(QWidget):
             self.setWindowFlags(base_flags)
         except Exception:
             pass
-        self.setWindowTitle("Fast Scan Results")
+        self.setWindowTitle("Site Counter Results")
         self.config = config
         self.outgroup = outgroup
         self._selected_groups_combo = getattr(config, 'preferred_groups_combo', None)
@@ -2116,7 +2116,7 @@ class FastScanResultsDialog(QWidget):
             pass
 
     def _copy_selected_rows_to_clipboard(self):
-        """Copy selected rectangular cell ranges from the fast scan table as TSV."""
+        """Copy selected rectangular cell ranges from the site counter table as TSV."""
         try:
             if not hasattr(self, 'table') or self.table is None:
                 return
@@ -2250,17 +2250,17 @@ class FastScanResultsDialog(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 
     def _save_results(self) -> None:
-        # Build default filename: <align_base>__<groups_base>_fast_scan_results.csv
+        # Build default filename: <align_base>__<groups_base>_site_counter_results.csv
         align_dir = getattr(self.config, 'alignments_dir', '') or ''
         align_base = os.path.basename(os.path.normpath(align_dir)) if align_dir else 'alignments'
         groups_path = getattr(self.config, 'species_groups_file', '') or ''
         groups_base = os.path.splitext(os.path.basename(groups_path))[0] if groups_path else 'groups'
-        default_name = f"{align_base}__{groups_base}_fast_scan_results.csv"
+        default_name = f"{align_base}__{groups_base}_site_counter_results.csv"
         # Prefer output_dir for initial location if available
         initial_dir = getattr(self.config, 'output_dir', '') or os.getcwd()
         default_path = os.path.join(initial_dir, default_name)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Fast Scan Results", default_path, "CSV Files (*.csv)"
+            self, "Save Site Counter Results", default_path, "CSV Files (*.csv)"
         )
         if not path:
             return
@@ -2290,6 +2290,10 @@ class FastScanResultsDialog(QWidget):
 
     @staticmethod
     def show_results(results, config, outgroup, parent=None):
-        dialog = FastScanResultsDialog(results, config, outgroup, parent)
+        dialog = SiteCounterResultsDialog(results, config, outgroup, parent)
         dialog.show()
         _open_dialogs.append(dialog)
+
+
+# Backward compatibility alias for older imports.
+FastScanResultsDialog = SiteCounterResultsDialog

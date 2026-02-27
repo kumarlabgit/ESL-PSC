@@ -522,7 +522,7 @@ class OutgroupDialog(QDialog):
         
         # Initial UI state
         self._update_method_ui()
-        # Option: use 2x2 combos derived from species groups (Fast Scan only)
+        # Option: use 2x2 combos derived from species groups (Site Counter only)
         self._two_pair_check = None
         if show_two_pair_option:
             self._two_pair_check = QCheckBox("Use all two-pair combos")
@@ -632,8 +632,8 @@ class OutgroupDialog(QDialog):
             return
         
         try:
-            from gui.core.ancestral_reconstruction import validate_tree_for_fast_scan
-            valid, message = validate_tree_for_fast_scan(tree_path, self._species_groups_file)
+            from gui.core.ancestral_reconstruction import validate_tree_for_site_counter
+            valid, message = validate_tree_for_site_counter(tree_path, self._species_groups_file)
             if valid:
                 self._tree_validation_label.setText(f"✓ {message}")
                 self._tree_validation_label.setStyleSheet("QLabel { color: green; }")

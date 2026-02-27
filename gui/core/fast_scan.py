@@ -1,7 +1,7 @@
-"""Fast scanning of alignments for CCS, control convergence, and CS-derived significance.
+"""Site Counter scanning of alignments for CCS, control convergence, and CS-derived significance.
 
-Optionally uses a Rust backend binary (fast_scan_rs) if available to accelerate
-per-file scanning. Falls back to the Python implementation otherwise.
+Optionally uses a Rust backend binary (site_counter_rs) to accelerate per-file
+scanning. Falls back to the Python implementation otherwise.
 """
 from __future__ import annotations
 
@@ -128,7 +128,7 @@ def list_species(alignment_dir: str, max_no_new: int = 200) -> List[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Per-file worker for parallel fast scan
+# Per-file worker for parallel Site Counter
 # ─────────────────────────────────────────────────────────────────────────────
 def _scan_file_worker(
     alignment_dir: str,
@@ -432,7 +432,7 @@ def fast_scan_alignments(
             n_jobs = 1
 
     # Try Rust backend if available
-    rs_bin = _detect_fast_scan_rs()
+    rs_bin = _detect_site_counter_rs()
     # If fractional control-outgroup agreement is requested, prefer a freshly built
     # target/release binary (newer) over any packaged bin/ version. If not found,
     # fall back to Python to ensure correct semantics.
@@ -440,7 +440,7 @@ def fast_scan_alignments(
         if float(min_out_ctrl_agreement) != 1.0 or tree_file:
             # For ancestral reconstruction or fractional agreement, use local build
             repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
+            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 rs_bin = cand
             else:
@@ -452,7 +452,7 @@ def fast_scan_alignments(
         try:
             # Single Rust invocation; if a progress callback is provided, we stream
             # progress from the Rust process stderr in real time.
-            rs_results = _run_fast_scan_rs(
+            rs_results = _run_site_counter_rs(
                 rs_bin,
                 alignment_dir,
                 files,
@@ -555,38 +555,47 @@ def fast_scan_alignments(
     return results
 
 
-def _detect_fast_scan_rs() -> str | None:
-    """Return path to Rust fast_scan_rs binary if available, else None.
+def _detect_site_counter_rs() -> str | None:
+    """Return path to Rust Site Counter backend executable if available, else None.
 
     Detection priority:
-      1) Environment variable FAST_SCAN_RS pointing to the binary
-      2) bin/fast_scan_rs (relative to repo root)
-      3) fast_scan_rs/target/release/fast_scan_rs (relative to repo root)
-      4) bin/ next to the executable (packaged app/onefile)
+      1) Environment variable SITE_COUNTER_RS
+      2) bin/site_counter_rs (relative to repo root)
+      3) fast_scan_rs/target/release/site_counter_rs (relative to repo root)
+      4) esl-psc executable (repo build or packaged app)
     """
-    # Allow disabling via env for testing or debugging
-    if os.environ.get("FAST_SCAN_RS_DISABLE", "0") in {"1", "true", "True"}:
+    # Allow disabling via env for testing or debugging.
+    if os.environ.get("SITE_COUNTER_RS_DISABLE", "0") in {"1", "true", "True"}:
         return None
     # 1) Env var
-    env_path = os.environ.get("FAST_SCAN_RS")
+    env_path = os.environ.get("SITE_COUNTER_RS")
     if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
         return env_path
     # Compute repo root from this file (editable/source check)
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    # 2) bin/fast_scan_rs[_mac] relative to repo root (editable install)
+    # 2) bin/site_counter_rs[_mac] relative to repo root.
     if sys.platform == "darwin":
-        cand = os.path.join(repo_root, "bin", "fast_scan_rs_mac")
+        cand = os.path.join(repo_root, "bin", "site_counter_rs_mac")
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
-    cand = os.path.join(repo_root, "bin", "fast_scan_rs")
+    cand = os.path.join(repo_root, "bin", "site_counter_rs")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
-    # 3) fast_scan_rs/target/release/fast_scan_rs (relative to repo root)
-    cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "fast_scan_rs")
+    # 3) target/release binaries (relative to repo root).
+    cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
-    # Also try Windows .exe (even on WSL)
-    cand = os.path.join(repo_root, "bin", "fast_scan_rs.exe")
+    # Unified Rust CLI can host the backend directly.
+    for cand in (
+        os.path.join(repo_root, "bin", "esl-psc"),
+        os.path.join(repo_root, "bin", "esl-psc.exe"),
+        os.path.join(repo_root, "esl_psc_rs", "target", "release", "esl-psc"),
+        os.path.join(repo_root, "esl_psc_rs", "target", "release", "esl-psc.exe"),
+    ):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    # Also try Windows .exe (even on WSL).
+    cand = os.path.join(repo_root, "bin", "site_counter_rs.exe")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
     # 4) Packaged app path: bin/ next to the executable
@@ -594,21 +603,19 @@ def _detect_fast_scan_rs() -> str | None:
         exe_dir = os.path.abspath(os.path.dirname(getattr(sys, 'executable', sys.argv[0])))
         # Prefer mac-suffixed name on macOS bundles
         if sys.platform == "darwin":
-            cand = os.path.join(exe_dir, "bin", "fast_scan_rs_mac")
+            cand = os.path.join(exe_dir, "bin", "site_counter_rs_mac")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 return cand
-        cand = os.path.join(exe_dir, "bin", "fast_scan_rs")
-        if os.path.isfile(cand) and os.access(cand, os.X_OK):
-            return cand
-        cand = os.path.join(exe_dir, "bin", "fast_scan_rs.exe")
-        if os.path.isfile(cand) and os.access(cand, os.X_OK):
-            return cand
+        for name in ("site_counter_rs", "site_counter_rs.exe", "esl-psc", "esl-psc.exe"):
+            cand = os.path.join(exe_dir, "bin", name)
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
     except Exception:
         pass
     return None
 
 
-def _run_fast_scan_rs(
+def _run_site_counter_rs(
     bin_path: str,
     alignment_dir: str,
     files: List[str],
@@ -624,10 +631,14 @@ def _run_fast_scan_rs(
     require_unambiguous_mrca: bool = False,
     compute_mrca_representative: bool = False,
 ) -> List[Dict[str, float | int]]:
-    """Invoke the Rust fast_scan_rs binary and parse its JSON output.
+    """Invoke the Rust site-counter backend and parse JSON output.
 
     Returns a list of rows with the same schema as the Python worker.
     """
+    cmd = [bin_path]
+    base = os.path.basename(bin_path).lower()
+    if base in {"esl-psc", "esl-psc.exe"}:
+        cmd.append("site-counter-backend")
     # Build JSON spec
     spec = {
         "alignment_dir": alignment_dir,
@@ -646,7 +657,7 @@ def _run_fast_scan_rs(
     # Add tree metadata for ancestral reconstruction. Prefer embedding the parsed
     # tree (JSON) to avoid Rust-side parsing and any temp files.
     if tree_file:
-        spec["tree_file"] = tree_file  # keep for backward-compat/fallback
+        spec["tree_file"] = tree_file
         try:
             root = _load_tree(tree_file)
             spec["tree_json"] = clade_to_json(root)
@@ -664,7 +675,7 @@ def _run_fast_scan_rs(
     with tempfile.TemporaryFile(mode="w+b") as tmp_out:
         try:
             proc = subprocess.Popen(
-                [bin_path],
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=tmp_out,
                 stderr=subprocess.PIPE,
@@ -672,7 +683,7 @@ def _run_fast_scan_rs(
                 bufsize=1,
             )
         except Exception as e:
-            raise RuntimeError(f"fast_scan_rs failed to start: {e}")
+            raise RuntimeError(f"site_counter_rs failed to start: {e}")
         # Send JSON spec and close stdin
         try:
             assert proc.stdin is not None
@@ -700,16 +711,16 @@ def _run_fast_scan_rs(
         tmp_out.seek(0)
         stdout = tmp_out.read().decode("utf-8", errors="replace").strip()
         if rc != 0:
-            raise RuntimeError(f"fast_scan_rs exited with code {rc}. Stderr may contain details.")
+            raise RuntimeError(f"site_counter_rs exited with code {rc}. Stderr may contain details.")
     if not stdout:
-        raise RuntimeError("fast_scan_rs produced no output")
+        raise RuntimeError("site_counter_rs produced no output")
     try:
         data = json.loads(stdout)
     except Exception as e:
-        raise RuntimeError(f"fast_scan_rs invalid JSON: {e}\nFirst 200 chars: {stdout[:200]}")
+        raise RuntimeError(f"site_counter_rs invalid JSON: {e}\nFirst 200 chars: {stdout[:200]}")
     # Validate and coerce to expected list of dicts
     if not isinstance(data, list):
-        raise RuntimeError("fast_scan_rs output was not a list")
+        raise RuntimeError("site_counter_rs output was not a list")
     out: List[Dict[str, float | int]] = []
     for row in data:
         if not isinstance(row, dict):

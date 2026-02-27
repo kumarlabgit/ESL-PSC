@@ -19,7 +19,7 @@ from gui.ui.widgets.file_selectors import FileSelector
 from gui.ui.widgets.tree_viewer import TreeViewer
 from gui.ui.widgets.dialogs import OutgroupDialog
 from gui.ui.widgets.results_display import (
-    FastScanResultsDialog,
+    SiteCounterResultsDialog,
     _select_combo_from_groups,
     _launch_site_viewer,
 )
@@ -52,12 +52,12 @@ class InputPage(BaseWizardPage):
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ─── Top Buttons (Load Existing Output, Site Viewer, Fast Scan) ────────────
+        # ─── Top Buttons (Load Existing Output, Site Viewer, Site Counter) ─────────
         top_btns = QHBoxLayout()
-        fast_btn = QPushButton("Fast Scan")
+        fast_btn = QPushButton("Site Counter")
         fast_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         fast_btn.setToolTip("Quickly scan alignments for convergence signals.")
-        fast_btn.clicked.connect(self._on_fast_scan)
+        fast_btn.clicked.connect(self._on_site_counter)
 
         load_prev_btn = QPushButton("Load and View Existing Output")
         load_prev_btn.setToolTip("Select an output folder from a completed ESL-PSC run to view its results.")
@@ -68,7 +68,7 @@ class InputPage(BaseWizardPage):
         site_view_btn.setToolTip("View an alignment with a chosen species combo.")
         site_view_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         site_view_btn.clicked.connect(self._on_site_viewer)
-        # Add 'Load Existing Output', then 'Site Viewer', then 'Fast Scan'
+        # Add 'Load Existing Output', then 'Site Viewer', then 'Site Counter'
         top_btns.addWidget(load_prev_btn)
         top_btns.addWidget(site_view_btn)
         top_btns.addWidget(fast_btn)
@@ -414,23 +414,33 @@ class InputPage(BaseWizardPage):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Site Viewer:\n{e}")
 
-    def _on_fast_scan(self):
+    def _on_site_counter(self):
         """Run a quick convergence scan of the alignments."""
         align_dir = getattr(self.config, 'alignments_dir', '')
         groups_file = getattr(self.config, 'species_groups_file', '')
         if not align_dir or not os.path.isdir(align_dir):
-            QMessageBox.warning(self, "Fast Scan", "Please select an alignment directory first.")
+            QMessageBox.warning(self, "Site Counter", "Please select an alignment directory first.")
             return
         if not groups_file or not os.path.exists(groups_file):
-            QMessageBox.warning(self, "Fast Scan", "Please select a species groups file first.")
+            QMessageBox.warning(self, "Site Counter", "Please select a species groups file first.")
             return
         species = fast_scan.list_species(align_dir)
         if not species:
-            QMessageBox.warning(self, "Fast Scan", "No species found in alignments.")
+            QMessageBox.warning(self, "Site Counter", "No species found in alignments.")
             return
         # Preselect the last chosen outgroup if remembered and still present
-        default_out = getattr(self.config, 'last_fast_scan_outgroup', '') or None
-        default_agree_pct = getattr(self.config, 'last_fast_scan_agree_pct', 100.0)
+        default_out = (
+            getattr(self.config, 'last_site_counter_outgroup', '')
+            or getattr(self.config, 'last_fast_scan_outgroup', '')
+            or None
+        )
+        default_agree_pct = (
+            getattr(self.config, 'last_site_counter_agree_pct', None)
+            if hasattr(self.config, 'last_site_counter_agree_pct')
+            else None
+        )
+        if default_agree_pct is None:
+            default_agree_pct = getattr(self.config, 'last_fast_scan_agree_pct', 100.0)
         dlg = OutgroupDialog(
             species,
             self,
@@ -464,22 +474,25 @@ class InputPage(BaseWizardPage):
         # Validate ancestral reconstruction inputs
         if use_ancestral:
             if not tree_file or not os.path.exists(tree_file):
-                QMessageBox.warning(self, "Fast Scan", "Please select a valid tree file for ancestral reconstruction.")
+                QMessageBox.warning(self, "Site Counter", "Please select a valid tree file for ancestral reconstruction.")
                 return
             # Remember tree file for this session
             try:
+                setattr(self.config, 'last_site_counter_tree_file', tree_file)
                 setattr(self.config, 'last_fast_scan_tree_file', tree_file)
             except Exception:
                 pass
         else:
-            # Remember for next Fast Scan within this session
+            # Remember for next Site Counter run within this session
             try:
+                setattr(self.config, 'last_site_counter_outgroup', outgroup or '')
+                setattr(self.config, 'last_site_counter_agree_pct', float(min_agree) * 100.0)
                 setattr(self.config, 'last_fast_scan_outgroup', outgroup or '')
                 setattr(self.config, 'last_fast_scan_agree_pct', float(min_agree) * 100.0)
             except Exception:
                 pass
         progress = QProgressDialog("Scanning alignments...", None, 0, 1, self)
-        progress.setWindowTitle("Fast Scan")
+        progress.setWindowTitle("Site Counter")
         progress.setAutoClose(True)
         progress.show()
 
@@ -518,10 +531,14 @@ class InputPage(BaseWizardPage):
         )
         progress.close()
         if not results:
-            QMessageBox.information(self, "Fast Scan", "No results produced.")
+            QMessageBox.information(self, "Site Counter", "No results produced.")
             return
         # Show results as a top-level window (no parent) to decouple from the wizard
-        FastScanResultsDialog.show_results(results, self.config, outgroup, parent=None)
+        SiteCounterResultsDialog.show_results(results, self.config, outgroup, parent=None)
+
+    # Back-compat method name used by older signal wiring.
+    def _on_fast_scan(self):
+        self._on_site_counter()
 
     def open_newick_tree(self):
         """Open a Newick file and display it in a tree viewer."""

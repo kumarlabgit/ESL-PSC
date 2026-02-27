@@ -3,29 +3,45 @@
 ## Table of Contents ##
 
 1. [Description](#description)
-2. [New: Graphical User Interface (beta)](#new-graphical-user-interface-beta)
-3. [Command Line Usage](#command-line-usage)
-   - [Fast Scan Rust CLI](#fast-scan-rust-cli)
-4. [Installation and Dependencies](#installation-and-dependencies)
-5. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-6. [Input Data](#input-data)
-7. [Output Data](#output-data)
-8. [Additional Options and Parameters](#additional-options-and-parameters)
-9. [Included Data](#included-data)
-10. [Demo](#demo)
-11. [Troubleshooting](#troubleshooting)
-12. [Citation](#citation)
+2. [New: High performance reimplementation and packaging](#new-high-performance-reimplementation-and-packaging)
+3. [Graphical User Interface](#graphical-user-interface)
+4. [Command Line Usage](#command-line-usage)
+   - [Site Counter CLI](#site-counter-cli)
+5. [Installation and Dependencies](#installation-and-dependencies)
+6. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
+7. [Input Data](#input-data)
+8. [Output Data](#output-data)
+9. [Additional Options and Parameters](#additional-options-and-parameters)
+10. [Included Data](#included-data)
+11. [Demo](#demo)
+12. [Troubleshooting](#troubleshooting)
+13. [Citation](#citation)
 
 ## Description ##
-The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main script, esl_multimatrix.py, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
+The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
-## *New:* Graphical User Interface (beta) ##
+## New: High performance reimplementation and packaging ##
+
+Updated February 2026:
+
+ESL-PSC now has a high-performance unified Rust implementation of the main pipeline (`esl-psc`) that replaces the previous Python-orchestrated file handoff loop for preprocess/modeling. In practical use, this typically delivers major speedups (often on the order of 10-20x for full analyses, and sometimes higher depending on dataset size and lambda-grid settings), while preserving output behavior and CLI compatibility.
+
+Packaging has also been updated:
+
+- The GUI and toolkit builds now use the unified Rust CLI as the primary runtime backend.
+- The toolkit is distributed as a cross-platform CLI package centered on `esl-psc`, with utility subcommands:
+  - `esl-psc pairs`
+  - `esl-psc site-counter`
+  - `esl-psc plot`
+- Toolkit packaging uses system Python dependencies for the Python modules used by pair selection and plotting, avoiding duplicate bundled Python runtimes in the toolkit itself.
+
+## Graphical User Interface ##
 
 June 2025:
 
-We have introduced an experimental GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
+We introduced a GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
 
 Step-by-step workflow guiding you through:
   1. **Input selection** – Select files and directories for each required and optional input 
@@ -34,7 +50,7 @@ Step-by-step workflow guiding you through:
   4. **Run** – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
   5. **View results** – View gene rankings and examine convergent sites in an interactive alignment viewer.
 
-Save your configuration in a file and re-load it later. You can load the included `demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
+Save your configuration in a file and re-load it later. You can load the included `test_data/photosynthesis/demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
 
 Now compatible with Windows, Mac, and Linux.
 
@@ -116,20 +132,30 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
 The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
 
 
-Feedback on the beta is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
+Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](../../releases/latest).  With these you will not need to clone this repo or install any dependencies to use the graphical interface to run ESL-PSC. The command line interface is not included in the stand-alone packages. 
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](../../releases/latest). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands (`pairs`, `site-counter`, `plot`).
+
+The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
+and is intended to run with your system Python (no duplicate bundled Python runtime).
+After extracting the toolkit, install dependencies with:
+
+`python3 -m pip install -r requirements-toolkit.txt`
+
+Toolkit release artifacts are versioned by platform as:
+`esl-psc-toolkit-v<version>-<os>-<arch>.<tar.gz|zip>`, with companion
+`.sha256` and `.manifest.json` files for integrity and metadata.
 
 #### macOS build (Apple-notarized)
-1. Download **`ESL-PSC-v2.3.0-macOS.zip`**.
+1. Download the macOS GUI release asset.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
 3. Drag `ESL-PSC.app` to your **Applications** folder.
 4. Open the app via Launchpad, Spotlight or Finder. Because the build is notarized, macOS should open it without additional warnings. If a confirmation dialog appears, click **Open**.
 
 #### Windows build (currently unsigned)
-1. Download **`ESL-PSC-v2.3.0-Windows.zip`**.
+1. Download the Windows GUI release asset.
 2. Right-click the file and select **Extract All…** (or use your preferred unzip tool).
 3. Inside the extracted folder, double-click `ESL-PSC.exe` to launch.
    • Windows SmartScreen will warn that the executable is unsigned. Click **More info** and then **Run anyway** to continue.
@@ -138,25 +164,31 @@ If you are on Linux or prefer to run from source, continue with the installation
 
 
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), you will need to run the **esl_multimatrix.py script** with the necessary arguments and options. You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands: `esl-psc pairs`, `esl-psc site-counter`, and `esl-psc plot`.
+
+You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
 Here is an example of how to run the script:
 
-`python esl_multimatrix.py --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file  --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
+`esl-psc --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
-To see all of the options available for any of the scripts in this directory, you can use `python [script_name].py --help`
+To list CLI options, run `esl-psc --help`.
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
 ### Auto Pair Selection CLI
 
+Toolkit command: `esl-psc pairs --help`
+
 Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
 
-### Fast Scan Rust CLI
+### Site Counter CLI
 
-Looking for the high-performance fast scan backend? See the dedicated [`fast_scan_rs/README.md`](fast_scan_rs/README.md) for build instructions, JSON input/output details, and integration notes for the Rust-powered CLI that the Python wrapper auto-detects.
+Toolkit command: `esl-psc site-counter --help`
 
-**Parsimony-based ancestral reconstruction** is now available in Fast Scan via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Fast Scan will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment. See the Fast Scan Rust CLI README for examples.
+Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
+
+**Parsimony-based ancestral reconstruction** is available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment.
 
 ### NEW: Checkpointing & Resuming Interrupted Runs
 
@@ -306,10 +338,10 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 ## Included Data ##
 
 #### We have included two sample species_groups files for use in ESL-PSC alignments ####
-1. photo_single_LC_matrix_species_groups.txt (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
-2. orthomam_echo_species_groups.txt (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
+1. `test_data/photosynthesis/photo_single_LC_matrix_species_groups.txt` (the grass species with the closest contrast partners with the longest sequences (i.e. fewest gaps; used for photosynthesis analyses in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)))
+2. `test_data/echolocation/orthomam_echo_species_groups.txt` (this can be used to reproduce the echolocation analyses using all 16 species combinations ([Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))) 
 
-A species phenotype file for the grass species has also been included: photo_species_phenotypes.txt
+A species phenotype file for the grass species has also been included: `test_data/photosynthesis/photo_species_phenotypes.txt`
 
 #### We have included the protein sequence alignments used for ESL-PSC analyses by Allard et al. (2025). If you use these data, please cite these sources: ####
 
@@ -339,7 +371,7 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 ### Running the demo in the GUI ###
 To run the C3/C4 demo using the graphical interface:
 1. Launch the GUI (see the installation and launch instructions above).
-2. Click **Load Configuration** (bottom left of the page) and open `demo_config_for_gui.json` found in the repository root folder.
+2. Click **Load Configuration** (bottom left of the page) and open `test_data/photosynthesis/demo_config_for_gui.json`.
 3. Click **Next** through the pre-filled wizard pages and press **Run Analysis** on the final page.
 4. When the run finishes, press **Show SPS Plot** to view the violin plot, or **Show Top Gene Ranks** to view the most influential genes. You can double click a gene's name to open the protein sequence alignment in the convergent site viewer and examine the residues present in the input species and other species at the strongest convergent sites.
 
@@ -348,7 +380,7 @@ You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast
 1. Clone this repository
 2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
 3. Navigate to the `ESL_PSC/` directory on your computer
-4. Run this command from the ESL-PSC directory: `python esl_multimatrix.py --output_file_base_name demo_output --species_groups_file photo_single_LC_matrix_species_groups.txt --alignments_dir photosynthesis_alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
+4. Run this command from the ESL-PSC directory: `esl-psc --output_file_base_name demo_output --species_groups_file test_data/photosynthesis/photo_single_LC_matrix_species_groups.txt --alignments_dir test_data/photosynthesis/alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path test_data/photosynthesis/photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
 5. The expected run time is approximately 30 seconds on a standard desktop computer.
 6. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
 the plot should look like this:

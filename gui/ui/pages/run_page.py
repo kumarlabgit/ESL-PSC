@@ -269,7 +269,8 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(False)
             
             self.cmd_display.clear()
-            self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
+            runner_prefix = ESLWorker.get_command_preview_prefix()
+            self.cmd_display.appendPlainText(f"$ {runner_prefix} {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis (may take 10 seconds)...")
             self.sps_btn.hide()
             self.cont_btn.hide()

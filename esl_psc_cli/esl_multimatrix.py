@@ -337,6 +337,9 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         combo = list_of_species_combos[combo_offset]  # list is already sliced when resuming
         combo_name = 'combo_' + str(combo_num)
         total_combos = len(list_of_species_combos) + start_index  # original total for context
+        # Track all runs generated for this combo; checkpoint should be saved
+        # only after combo-level aggregate stats are finalized.
+        runs_this_combo = []
         
         # MODIFICATION: Announce combo processing in a parsable way
         print(f"\n--- Processing combo {combo_num + 1} of {total_combos} ({combo_name}) ---")
@@ -407,15 +410,7 @@ def run_multi_matrix_integration(args, list_of_species_combos,
             # gene_objects_dict is an object and only a reference is passed to
             #   each run so same object persists and accumulates all the data
             master_run_list.extend(run_list)
-            # --- Checkpoint save ---
-            if checkpointer:
-                checkpointer.save_checkpoint(
-                    combo_num,
-                    gene_objects_dict,
-                    master_run_list,
-                    vars(args),
-                    run_list,
-                )
+            runs_this_combo.extend(run_list)
         else:
             # ***Do a Randomized Alignment Null Multimatrix Integration***
             for run_num in range(args.num_randomized_alignments):
@@ -440,13 +435,7 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                                                       + '_' + str(run_num),
                                                   response_matrix_path=response_path)
                 master_run_list.extend(run_list)
-                if checkpointer:
-                    checkpointer.save_checkpoint(
-                        combo_num,
-                        gene_objects_dict,
-                        master_run_list,
-                        vars(args),
-                        run_list)
+                runs_this_combo.extend(run_list)
 
         # update gene variables to track best scores and num combos ranked etc.
         for gene in gene_objects_dict.values():
@@ -473,6 +462,16 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         if args.delete_preprocess: # delete preprocess to keep folder clean
                         shutil.rmtree(os.path.join(args.esl_inputs_outputs_dir,
                                        preprocess_dir_name))
+        # Save checkpoint after combo-level aggregates are updated so restored
+        # state reflects final num_combos_ranked / best_ever values.
+        if checkpointer:
+            checkpointer.save_checkpoint(
+                combo_num,
+                gene_objects_dict,
+                master_run_list,
+                vars(args),
+                runs_this_combo,
+            )
 
     # return accumulated data
     return gene_objects_dict, master_run_list
