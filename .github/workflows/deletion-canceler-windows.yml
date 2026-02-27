@@ -37,11 +37,17 @@ jobs:
 
       - name: Stage toolkit (Linux)
         run: |
-          python packaging/toolkit/stage_toolkit.py \
-            --dest dist/esl-psc-toolkit \
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --platform posix
-          tar -czf esl-psc-toolkit-linux-x86_64.tar.gz -C dist esl-psc-toolkit
+            --platform posix \
+            --os-tag linux \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (Linux)
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz)"
 
       - name: "Upload artifact: esl-psc (Linux)"
         uses: actions/upload-artifact@v4
@@ -54,7 +60,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: esl-psc-toolkit-linux-x86_64
-          path: esl-psc-toolkit-linux-x86_64.tar.gz
+          path: |
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.manifest.json
           if-no-files-found: error
 
   build-macos:
@@ -84,11 +93,17 @@ jobs:
 
       - name: Stage toolkit (macOS)
         run: |
-          python packaging/toolkit/stage_toolkit.py \
-            --dest dist/esl-psc-toolkit \
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --platform posix
-          tar -czf esl-psc-toolkit-macos.tar.gz -C dist esl-psc-toolkit
+            --platform posix \
+            --os-tag macos \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (macOS)
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz)"
 
       - name: "Upload artifact: esl-psc (macOS)"
         uses: actions/upload-artifact@v4
@@ -100,8 +115,11 @@ jobs:
       - name: "Upload artifact: ESL-PSC toolkit (macOS)"
         uses: actions/upload-artifact@v4
         with:
-          name: esl-psc-toolkit-macos
-          path: esl-psc-toolkit-macos.tar.gz
+          name: esl-psc-toolkit-macos-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.manifest.json
           if-no-files-found: error
 
   build-windows:
@@ -137,11 +155,18 @@ jobs:
       - name: Stage toolkit (Windows)
         shell: pwsh
         run: |
-          python "$env:GITHUB_WORKSPACE\packaging\toolkit\stage_toolkit.py" `
-            --dest "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit" `
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\package_toolkit.py" `
+            --dest-dir "$env:GITHUB_WORKSPACE\dist" `
             --rust-main "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe" `
-            --platform windows
-          Compress-Archive -Path "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit\*" -DestinationPath "$env:GITHUB_WORKSPACE\esl-psc-toolkit-windows-x86_64.zip"
+            --platform windows `
+            --os-tag windows `
+            --arch x86_64 `
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (Windows)
+        shell: pwsh
+        run: |
+          $artifact = (Get-ChildItem "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit-v*-windows-x86_64.zip" | Select-Object -First 1).FullName
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\smoke_test_toolkit.py" --artifact $artifact
 
       - name: "Upload artifact: esl-psc (Windows)"
         uses: actions/upload-artifact@v4
@@ -154,5 +179,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: esl-psc-toolkit-windows-x86_64
-          path: esl-psc-toolkit-windows-x86_64.zip
+          path: |
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.sha256
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.manifest.json
           if-no-files-found: error

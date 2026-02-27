@@ -35,7 +35,6 @@ Packaging has also been updated:
   - `esl-psc pairs`
   - `esl-psc site-counter`
   - `esl-psc plot`
-- Alias commands (`esl-psc-pairs`, `site-counter`, `esl-psc-plot`) are still included for convenience.
 - Toolkit packaging uses system Python dependencies for the Python modules used by pair selection and plotting, avoiding duplicate bundled Python runtimes in the toolkit itself.
 
 ## Graphical User Interface ##
@@ -137,13 +136,17 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands (`pairs`, `site-counter`, `plot`) and alias commands (`esl-psc-pairs`, `site-counter`, `esl-psc-plot`).
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](https://github.com/kumarlabgit/ESL-PSC/releases). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands (`pairs`, `site-counter`, `plot`).
 
 The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
 and is intended to run with your system Python (no duplicate bundled Python runtime).
 After extracting the toolkit, install dependencies with:
 
 `python3 -m pip install -r requirements-toolkit.txt`
+
+Toolkit release artifacts are versioned by platform as:
+`esl-psc-toolkit-v<version>-<os>-<arch>.<tar.gz|zip>`, with companion
+`.sha256` and `.manifest.json` files for integrity and metadata.
 
 #### macOS build (Apple-notarized)
 1. Download **`ESL-PSC-MacOS.zip`**.
@@ -175,13 +178,13 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 ### Auto Pair Selection CLI
 
-Toolkit command: `esl-psc pairs --help` (alias: `esl-psc-pairs --help`)
+Toolkit command: `esl-psc pairs --help`
 
 Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
 
 ### Site Counter CLI
 
-Toolkit command: `esl-psc site-counter --help` (alias: `site-counter --help`)
+Toolkit command: `esl-psc site-counter --help`
 
 Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
 

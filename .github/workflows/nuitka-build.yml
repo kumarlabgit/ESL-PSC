@@ -32,15 +32,24 @@ jobs:
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
       - name: Stage toolkit artifact
         run: |
-          python packaging/toolkit/stage_toolkit.py \
-            --dest build/esl-psc-toolkit \
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --platform posix
-          tar -czf build/ESL-PSC-toolkit-linux-x86_64.tar.gz -C build esl-psc-toolkit
+            --platform posix \
+            --os-tag linux \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz)"
       - uses: actions/upload-artifact@v4
         with:
-          name: ESL-PSC-toolkit-linux-x86_64
-          path: build/ESL-PSC-toolkit-linux-x86_64.tar.gz
+          name: esl-psc-toolkit-linux-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.manifest.json
 
   build-macos:
     if: ${{ github.event.inputs.target_os == 'macos' }}
@@ -86,11 +95,17 @@ jobs:
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
       - name: Stage toolkit artifact
         run: |
-          python packaging/toolkit/stage_toolkit.py \
-            --dest build/esl-psc-toolkit \
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
             --rust-main esl_psc_rs/target/release/esl-psc \
-            --platform posix
-          tar -czf build/ESL-PSC-toolkit-macOS.tar.gz -C build esl-psc-toolkit
+            --platform posix \
+            --os-tag macos \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz)"
       - name: Create DMG
         run: |
           hdiutil create -volname "ESL-PSC" \
@@ -102,8 +117,11 @@ jobs:
           path: build/ESL-PSC.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: ESL-PSC-toolkit-macOS
-          path: build/ESL-PSC-toolkit-macOS.tar.gz
+          name: esl-psc-toolkit-macos-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.manifest.json
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
@@ -131,7 +149,6 @@ jobs:
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
           $RustUnified = "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
-          $ToolkitDir = "$env:GITHUB_WORKSPACE\stage_toolkit"
 
           if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
             Get-ChildItem -Path $SourceDir
@@ -148,15 +165,25 @@ jobs:
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
 
-          python "$env:GITHUB_WORKSPACE\packaging\toolkit\stage_toolkit.py" `
-            --dest "$ToolkitDir" `
-            --rust-main "$RustUnified" `
-            --platform windows
-
           Get-ChildItem -Path $StageDir
           if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
             throw "FATAL: stage verification failed; preprocess.exe missing."
           }
+      - name: Stage toolkit artifact
+        shell: pwsh
+        run: |
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\package_toolkit.py" `
+            --dest-dir "$env:GITHUB_WORKSPACE\dist" `
+            --rust-main "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe" `
+            --platform windows `
+            --os-tag windows `
+            --arch x86_64 `
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        shell: pwsh
+        run: |
+          $artifact = (Get-ChildItem "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit-v*-windows-x86_64.zip" | Select-Object -First 1).FullName
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\smoke_test_toolkit.py" --artifact $artifact
       - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -177,14 +204,14 @@ jobs:
       - name: Compress GUI build to ZIP
         shell: pwsh
         run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
-      - name: Compress toolkit build to ZIP
-        shell: pwsh
-        run: Compress-Archive -Path stage_toolkit\\* -DestinationPath ESL-PSC-toolkit-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
           path: ESL-PSC-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: ESL-PSC-toolkit-Windows
-          path: ESL-PSC-toolkit-Windows.zip
+          name: esl-psc-toolkit-windows-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.sha256
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.manifest.json

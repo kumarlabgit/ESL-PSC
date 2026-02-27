@@ -20,20 +20,20 @@ def remove_bytecode(root: Path) -> None:
         pyc.unlink(missing_ok=True)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Stage ESL-PSC toolkit payload.")
-    parser.add_argument("--dest", required=True, help="Toolkit output directory")
-    parser.add_argument("--rust-main", required=True, help="Path to esl-psc binary")
-    parser.add_argument(
-        "--platform",
-        required=True,
-        choices=("posix", "windows"),
-        help="Target platform family for wrapper scripts",
-    )
-    args = parser.parse_args()
+def stage_toolkit(
+    *,
+    dest: Path,
+    rust_main: Path,
+    platform: str,
+    repo_root: Path | None = None,
+) -> None:
+    if platform not in ("posix", "windows"):
+        raise ValueError(f"unsupported platform family: {platform}")
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[2]
 
-    repo_root = Path(__file__).resolve().parents[2]
-    dest = Path(args.dest).resolve()
+    dest = dest.resolve()
+    rust_main = rust_main.resolve()
     bin_dir = dest / "bin"
     py_root = dest / "python"
     gui_core_dir = py_root / "gui" / "core"
@@ -41,25 +41,10 @@ def main() -> int:
     bin_dir.mkdir(parents=True, exist_ok=True)
     gui_core_dir.mkdir(parents=True, exist_ok=True)
 
-    rust_main = Path(args.rust_main).resolve()
     if not rust_main.is_file():
         raise FileNotFoundError(f"missing Rust main binary: {rust_main}")
 
     shutil.copy2(rust_main, bin_dir / rust_main.name)
-
-    wrappers_dir = repo_root / "packaging" / "toolkit" / "bin"
-    if args.platform == "windows":
-        wrapper_names = ("esl-psc-plot.cmd", "esl-psc-pairs.cmd", "site-counter.cmd")
-    else:
-        wrapper_names = ("esl-psc-plot", "esl-psc-pairs", "site-counter")
-    for name in wrapper_names:
-        src = wrappers_dir / name
-        if not src.is_file():
-            raise FileNotFoundError(f"missing wrapper script: {src}")
-        dst = bin_dir / name
-        shutil.copy2(src, dst)
-        if args.platform != "windows":
-            dst.chmod(0o755)
 
     copy_tree(repo_root / "esl_psc_cli", py_root / "esl_psc_cli")
 
@@ -75,6 +60,24 @@ def main() -> int:
     shutil.copy2(repo_root / "requirements-toolkit.txt", dest / "requirements-toolkit.txt")
 
     remove_bytecode(py_root)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Stage ESL-PSC toolkit payload.")
+    parser.add_argument("--dest", required=True, help="Toolkit output directory")
+    parser.add_argument("--rust-main", required=True, help="Path to esl-psc binary")
+    parser.add_argument(
+        "--platform",
+        required=True,
+        choices=("posix", "windows"),
+        help="Target platform family for wrapper scripts",
+    )
+    args = parser.parse_args()
+    stage_toolkit(
+        dest=Path(args.dest),
+        rust_main=Path(args.rust_main),
+        platform=args.platform,
+    )
     return 0
 
 

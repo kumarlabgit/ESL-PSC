@@ -1906,120 +1906,48 @@ fn run_python_plot_command(
     min_genes: usize,
     pheno_names: Option<Vec<String>>,
 ) -> Result<()> {
-    for plotter in plotter_command_candidates() {
-        let mut cmd = Command::new(&plotter);
-        cmd.arg("--mode")
-            .arg(mode)
-            .arg("--pred_csv")
-            .arg(pred_csv_path)
-            .arg("--title")
-            .arg(title)
-            .arg("--min_genes")
-            .arg(min_genes.to_string());
-        if let Some(names) = &pheno_names {
-            if names.len() == 2 {
-                cmd.arg("--pheno_name1")
-                    .arg(&names[0])
-                    .arg("--pheno_name2")
-                    .arg(&names[1]);
-            }
-        }
-        match cmd.status() {
-            Ok(status) if status.success() => return Ok(()),
-            Ok(status) => {
-                eprintln!(
-                    "plot helper '{}' exited with status {}; trying fallback",
-                    plotter.display(),
-                    status
-                );
-            }
-            Err(_) => {
-                // Try the next candidate.
-            }
+    let mut module_args = vec![
+        "--mode".to_string(),
+        mode.to_string(),
+        "--pred_csv".to_string(),
+        pred_csv_path.display().to_string(),
+        "--title".to_string(),
+        title.to_string(),
+        "--min_genes".to_string(),
+        min_genes.to_string(),
+    ];
+    if let Some(names) = &pheno_names {
+        if names.len() == 2 {
+            module_args.push("--pheno_name1".to_string());
+            module_args.push(names[0].clone());
+            module_args.push("--pheno_name2".to_string());
+            module_args.push(names[1].clone());
         }
     }
 
-    let script = r#"
-import sys
-from esl_psc_cli import esl_psc_functions as ecf
-mode = sys.argv[1]
-pred = sys.argv[2]
-title = sys.argv[3]
-min_genes = int(sys.argv[4])
-if mode == "continuous":
-    ecf.continuous_pred_plot(pred, title, min_genes=min_genes)
-else:
-    pheno = None
-    if len(sys.argv) >= 7:
-        pheno = (sys.argv[5], sys.argv[6])
-    ecf.rmse_range_pred_plots(pred, title, pheno_names=pheno, min_genes=min_genes, plot_type=mode)
-"#;
-    for python_cmd in python_command_candidates() {
-        let mut cmd = Command::new(&python_cmd);
-        cmd.arg("-c")
-            .arg(script)
-            .arg(mode)
-            .arg(pred_csv_path)
-            .arg(title)
-            .arg(min_genes.to_string());
-        if let Some(names) = &pheno_names {
-            if names.len() == 2 {
-                cmd.arg(&names[0]).arg(&names[1]);
-            }
-        }
-        match cmd.status() {
-            Ok(status) if status.success() => return Ok(()),
-            Ok(status) => {
-                eprintln!(
-                    "python plot fallback '{}' exited with status {}; trying next fallback",
-                    python_cmd, status
-                );
-            }
-            Err(_) => {
-                // Try the next candidate.
-            }
-        }
-    }
-    bail!("plot generation failed: no working plot helper or python interpreter was found");
-}
-
-fn plotter_command_candidates() -> Vec<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    if let Ok(path) = std::env::var("ESL_PSC_PLOTTER") {
-        let trimmed = path.trim();
+    if let Ok(override_plotter) = std::env::var("ESL_PSC_PLOTTER") {
+        let trimmed = override_plotter.trim();
         if !trimmed.is_empty() {
-            candidates.push(PathBuf::from(trimmed));
-        }
-    }
-
-    let names: &[&str] = if cfg!(windows) {
-        &[
-            "esl-psc-plot.exe",
-            "esl-psc-plot.cmd",
-            "esl-psc-plot",
-            "esl_plot.exe",
-            "esl_plot.cmd",
-            "esl_plot",
-        ]
-    } else {
-        &["esl-psc-plot", "esl_plot"]
-    };
-
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
-            for name in names {
-                candidates.push(exe_dir.join(name));
-                candidates.push(exe_dir.join("bin").join(name));
+            let mut cmd = Command::new(trimmed);
+            cmd.args(&module_args);
+            if let Ok(status) = cmd.status() {
+                if status.success() {
+                    return Ok(());
+                }
+                eprintln!(
+                    "plot helper '{}' exited with status {}; falling back to python module",
+                    trimmed, status
+                );
+            } else {
+                eprintln!(
+                    "plot helper '{}' could not be launched; falling back to python module",
+                    trimmed
+                );
             }
         }
     }
 
-    for name in names {
-        candidates.push(PathBuf::from(name));
-    }
-
-    dedupe_pathbufs(candidates)
+    run_python_module_subcommand("esl_psc_cli.plot_cli", &module_args, &[])
 }
 
 fn python_command_candidates() -> Vec<String> {

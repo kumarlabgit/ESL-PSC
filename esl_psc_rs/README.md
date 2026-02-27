@@ -75,8 +75,7 @@ Outputs:
 Plot flags (`--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`) use this helper resolution order:
 
 1. `ESL_PSC_PLOTTER` env var (path or command)
-2. bundled `esl-psc-plot` executable next to `esl-psc` (or in sibling `bin/`)
-3. Python fallback via `ESL_PSC_PYTHON`, then `python3`, then `python`
+2. bundled Python module runner via `esl_psc_cli.plot_cli` (`ESL_PSC_PYTHON`, then `python3`, then `python`)
 
 ## Baseline comparison
 
