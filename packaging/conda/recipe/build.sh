@@ -3,17 +3,17 @@ set -euo pipefail
 
 cargo build --release --manifest-path esl_psc_rs/Cargo.toml
 
-BIN_PATH=""
-for candidate in \
-  "esl_psc_rs/target/release/esl-psc" \
-  "target/release/esl-psc"; do
-  if [ -f "${candidate}" ]; then
-    BIN_PATH="${candidate}"
-    break
-  fi
-done
+BIN_PATH="$(find . -type f \
+  \( \
+    -path "./esl_psc_rs/target/release/esl-psc" -o \
+    -path "./esl_psc_rs/target/*/release/esl-psc" -o \
+    -path "./target/release/esl-psc" -o \
+    -path "./target/*/release/esl-psc" \
+  \) \
+  | head -n 1)"
 if [ -z "${BIN_PATH}" ]; then
   echo "could not find built binary esl-psc in expected target directories" >&2
+  find . -type f | sed -n '1,200p' >&2
   exit 1
 fi
 
