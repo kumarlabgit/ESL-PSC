@@ -151,6 +151,12 @@ Toolkit release artifacts are versioned by platform as:
 A conda recipe for packaging `esl-psc` is provided at
 `packaging/conda/recipe/` (work in progress).
 
+Package-manager scaffolding is included for:
+
+- conda-forge recipe rendering: `packaging/conda-forge/`
+- Homebrew formula rendering from release assets: `packaging/homebrew/`
+- apt/deb package building: `packaging/apt/`
+
 #### macOS build (Apple-notarized)
 1. Download the macOS GUI release asset.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.

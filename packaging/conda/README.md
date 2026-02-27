@@ -1,6 +1,6 @@
 # Conda Packaging (WIP)
 
-This directory contains a first-pass conda recipe for packaging the unified
+This directory contains a local conda-build recipe for packaging the unified
 `esl-psc` CLI plus required Python modules for utility subcommands.
 
 ## Local Build
@@ -24,5 +24,4 @@ conda build packaging/conda/recipe --output-folder dist/conda
   - `esl_psc_cli` Python package
   - minimal `gui.core` modules used by CLI utilities
 - Runtime Python dependencies mirror `requirements-toolkit.txt`.
-- This recipe is intended as the base for conda-forge/Anaconda distribution.
-
+- For conda-forge recipe generation tooling, see `packaging/conda-forge/`.

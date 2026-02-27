@@ -1,0 +1,129 @@
+name: Build Package Manager Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Package manager target"
+        required: true
+        type: choice
+        default: conda
+        options:
+          - conda
+          - conda_forge_recipe
+          - homebrew_formula
+          - apt_deb
+      release_tag:
+        description: "Release tag for recipe/formula rendering (e.g. v2.4.1)"
+        required: false
+        default: ""
+      github_repo:
+        description: "GitHub repo owner/name for release lookup"
+        required: false
+        default: "John-Allard/ESL-PSC"
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build-conda:
+    if: ${{ github.event.inputs.target == 'conda' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install conda-build
+        shell: bash -el {0}
+        run: |
+          conda install -y conda-build boa
+      - name: Build conda package
+        shell: bash -el {0}
+        run: |
+          conda build packaging/conda/recipe --output-folder dist/conda
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-conda-package
+          path: |
+            dist/conda/**/*.conda
+            dist/conda/**/*.tar.bz2
+
+  render-conda-forge:
+    if: ${{ github.event.inputs.target == 'conda_forge_recipe' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate release tag input
+        run: |
+          if [ -z "${{ github.event.inputs.release_tag }}" ]; then
+            echo "release_tag is required for conda_forge_recipe target" >&2
+            exit 1
+          fi
+      - name: Render conda-forge recipe
+        run: |
+          python packaging/conda-forge/render_meta_from_tag.py \
+            --repo "${{ github.event.inputs.github_repo }}" \
+            --tag "${{ github.event.inputs.release_tag }}" \
+            --output dist/conda-forge/meta.yaml
+          cp packaging/conda-forge/recipe/build.sh dist/conda-forge/build.sh
+          cp packaging/conda-forge/recipe/bld.bat dist/conda-forge/bld.bat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-conda-forge-recipe
+          path: dist/conda-forge/*
+
+  render-homebrew:
+    if: ${{ github.event.inputs.target == 'homebrew_formula' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate release tag input
+        run: |
+          if [ -z "${{ github.event.inputs.release_tag }}" ]; then
+            echo "release_tag is required for homebrew_formula target" >&2
+            exit 1
+          fi
+      - name: Render Homebrew formula
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python packaging/homebrew/render_formula_from_release.py \
+            --repo "${{ github.event.inputs.github_repo }}" \
+            --tag "${{ github.event.inputs.release_tag }}" \
+            --output dist/homebrew/esl-psc.rb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-homebrew-formula
+          path: dist/homebrew/esl-psc.rb
+
+  build-apt:
+    if: ${{ github.event.inputs.target == 'apt_deb' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build Rust binary
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Build Debian package
+        run: |
+          python packaging/apt/build_deb.py \
+            --dest-dir dist/apt \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --arch amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-apt-deb
+          path: dist/apt/*.deb
+

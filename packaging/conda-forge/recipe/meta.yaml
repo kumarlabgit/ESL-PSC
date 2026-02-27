@@ -1,11 +1,14 @@
+{% set name = "esl-psc" %}
 {% set version = "2.4.1" %}
+{% set sha256 = "REPLACE_WITH_SOURCE_TARBALL_SHA256" %}
 
 package:
-  name: esl-psc
+  name: {{ name }}
   version: {{ version }}
 
 source:
-  path: ../..
+  url: https://github.com/John-Allard/ESL-PSC/archive/refs/tags/v{{ version }}.tar.gz
+  sha256: {{ sha256 }}
 
 build:
   number: 0
@@ -36,6 +39,8 @@ test:
     - python -c "import gui.core.fast_scan"
 
 about:
+  home: https://github.com/John-Allard/ESL-PSC
   summary: Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC)
   license: NOASSERTION
-  home: https://github.com/John-Allard/ESL-PSC
+  dev_url: https://github.com/John-Allard/ESL-PSC
+
