@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml

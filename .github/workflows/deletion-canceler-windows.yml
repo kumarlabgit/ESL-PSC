@@ -24,6 +24,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
 
       - name: Show rustc version
         run: rustc -Vv
@@ -80,6 +83,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
 
       - name: Show rustc version
         run: rustc -Vv
@@ -141,6 +147,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
 
       - name: Show rustc version
         run: rustc -Vv

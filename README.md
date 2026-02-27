@@ -148,6 +148,9 @@ Toolkit release artifacts are versioned by platform as:
 `esl-psc-toolkit-v<version>-<os>-<arch>.<tar.gz|zip>`, with companion
 `.sha256` and `.manifest.json` files for integrity and metadata.
 
+A conda recipe for packaging `esl-psc` is provided at
+`packaging/conda/recipe/` (work in progress).
+
 #### macOS build (Apple-notarized)
 1. Download the macOS GUI release asset.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
