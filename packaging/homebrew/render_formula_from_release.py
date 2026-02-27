@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import re
 import urllib.request
+from hashlib import sha256
 from pathlib import Path
 
 
@@ -13,18 +12,11 @@ FORMULA_TEMPLATE = """class EslPsc < Formula
   desc "Evolutionary Sparse Learning with Paired Species Contrast"
   homepage "https://github.com/John-Allard/ESL-PSC"
   license "NOASSERTION"
+  url "{source_url}"
+  sha256 "{source_sha}"
   version "{version}"
 
-  on_macos do
-    url "{macos_url}"
-    sha256 "{macos_sha}"
-  end
-
-  on_linux do
-    url "{linux_url}"
-    sha256 "{linux_sha}"
-  end
-
+  depends_on "rust" => :build
   depends_on "python@3.12"
   depends_on "numpy"
   depends_on "pandas"
@@ -33,88 +25,62 @@ FORMULA_TEMPLATE = """class EslPsc < Formula
   depends_on "biopython"
 
   def install
-    toolkit_root = Dir.children(buildpath).find { |entry| (buildpath/entry).directory? }
-    odie "unexpected archive layout: toolkit root directory not found" if toolkit_root.nil?
-    libexec.install Dir["#{toolkit_root}/*"]
+    system "cargo", "install", "--path", "esl_psc_rs", "--root", libexec
+
+    (libexec/"python/esl_psc_cli").install Dir["esl_psc_cli/*"]
+    (libexec/"python/gui").install "gui/__init__.py"
+    (libexec/"python/gui/core").mkpath
+    (libexec/"python/gui/core").install "gui/core/fast_scan.py"
+    (libexec/"python/gui/core").install "gui/core/fasta_io.py"
+    (libexec/"python/gui/core").install "gui/core/ancestral_reconstruction.py"
+
     (bin/"esl-psc").write_env_script libexec/"bin/esl-psc", {{
-      ESL_PSC_PYTHONPATH: "#{libexec}/python",
+      ESL_PSC_PYTHONPATH: "#{{libexec}}/python",
       ESL_PSC_PYTHON: Formula["python@3.12"].opt_bin/"python3",
     }}
   end
 
   test do
-    assert_match "usage", shell_output("#{bin}/esl-psc --help")
-    assert_match "usage", shell_output("#{bin}/esl-psc pairs --help")
-    assert_match "usage", shell_output("#{bin}/esl-psc site-counter --help")
-    assert_match "usage", shell_output("#{bin}/esl-psc plot --help")
+    assert_match "usage", shell_output("#{{bin}}/esl-psc --help")
+    assert_match "usage", shell_output("#{{bin}}/esl-psc pairs --help")
+    assert_match "usage", shell_output("#{{bin}}/esl-psc site-counter --help")
+    assert_match "usage", shell_output("#{{bin}}/esl-psc plot --help")
   end
 end
 """
 
 
-def github_api_json(url: str) -> dict:
-    headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request) as response:
-        return json.load(response)
-
-
-def fetch_text(url: str) -> str:
+def sha256_of_url(url: str) -> str:
+    digest = sha256()
     request = urllib.request.Request(url)
     with urllib.request.urlopen(request) as response:
-        return response.read().decode("utf-8")
-
-
-def parse_sha256_line(raw: str, expected_filename: str) -> str:
-    line = raw.strip().splitlines()[0].strip()
-    parts = line.split()
-    if len(parts) < 2:
-        raise ValueError(f"invalid sha256 file content: {line!r}")
-    checksum = parts[0]
-    filename = parts[-1].lstrip("*")
-    if filename != expected_filename:
-        raise ValueError(
-            f"sha256 file mismatch: expected {expected_filename}, found {filename}"
-        )
-    return checksum
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render Homebrew formula from GitHub release assets.")
+    parser = argparse.ArgumentParser(description="Render Homebrew formula from GitHub source tag tarball.")
     parser.add_argument("--repo", required=True, help="GitHub repo in owner/name form")
     parser.add_argument("--tag", required=True, help="Release tag, e.g. v2.4.1")
     parser.add_argument("--output", required=True, help="Output .rb formula path")
     args = parser.parse_args()
-
-    release = github_api_json(f"https://api.github.com/repos/{args.repo}/releases/tags/{args.tag}")
-    assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
 
     version_match = re.fullmatch(r"v(.+)", args.tag.strip())
     if not version_match:
         raise ValueError(f"invalid tag format: {args.tag}")
     version = version_match.group(1)
 
-    linux_name = f"esl-psc-toolkit-v{version}-linux-x86_64.tar.gz"
-    linux_sha_name = f"{linux_name}.sha256"
-    macos_name = f"esl-psc-toolkit-v{version}-macos-x86_64.tar.gz"
-    macos_sha_name = f"{macos_name}.sha256"
-
-    missing = [name for name in (linux_name, linux_sha_name, macos_name, macos_sha_name) if name not in assets]
-    if missing:
-        raise KeyError(f"missing release assets for formula generation: {', '.join(missing)}")
-
-    linux_sha = parse_sha256_line(fetch_text(assets[linux_sha_name]), linux_name)
-    macos_sha = parse_sha256_line(fetch_text(assets[macos_sha_name]), macos_name)
+    source_url = f"https://github.com/{args.repo}/archive/refs/tags/{args.tag}.tar.gz"
+    source_sha = sha256_of_url(source_url)
 
     rendered = FORMULA_TEMPLATE.format(
         version=version,
-        linux_url=assets[linux_name],
-        linux_sha=linux_sha,
-        macos_url=assets[macos_name],
-        macos_sha=macos_sha,
+        source_url=source_url,
+        source_sha=source_sha,
     )
 
     out_path = Path(args.output).resolve()
