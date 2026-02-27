@@ -35,10 +35,12 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ env.PYTHON_VERSION }}
+          channels: conda-forge,defaults
+          channel-priority: strict
       - name: Install conda-build
         shell: bash -el {0}
         run: |
-          conda install -y conda-build boa
+          conda install -y conda-build
       - name: Build conda package
         shell: bash -el {0}
         run: |
@@ -126,4 +128,3 @@ jobs:
         with:
           name: esl-psc-apt-deb
           path: dist/apt/*.deb
-
