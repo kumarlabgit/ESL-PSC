@@ -4,10 +4,11 @@
 
 1. [Description](#description)
 2. [New: High performance reimplementation and packaging](#new-high-performance-reimplementation-and-packaging)
-3. [Graphical User Interface](#graphical-user-interface)
-4. [Command Line Usage](#command-line-usage)
+3. [Installation and Dependencies](#installation-and-dependencies)
+4. [Graphical User Interface](#graphical-user-interface)
+5. [Command Line Usage](#command-line-usage)
+   - [Auto Pair Selection CLI](#auto-pair-selection-cli)
    - [Site Counter CLI](#site-counter-cli)
-5. [Installation and Dependencies](#installation-and-dependencies)
 6. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
 7. [Input Data](#input-data)
 8. [Output Data](#output-data)
@@ -34,8 +35,81 @@ Packaging has also been updated:
 - The toolkit is distributed as a cross-platform CLI package centered on `esl-psc`, with utility subcommands:
   - `esl-psc pairs`
   - `esl-psc site-counter`
-  - `esl-psc plot`
 - Toolkit packaging uses system Python dependencies for the Python modules used by pair selection and plotting, avoiding duplicate bundled Python runtimes in the toolkit itself.
+
+## Installation and Dependencies ##
+
+ESL-PSC requires Python 3.10+ and has been tested on recent macOS, Windows, and Linux systems.
+
+### Python dependencies
+
+- biopython
+- numpy
+- pandas
+- matplotlib
+- seaborn
+
+Install directly with:
+
+`pip install biopython numpy pandas matplotlib seaborn`
+
+or via:
+
+`pip install -r requirements-toolkit.txt`
+
+### Install options
+
+#### 1. GUI app downloads (macOS/Windows)
+
+Download from [GitHub Releases](../../releases/latest):
+
+- `ESL-PSC-v<version>-macOS.dmg`
+- `ESL-PSC-v<version>-Windows.zip`
+
+These are desktop app packages. The GUI can still generate CLI commands for terminal use.
+
+#### 2. Toolkit archive (Linux/macOS/Windows)
+
+Download the platform toolkit artifact from [GitHub Releases](../../releases/latest):
+
+- `esl-psc-toolkit-v<version>-linux-x86_64.tar.gz`
+- `esl-psc-toolkit-v<version>-macos-x86_64.tar.gz`
+- `esl-psc-toolkit-v<version>-windows-x86_64.zip`
+
+Then:
+
+1. Extract archive.
+2. Install toolkit Python dependencies:
+   `python -m pip install -r requirements-toolkit.txt`
+3. Run:
+   - `./bin/esl-psc --help` (Linux/macOS)
+   - `.\bin\esl-psc.exe --help` (Windows)
+
+#### 3. Build/install from source (most robust Linux path)
+
+This avoids prebuilt binary ABI mismatches on some Linux systems.
+
+1. Install Rust toolchain.
+2. Install CLI:
+   `cargo install --path esl_psc_rs --root /your/install/prefix`
+3. Install Python dependencies:
+   `python -m pip install -r requirements-toolkit.txt`
+4. Set Python linkage for utility subcommands:
+   - `ESL_PSC_PYTHON` to your Python executable
+   - `ESL_PSC_PYTHONPATH` to a directory containing `esl_psc_cli` and `gui` modules (repo root works)
+
+#### 4. Package-manager artifacts
+
+- Conda package artifact is published in releases (`.conda`).
+- Conda-forge recipe output is published (for feedstock/staged-recipes use).
+- Homebrew formula output is published (`esl-psc.rb`).
+- Debian package artifact is published (`esl-psc_<version>_amd64.deb`) for direct install:
+  `sudo apt install ./esl-psc_<version>_amd64.deb`
+
+### Linux install verification status (v2.4.1)
+
+- Source install: verified on this Linux host (`esl-psc`, `pairs`, `site-counter` help commands).
+- Prebuilt Linux toolkit and `.deb` binaries: on this host they require a newer glibc (`GLIBC_2.39`). If you hit that, use source install or conda.
 
 ## Graphical User Interface ##
 
@@ -116,7 +190,7 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
    ```bash
    pip install -r requirements-gui.txt  
    ```
-   (You also need the core ESL-PSC requirements listed below.)
+   (You also need the core ESL-PSC requirements listed above.)
 2. From the repository root folder, run:
    ```bash
    python -m gui.main
@@ -136,7 +210,7 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](../../releases/latest). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands (`pairs`, `site-counter`, `plot`).
+Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](../../releases/latest). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands including `pairs` and `site-counter`.
 
 The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
 and is intended to run with your system Python (no duplicate bundled Python runtime).
@@ -154,7 +228,7 @@ A conda recipe for packaging `esl-psc` is provided at
 Package-manager scaffolding is included for:
 
 - conda-forge recipe rendering: `packaging/conda-forge/`
-- Homebrew formula rendering from release assets: `packaging/homebrew/`
+- Homebrew formula rendering: `packaging/homebrew/`
 - apt/deb package building: `packaging/apt/`
 
 #### macOS build (Apple-notarized)
@@ -169,11 +243,11 @@ Package-manager scaffolding is included for:
 3. Inside the extracted folder, double-click `ESL-PSC.exe` to launch.
    • Windows SmartScreen will warn that the executable is unsigned. Click **More info** and then **Run anyway** to continue.
 
-If you are on Linux or prefer to run from source, continue with the installation instructions below.
+If you are on Linux or prefer to run from source, use the installation options listed above.
 
 
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands: `esl-psc pairs`, `esl-psc site-counter`, and `esl-psc plot`.
+To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands including `esl-psc pairs` and `esl-psc site-counter`.
 
 You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
@@ -189,13 +263,20 @@ See [Demo](#demo) for an example of a run command you can try with an included d
 
 Toolkit command: `esl-psc pairs --help`
 
-Looking for automatic species-pair selection from a tree + phenotype file? See the dedicated [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) for usage, full option documentation, and examples (including `--num_random_sets`).
+Auto pair-selection docs:
+
+- [`docs/cli/pairs.md`](docs/cli/pairs.md) (quick usage and examples)
+- [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) (full option reference)
 
 ### Site Counter CLI
 
 Toolkit command: `esl-psc site-counter --help`
 
 Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
+
+Site Counter docs:
+
+- [`docs/cli/site-counter.md`](docs/cli/site-counter.md)
 
 **Parsimony-based ancestral reconstruction** is available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment.
 
@@ -216,21 +297,7 @@ Flags you can use:
 
 To resume after an unexpected interruption, simply rerun the original command.
 
-## Installation and Dependencies ##
-
-ESL-PSC requires python 3.10 or higher. It has been tested on recent MacOS, Windows and Linux systems. The following Python libraries are required:
-
-- BioPython
-- NumPy
-- pandas
-- matplotlib
-- seaborn
-
-You can install these libraries using pip:
-
-`pip install biopython numpy pandas matplotlib seaborn`
-
-### Using a Configuration File with ESL-PSC ###
+## Using a Configuration File with ESL-PSC ##
 
 ESL-PSC scripts can utilize a configuration file to easily manage arguments that remain constant across multiple runs. The scripts will check for the presence of an esl_psc_config.txt file in the current working directory. If it exists, the function reads the arguments from the file and combines them with any additional command-line arguments provided when running the script. This allows you to keep common arguments in the configuration file, while providing run-specific arguments via the command line.
 

@@ -24,6 +24,4 @@ sudo apt install ./dist/apt/esl-psc_<version>_amd64.deb
 esl-psc --help
 esl-psc pairs --help
 esl-psc site-counter --help
-esl-psc plot --help
 ```
-
