@@ -133,7 +133,7 @@ def main():
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")
-        app.setApplicationVersion("2.3.0")
+        app.setApplicationVersion("2.4.0")
         app.setOrganizationName("ESL-PSC")
 
         # Make Ctrl+C terminate the Qt event loop when launched from a terminal.
