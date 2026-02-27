@@ -15,7 +15,6 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ compiler('rust') }}
-    - cargo
   host:
     - python >=3.10
   run:

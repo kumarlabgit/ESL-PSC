@@ -18,7 +18,6 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ compiler('rust') }}
-    - cargo
   host:
     - python >=3.10
   run:
@@ -43,4 +42,3 @@ about:
   summary: Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC)
   license: NOASSERTION
   dev_url: https://github.com/John-Allard/ESL-PSC
-
