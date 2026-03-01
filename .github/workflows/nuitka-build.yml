@@ -110,6 +110,7 @@ jobs:
 
           cp -a "${DIST_DIR}/." "${APPDIR}/usr/lib/esl-psc-gui/"
           cp assets/icons/app.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/esl-psc.png"
+          cp assets/icons/app.png "${APPDIR}/esl-psc.png"
 
           APP_EXE="$(find "${APPDIR}/usr/lib/esl-psc-gui" -maxdepth 1 -type f -executable \( -name 'main*' -o -name 'ESL-PSC*' \) | head -n 1)"
           if [ -z "${APP_EXE}" ]; then
@@ -134,7 +135,7 @@ jobs:
           Name=ESL-PSC
           Exec=esl-psc-gui
           Icon=esl-psc
-          Categories=Science;Education;
+          Categories=Science;
           Terminal=false
           EOF
           cp "${APPDIR}/esl-psc.desktop" "${APPDIR}/usr/share/applications/esl-psc.desktop"
