@@ -11,6 +11,7 @@ on:
         options:
           - macos
           - windows
+          - linux_gui
           - linux_toolkit
 
 env:
@@ -53,6 +54,106 @@ jobs:
             dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz
             dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.sha256
             dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.manifest.json
+
+  build-linux-gui:
+    if: ${{ github.event.inputs.target_os == 'linux_gui' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Stage runtime helpers
+        run: |
+          mkdir -p stage
+          cp bin/preprocess stage/preprocess
+          cp bin/sg_lasso stage/sg_lasso
+          cp bin/sg_lasso_leastr stage/sg_lasso_leastr
+          cp bin/deletion_canceler stage/deletion_canceler
+          cp esl_psc_rs/target/release/esl-psc stage/esl-psc
+          chmod +x stage/*
+      - name: Build GUI with Nuitka (standalone)
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: standalone
+          output-dir: build
+          lto: "yes"
+          no-deployment-flag: self-execution
+          enable-plugins: |
+            pyside6
+            matplotlib
+          nofollow-import-to: "*.tests"
+          include-raw-dir: stage=bin
+      - name: Build AppImage
+        run: |
+          DIST_DIR="$(find build -maxdepth 1 -type d -name '*.dist' | head -n 1)"
+          if [ -z "${DIST_DIR}" ]; then
+            echo "Failed to locate Nuitka .dist directory" >&2
+            exit 1
+          fi
+
+          APPDIR="${GITHUB_WORKSPACE}/AppDir"
+          mkdir -p "${APPDIR}/usr/lib/esl-psc-gui"
+          mkdir -p "${APPDIR}/usr/bin"
+          mkdir -p "${APPDIR}/usr/share/applications"
+          mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
+
+          cp -a "${DIST_DIR}/." "${APPDIR}/usr/lib/esl-psc-gui/"
+          cp assets/icons/app.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/esl-psc.png"
+
+          APP_EXE="$(find "${APPDIR}/usr/lib/esl-psc-gui" -maxdepth 1 -type f -executable \( -name 'main*' -o -name 'ESL-PSC*' \) | head -n 1)"
+          if [ -z "${APP_EXE}" ]; then
+            APP_EXE="$(find "${APPDIR}/usr/lib/esl-psc-gui" -maxdepth 1 -type f -executable | head -n 1)"
+          fi
+          if [ -z "${APP_EXE}" ]; then
+            echo "Failed to locate GUI executable in AppDir payload" >&2
+            exit 1
+          fi
+          APP_EXE_NAME="$(basename "${APP_EXE}")"
+
+          cat > "${APPDIR}/usr/bin/esl-psc-gui" <<EOF
+          #!/bin/sh
+          HERE="\$(dirname "\$(readlink -f "\$0")")"
+          exec "\${HERE}/../lib/esl-psc-gui/${APP_EXE_NAME}" "\$@"
+          EOF
+          chmod +x "${APPDIR}/usr/bin/esl-psc-gui"
+
+          cat > "${APPDIR}/esl-psc.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=ESL-PSC
+          Exec=esl-psc-gui
+          Icon=esl-psc
+          Categories=Science;Education;
+          Terminal=false
+          EOF
+          cp "${APPDIR}/esl-psc.desktop" "${APPDIR}/usr/share/applications/esl-psc.desktop"
+
+          cat > "${APPDIR}/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export PATH="${HERE}/usr/bin:${PATH}"
+          exec "${HERE}/usr/bin/esl-psc-gui" "$@"
+          EOF
+          chmod +x "${APPDIR}/AppRun"
+
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool-x86_64.AppImage "${APPDIR}" "ESL-PSC-x86_64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-Linux-AppImage
+          path: ESL-PSC-x86_64.AppImage
 
   build-macos:
     if: ${{ github.event.inputs.target_os == 'macos' }}
