@@ -59,12 +59,13 @@ or via:
 
 ### Install options
 
-#### 1. GUI app downloads (macOS/Windows)
+#### 1. GUI app downloads (macOS/Windows/Linux)
 
 Download from [GitHub Releases](../../releases/latest):
 
 - `ESL-PSC-v<version>-macOS.dmg`
 - `ESL-PSC-v<version>-Windows.zip`
+- `esl-psc-gui_<version>_amd64.deb` (Linux)
 
 These are desktop app packages. The GUI can still generate CLI commands for terminal use.
 
@@ -210,7 +211,7 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 ### Stand-alone packaged applications ###
 
-Pre-built binaries for macOS and Windows are available on the [GitHub Releases page](../../releases/latest). The GUI package runs the app directly. We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands including `pairs` and `site-counter`.
+Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands including `pairs` and `site-counter`.
 
 The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
 and is intended to run with your system Python (no duplicate bundled Python runtime).
@@ -243,7 +244,14 @@ Package-manager scaffolding is included for:
 3. Inside the extracted folder, double-click `ESL-PSC.exe` to launch.
    • Windows SmartScreen will warn that the executable is unsigned. Click **More info** and then **Run anyway** to continue.
 
-If you are on Linux or prefer to run from source, use the installation options listed above.
+#### Linux build (Debian/Ubuntu)
+1. Download the Linux GUI release asset `esl-psc-gui_<version>_amd64.deb`.
+2. Install it:
+   - GUI: double-click the `.deb` and click **Install**
+   - Terminal: `sudo apt install ./esl-psc-gui_<version>_amd64.deb`
+3. Launch from your app menu (`ESL-PSC`) or run `esl-psc-gui`.
+
+If you are on a non-Debian Linux distribution or prefer to run from source, use the installation options listed above.
 
 
 ## Command Line Usage ##
