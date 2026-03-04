@@ -28,6 +28,8 @@ Type=Application
 Name=ESL-PSC
 Exec=esl-psc-gui
 Icon=esl-psc
+StartupWMClass=esl-psc-gui
+StartupNotify=true
 Categories=Science;
 Terminal=false
 """
@@ -129,12 +131,19 @@ def main() -> int:
 
         shutil.copytree(dist_dir, opt_dir, dirs_exist_ok=True)
 
-        launcher_path = usr_bin / "esl-psc-gui"
+        # Use a stable executable basename so desktop environments can map the
+        # running window to the .desktop launcher consistently.
+        canonical_exe = "esl-psc-gui"
+        canonical_exe_path = opt_dir / canonical_exe
+        if not canonical_exe_path.exists():
+            os.symlink(exe_name, canonical_exe_path)
+
+        launcher_path = usr_bin / canonical_exe
         launcher_path.write_text(
             "\n".join(
                 [
                     "#!/bin/sh",
-                    f'exec "/opt/esl-psc-gui/{exe_name}" "$@"',
+                    f'exec "/opt/esl-psc-gui/{canonical_exe}" "$@"',
                     "",
                 ]
             ),

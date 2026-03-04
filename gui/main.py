@@ -135,6 +135,12 @@ def main():
         app.setApplicationName("ESL-PSC Wizard")
         app.setApplicationVersion("2.4.1")
         app.setOrganizationName("ESL-PSC")
+        if sys.platform.startswith("linux"):
+            try:
+                # Helps GNOME/KDE map the running window to the launcher icon.
+                app.setDesktopFileName("esl-psc.desktop")
+            except Exception as e:
+                print(f"Could not set desktop file name: {e}")
 
         # Make Ctrl+C terminate the Qt event loop when launched from a terminal.
         signal.signal(signal.SIGINT, lambda *_: app.quit())

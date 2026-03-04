@@ -248,7 +248,7 @@ Package-manager scaffolding is included for:
 1. Download the Linux GUI release asset `esl-psc-gui_<version>_amd64.deb`.
 2. Install it:
    - GUI: double-click the `.deb` and click **Install**
-   - Terminal: `sudo apt install ./esl-psc-gui_<version>_amd64.deb`
+   - Terminal: `sudo dpkg -i ./esl-psc-gui_<version>_amd64.deb`
 3. Launch from your app menu (`ESL-PSC`) or run `esl-psc-gui`.
 
 If you are on a non-Debian Linux distribution or prefer to run from source, use the installation options listed above.
