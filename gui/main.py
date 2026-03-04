@@ -138,7 +138,7 @@ def main():
         if sys.platform.startswith("linux"):
             try:
                 # Helps GNOME/KDE map the running window to the launcher icon.
-                app.setDesktopFileName("esl-psc.desktop")
+                app.setDesktopFileName("esl-psc")
             except Exception as e:
                 print(f"Could not set desktop file name: {e}")
 
