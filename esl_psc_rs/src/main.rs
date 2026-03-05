@@ -486,7 +486,7 @@ fn main() -> Result<()> {
                 );
             }
             "site-counter-backend" => {
-                return fast_scan_rs::run_backend_stdio().map_err(|e| anyhow!(e));
+                return site_counter_rs::run_backend_stdio().map_err(|e| anyhow!(e));
             }
             "run" => {
                 let args = parse_args_with_config(&raw_args[2..]);

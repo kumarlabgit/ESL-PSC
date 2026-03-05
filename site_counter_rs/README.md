@@ -1,6 +1,6 @@
 # Site Counter Rust CLI
 
-The `fast_scan_rs` crate provides a compiled backend for ESL-PSC's site counter
+The `site_counter_rs` crate provides a compiled backend for ESL-PSC's site counter
 workflow. It mirrors the logic used by the Python implementation but uses
 Rust's parallel iterators to dramatically reduce scan time on large alignment
 collections.
@@ -13,12 +13,12 @@ expect machine-readable output.
 ## Building the binary
 
 ```bash
-cd fast_scan_rs
+cd site_counter_rs
 cargo build --release
 ```
 
 The optimized binary will be created at
-`fast_scan_rs/target/release/site_counter_rs`. The Python CLI
+`site_counter_rs/target/release/site_counter_rs`. The Python CLI
 (`esl_psc_cli/fast_scan_cli.py`) uses this binary when it is present and
 executable; otherwise it falls back to the pure-Python implementation.
 
@@ -115,9 +115,9 @@ The program prints a JSON array. Each element summarizes one alignment file:
 ### Example 1: Single-species outgroup
 
 ```bash
-cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
+cat <<'JSON' | site_counter_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "test_data/photosynthesis/alignments",
+  "alignment_dir": "demo_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["Maize"], "ctrl": ["Sorghum"]}
   ],
@@ -130,14 +130,14 @@ JSON
 ### Example 2: Parsimony ancestral reconstruction
 
 ```bash
-cat <<'JSON' | fast_scan_rs/target/release/site_counter_rs > results.json
+cat <<'JSON' | site_counter_rs/target/release/site_counter_rs > results.json
 {
-  "alignment_dir": "test_data/photosynthesis/alignments",
+  "alignment_dir": "demo_data/photosynthesis/alignments",
   "combos": [
     {"conv": ["SpeciesA", "SpeciesB"], "ctrl": ["SpeciesC", "SpeciesD"]}
   ],
   "outgroup": "ANCESTRAL_MRCA",
-  "tree_file": "test_data/photosynthesis/photo_tree.nwk",
+  "tree_file": "demo_data/photosynthesis/photo_tree.nwk",
   "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"],
   "emit_progress": true
 }

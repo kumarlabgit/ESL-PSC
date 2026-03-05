@@ -38,7 +38,7 @@ def run_and_compare(tmp_path, extra_rs=None, extra_py=None):
         "--quiet",
         "--release",
         "--manifest-path",
-        str(project_root / "deletion_canceler_rs" / "Cargo.toml"),
+        str(project_root / "legacy" / "deletion_canceler_rs" / "Cargo.toml"),
         "--",
         "--alignments-dir",
         str(alignments_dir),

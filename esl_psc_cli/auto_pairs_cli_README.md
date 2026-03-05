@@ -2,13 +2,13 @@
 
 This CLI generates an ESL-PSC species groups file from a phylogenetic tree and a species phenotype file.
 
-Wrapper script:
+Recommended command:
 
 ```bash
-python esl_auto_pairs.py --help
+esl-psc pairs --help
 ```
 
-Module form (equivalent):
+Python module form (equivalent):
 
 ```bash
 python -m esl_psc_cli.auto_pairs_cli --help
@@ -31,7 +31,7 @@ Output format:
 ## Basic Usage
 
 ```bash
-python esl_auto_pairs.py \
+esl-psc pairs \
   --tree_file /path/tree.nwk \
   --species_pheno_path /path/phenotypes.csv \
   --output_path /path/species_groups.txt
@@ -59,7 +59,7 @@ Use `--method random --num_random_sets N` to generate multiple random species-gr
 Example:
 
 ```bash
-python esl_auto_pairs.py \
+esl-psc pairs \
   --tree_file /path/tree.nwk \
   --species_pheno_path /path/phenotypes.csv \
   --output_path /path/random_pairs/pairs.txt \
@@ -95,7 +95,7 @@ Seed behavior:
 Continuous thresholds:
 
 ```bash
-python esl_auto_pairs.py \
+esl-psc pairs \
   --tree_file /path/tree.nwk \
   --species_pheno_path /path/phenotypes.csv \
   --output_path /path/species_groups.txt \
@@ -107,7 +107,7 @@ python esl_auto_pairs.py \
 Quantile-tail thresholding:
 
 ```bash
-python esl_auto_pairs.py \
+esl-psc pairs \
   --tree_file /path/tree.nwk \
   --species_pheno_path /path/phenotypes.csv \
   --output_path /path/species_groups.txt \
@@ -118,7 +118,7 @@ python esl_auto_pairs.py \
 Percent-contrast local selector:
 
 ```bash
-python esl_auto_pairs.py \
+esl-psc pairs \
   --tree_file /path/tree.nwk \
   --species_pheno_path /path/phenotypes.csv \
   --output_path /path/species_groups.txt \

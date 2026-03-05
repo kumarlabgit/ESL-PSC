@@ -19,7 +19,7 @@ def run_esl_analysis(input_dir, background_alignments_path, esl_directory, speci
     shutil.copytree(input_dir, simulated_alignments_dir, dirs_exist_ok=True)
 
     subprocess.run([
-        "python", f"{esl_directory}/deletion_canceler.py",
+        "python", f"{esl_directory}/esl_psc_cli/deletion_canceler.py",
         "--alignments_dir", simulated_alignments_dir,
         "--canceled_alignments_dir", canceled_simulated_dir,
         "--species_groups_file", species_groups_file
@@ -39,7 +39,7 @@ def run_esl_analysis(input_dir, background_alignments_path, esl_directory, speci
             shutil.copy(file_path, f"{unique_tmp_dir}/background_alignments/{combo_dir}/")
 
     subprocess.run([
-        "python", f"{esl_directory}/esl_multimatrix.py",
+        "python", f"{esl_directory}/esl_psc_cli/esl_multimatrix.py",
         "--esl_inputs_outputs_dir", esl_inputs_outputs_dir,
         "--species_groups_file", species_groups_file,
         "--group_penalty_type", "median",

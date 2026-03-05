@@ -2,7 +2,7 @@
 
 This repository contains the **Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC)** toolkit. The project consists of two main parts:
 1.  A core **Command-Line Interface (CLI)** for performing scientific analysis.
-2.  A **Graphical User Interface (GUI)** built with PyQt6 that acts as a user-friendly wrapper around the CLI.
+2.  A **Graphical User Interface (GUI)** built with PySide6 that acts as a user-friendly wrapper around the CLI.
 
 The primary goal is to analyze molecular convergence signatures from multiple sequence alignments.
 
@@ -24,13 +24,13 @@ The repository is organized as follows:
 │   ├── core/         # Core GUI logic (e.g., worker threads).
 │   └── ui/           # UI components (windows, pages, widgets).
 ├── images/           # Images used in the README.
-├── test_data/        # Demo/test datasets (photosynthesis + echolocation).
+├── demo_data/        # Demo/test datasets (photosynthesis + echolocation).
+├── legacy/           # Legacy helpers and compatibility scripts kept out of repo root.
 ├── tests/            # Automated tests for the project.
 │   └── test_cli_smoke.py  # A high-level smoke test for the CLI.
 ├── .gitignore
 ├── AGENTS.MD         # This instruction file.
 ├── README.md         # General documentation for human users.
-├── esl_multimatrix.py # A stub for the main CLI entry point
 └── requirements-gui.txt # Python dependencies for the GUI.
 
 ## 3. Verification Workflow

@@ -440,7 +440,7 @@ def fast_scan_alignments(
         if float(min_out_ctrl_agreement) != 1.0 or tree_file:
             # For ancestral reconstruction or fractional agreement, use local build
             repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+            cand = os.path.join(repo_root, "site_counter_rs", "target", "release", "site_counter_rs")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 rs_bin = cand
             else:
@@ -561,7 +561,7 @@ def _detect_site_counter_rs() -> str | None:
     Detection priority:
       1) Environment variable SITE_COUNTER_RS
       2) bin/site_counter_rs (relative to repo root)
-      3) fast_scan_rs/target/release/site_counter_rs (relative to repo root)
+      3) site_counter_rs/target/release/site_counter_rs (relative to repo root)
       4) esl-psc executable (repo build or packaged app)
     """
     # Allow disabling via env for testing or debugging.
@@ -582,7 +582,7 @@ def _detect_site_counter_rs() -> str | None:
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
     # 3) target/release binaries (relative to repo root).
-    cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+    cand = os.path.join(repo_root, "site_counter_rs", "target", "release", "site_counter_rs")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
     # Unified Rust CLI can host the backend directly.

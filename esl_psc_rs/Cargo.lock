@@ -233,21 +233,12 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
- "fast_scan_rs",
  "flate2",
  "rand",
  "rayon",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "fast_scan_rs"
-version = "0.1.0"
-dependencies = [
- "rayon",
- "serde",
- "serde_json",
+ "site_counter_rs",
 ]
 
 [[package]]
@@ -521,6 +512,15 @@ name = "simd-adler32"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
+
+[[package]]
+name = "site_counter_rs"
+version = "0.1.0"
+dependencies = [
+ "rayon",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "strsim"

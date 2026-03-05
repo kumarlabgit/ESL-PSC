@@ -1,7 +1,7 @@
 {
-  "alignments_dir": "test_data/photosynthesis/alignments",
-  "species_groups_file": "test_data/photosynthesis/photo_single_LC_matrix_species_groups.txt",
-  "species_phenotypes_file": "test_data/photosynthesis/photo_species_phenotypes.txt",
+  "alignments_dir": "demo_data/photosynthesis/alignments",
+  "species_groups_file": "demo_data/photosynthesis/photo_single_LC_matrix_species_groups.txt",
+  "species_phenotypes_file": "demo_data/photosynthesis/photo_species_phenotypes.txt",
   "species_pheno_is_binary": true,
   "species_pheno_is_continuous": false,
   "prediction_alignments_dir": "",

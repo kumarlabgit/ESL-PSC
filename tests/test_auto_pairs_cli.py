@@ -9,8 +9,8 @@ pytest.importorskip("Bio")
 
 def test_auto_pairs_cli_smoke(tmp_path):
     project_root = Path(__file__).parent.parent
-    tree_file = project_root / "test_data" / "photosynthesis" / "photo_tree.nwk"
-    pheno_file = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
+    tree_file = project_root / "demo_data" / "photosynthesis" / "photo_tree.nwk"
+    pheno_file = project_root / "demo_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     out_file = tmp_path / "auto_pairs_groups.txt"
 
     assert tree_file.exists()
@@ -41,8 +41,8 @@ def test_auto_pairs_cli_smoke(tmp_path):
 
 def test_auto_pairs_cli_num_random_sets(tmp_path):
     project_root = Path(__file__).parent.parent
-    tree_file = project_root / "test_data" / "photosynthesis" / "photo_tree.nwk"
-    pheno_file = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
+    tree_file = project_root / "demo_data" / "photosynthesis" / "photo_tree.nwk"
+    pheno_file = project_root / "demo_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     out_base = tmp_path / "random_sets" / "pairs.txt"
 
     cmd = [
@@ -77,8 +77,8 @@ def test_auto_pairs_cli_num_random_sets(tmp_path):
 
 def test_auto_pairs_cli_num_random_sets_requires_random_method(tmp_path):
     project_root = Path(__file__).parent.parent
-    tree_file = project_root / "test_data" / "photosynthesis" / "photo_tree.nwk"
-    pheno_file = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
+    tree_file = project_root / "demo_data" / "photosynthesis" / "photo_tree.nwk"
+    pheno_file = project_root / "demo_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     out_file = tmp_path / "pairs.txt"
 
     cmd = [
@@ -104,8 +104,8 @@ def test_auto_pairs_cli_num_random_sets_requires_random_method(tmp_path):
 
 def test_auto_pairs_cli_num_random_sets_output_directory(tmp_path):
     project_root = Path(__file__).parent.parent
-    tree_file = project_root / "test_data" / "photosynthesis" / "photo_tree.nwk"
-    pheno_file = project_root / "test_data" / "photosynthesis" / "photo_species_phenotypes.txt"
+    tree_file = project_root / "demo_data" / "photosynthesis" / "photo_tree.nwk"
+    pheno_file = project_root / "demo_data" / "photosynthesis" / "photo_species_phenotypes.txt"
     out_dir = tmp_path / "random_sets_dir"
 
     cmd = [

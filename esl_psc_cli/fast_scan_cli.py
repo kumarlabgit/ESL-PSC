@@ -168,7 +168,7 @@ def main(argv=None) -> int:
     if rs_bin and (min_agree != 1.0 or tree_file):
         try:
             repo_root = os.path.abspath(os.path.join(os.path.dirname(fs.__file__), "..", ".."))
-            cand = os.path.join(repo_root, "fast_scan_rs", "target", "release", "site_counter_rs")
+            cand = os.path.join(repo_root, "site_counter_rs", "target", "release", "site_counter_rs")
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 rs_bin = cand
         except Exception:

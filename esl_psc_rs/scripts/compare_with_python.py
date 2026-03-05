@@ -44,7 +44,7 @@ def main():
         "--response-matrix",
         default="esl_psc_output/photo_single_LC_matrix_species_groups_response_matrices/combo_0.txt",
     )
-    parser.add_argument("--alignments-dir", default="test_data/photosynthesis/alignments")
+    parser.add_argument("--alignments-dir", default="demo_data/photosynthesis/alignments")
     parser.add_argument("--l1-min", type=float, default=0.1)
     parser.add_argument("--l1-max", type=float, default=0.2)
     parser.add_argument("--l2-min", type=float, default=0.1)
