@@ -1,6 +1,6 @@
 # ESL-PSC Pairs CLI
 
-`esl-psc pairs` runs automatic contrast-pair selection from a tree and phenotype file.
+`esl-psc pairs` generates an ESL-PSC species-groups file from a phylogenetic tree and a phenotype file.
 
 ## Quick Start
 
@@ -8,7 +8,7 @@ Show help:
 
 `esl-psc pairs --help`
 
-Minimal required arguments:
+Minimum required arguments:
 
 ```bash
 esl-psc pairs \
@@ -29,7 +29,7 @@ esl-psc pairs \
   - `random`
   - `pct_contrast`
 - `--num_alternates` number of alternate species per branch
-- `--max_combinations` cap combinatorial expansion
+- `--max_combinations` limit the total combinatorial expansion
 - `--alignments_dir` optional alignment directory for sequence-aware strategies
 - Continuous-threshold options:
   - `--lower_threshold`
@@ -42,12 +42,12 @@ esl-psc pairs \
 
 ## Output
 
-Writes a species-groups file compatible with the main pipeline:
+Writes a species-groups file that can be used directly with the main ESL-PSC pipeline:
 
 `--species_groups_file /path/to/species_groups.txt`
 
 ## Full Reference
 
-For complete option details, see:
+For the full option reference, see:
 
 - `esl_psc_cli/auto_pairs_cli_README.md`

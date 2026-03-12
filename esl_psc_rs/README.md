@@ -7,15 +7,13 @@
 3. Sparse-group-lasso model fitting over lambda grids (in memory)
 4. ESL-style outputs (gene ranks, selected sites, species predictions, model files)
 
-It also exposes utility subcommands through the same executable:
+The same executable also provides utility subcommands:
 
 - `esl-psc pairs ...`
 - `esl-psc site-counter ...`
 - `esl-psc plot ...`
 
-This removes the repeated Python/C file handoff loop (`paths.txt`, preprocess dirs,
-group-penalty rewrites, repeated solver input/output parsing) and keeps each combo
-in memory while sweeping lambdas/penalties.
+This design removes the repeated Python/C file handoff loop (`paths.txt`, preprocess directories, group-penalty rewrites, and repeated solver input/output parsing) and keeps each combo in memory while sweeping lambdas and penalties.
 
 ## Scope
 
@@ -59,7 +57,7 @@ Example (multimatrix):
   --show-selected-sites
 ```
 
-You can also call the run pipeline explicitly as:
+You can also invoke the run pipeline explicitly as:
 
 ```bash
 ./target/release/esl-psc run ...
@@ -72,20 +70,20 @@ Outputs:
 - `<base>_species_predictions.csv` (unless `--no-pred-output`)
 - `models_unified_rs/*.txt` (non-zero feature weights + intercept)
 
-Plot flags (`--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`) use this helper resolution order:
+Plot flags (`--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`) use the following helper resolution order:
 
 1. `ESL_PSC_PLOTTER` env var (path or command)
 2. bundled Python module runner via `esl_psc_cli.plot_cli` (`ESL_PSC_PYTHON`, then `python3`, then `python`)
 
 ## Baseline comparison
 
-Single-response parity check against Python `esl_integrator`:
+Single-response parity check against the Python `esl_integrator`:
 
 ```bash
 python3 scripts/compare_with_python.py
 ```
 
-Multimatrix parity + timing benchmark against Python `esl_multimatrix`:
+Multimatrix parity and timing benchmark against the Python `esl_multimatrix`:
 
 ```bash
 python3 scripts/benchmark_multimatrix_vs_python.py
@@ -99,14 +97,14 @@ The multimatrix benchmark reports:
 - Top-10 overlap
 - Wall-clock speedup (Python / Rust)
 
-and exits non-zero if thresholds are below thresholds.
+and exits non-zero if any metric falls below the configured thresholds.
 
-## CLI Surface Parity Check
+## CLI surface parity check
 
-You can verify flag-surface parity against Python ESL-PSC with:
+You can verify long-option parity against the Python ESL-PSC CLI with:
 
 ```bash
 python3 scripts/check_cli_parity.py
 ```
 
-This checks that all Python CLI long options are present in `esl-psc`.
+This check confirms that all Python CLI long options are present in `esl-psc`.

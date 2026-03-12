@@ -4,22 +4,23 @@
 
 1. [Description](#description)
 2. [New: High performance reimplementation and packaging](#new-high-performance-reimplementation-and-packaging)
-3. [Installation and Dependencies](#installation-and-dependencies)
-4. [Graphical User Interface](#graphical-user-interface)
-5. [Command Line Usage](#command-line-usage)
+3. [Quick Start](#quick-start)
+4. [Installation and Dependencies](#installation-and-dependencies)
+5. [Graphical User Interface](#graphical-user-interface)
+6. [Command Line Usage](#command-line-usage)
    - [Auto Pair Selection CLI](#auto-pair-selection-cli)
    - [Site Counter CLI](#site-counter-cli)
-6. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-7. [Input Data](#input-data)
-8. [Output Data](#output-data)
-9. [Additional Options and Parameters](#additional-options-and-parameters)
-10. [Included Data](#included-data)
-11. [Demo](#demo)
-12. [Troubleshooting](#troubleshooting)
-13. [Citation](#citation)
+7. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
+8. [Input Data](#input-data)
+9. [Output Data](#output-data)
+10. [Additional Options and Parameters](#additional-options-and-parameters)
+11. [Included Data](#included-data)
+12. [Demo](#demo)
+13. [Troubleshooting](#troubleshooting)
+14. [Citation](#citation)
 
 ## Description ##
-The tools presented in this repository allow one to analyse signatures of molecular convergence in an MSA using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes in various input parameters and options to control the analysis process. It preprocesses input data, performs gap-cancellation, creates response matrices, and generates models over many combinations of sparsity parameters. The outputs include a gene ranking file, a species predictions predictions file, and plots to visualize the prediction results.
+This repository provides tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, preprocesses input data, performs gap cancellation, builds response matrices, and fits models across many sparsity settings. Typical outputs include gene rankings, species predictions, and summary plots.
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
@@ -27,7 +28,7 @@ The tools presented in this repository allow one to analyse signatures of molecu
 
 Updated February 2026:
 
-ESL-PSC now has a high-performance unified Rust implementation of the main pipeline (`esl-psc`) that replaces the previous Python-orchestrated file handoff loop for preprocess/modeling. In practical use, this typically delivers major speedups (often on the order of 10-20x for full analyses, and sometimes higher depending on dataset size and lambda-grid settings), while preserving output behavior and CLI compatibility.
+ESL-PSC now includes a high-performance unified Rust implementation of the main pipeline (`esl-psc`). It replaces the earlier Python-orchestrated preprocess and modeling handoff loop with a single in-memory workflow. In practice, this usually yields substantial speedups, often around 10-20x for full analyses and sometimes more depending on dataset size and lambda-grid settings, while preserving CLI behavior and output compatibility.
 
 Packaging has also been updated:
 
@@ -35,7 +36,15 @@ Packaging has also been updated:
 - The toolkit is distributed as a cross-platform CLI package centered on `esl-psc`, with utility subcommands:
   - `esl-psc pairs`
   - `esl-psc site-counter`
-- Toolkit packaging uses system Python dependencies for the Python modules used by pair selection and plotting, avoiding duplicate bundled Python runtimes in the toolkit itself.
+- The toolkit relies on system Python only for the remaining Python modules used by pair selection and plotting, which avoids bundling a second Python runtime inside the toolkit.
+
+## Quick Start ##
+
+If you want the desktop app and do not want to think about CLI setup, start with the beginner guide here:
+
+- [`docs/gui-quickstart.md`](docs/gui-quickstart.md)
+
+It shows which GUI download to choose for Mac, Windows, or Ubuntu/Debian Linux and walks through a first run with screenshots.
 
 ## Installation and Dependencies ##
 
@@ -59,6 +68,8 @@ or via:
 
 ### Install options
 
+Choose the path that matches how you want to use ESL-PSC.
+
 #### 1. GUI app downloads (macOS/Windows/Linux)
 
 Download from [GitHub Releases](../../releases/latest):
@@ -67,11 +78,11 @@ Download from [GitHub Releases](../../releases/latest):
 - `ESL-PSC-v<version>-Windows.zip`
 - `esl-psc-gui_<version>_amd64.deb` (Linux)
 
-These are desktop app packages. The GUI can still generate CLI commands for terminal use.
+These are desktop app packages. The GUI can still generate CLI commands for terminal use when needed.
 
 #### 2. Toolkit archive (Linux/macOS/Windows)
 
-Download the platform toolkit artifact from [GitHub Releases](../../releases/latest):
+Download the toolkit archive for your platform from [GitHub Releases](../../releases/latest):
 
 - `esl-psc-toolkit-v<version>-linux-x86_64.tar.gz`
 - `esl-psc-toolkit-v<version>-macos-x86_64.tar.gz`
@@ -86,9 +97,9 @@ Then:
    - `./bin/esl-psc --help` (Linux/macOS)
    - `.\bin\esl-psc.exe --help` (Windows)
 
-#### 3. Build/install from source (most robust Linux path)
+#### 3. Build/install from source (most reliable Linux path)
 
-This avoids prebuilt binary ABI mismatches on some Linux systems.
+This path avoids prebuilt binary ABI mismatches on some Linux systems.
 
 1. Install Rust toolchain.
 2. Install CLI:
@@ -96,23 +107,25 @@ This avoids prebuilt binary ABI mismatches on some Linux systems.
 3. Install Python dependencies:
    `python -m pip install -r requirements-toolkit.txt`
 4. Set Python linkage for utility subcommands:
-   - `ESL_PSC_PYTHON` to your Python executable
-   - `ESL_PSC_PYTHONPATH` to a directory containing `esl_psc_cli` and `gui` modules (repo root works)
+   - `ESL_PSC_PYTHON` should point to your Python executable
+   - `ESL_PSC_PYTHONPATH` should point to a directory containing `esl_psc_cli` and `gui` modules (the repo root works)
 
 #### 4. Package-manager artifacts
 
-- Conda package artifact is published in releases (`.conda`).
-- Conda-forge recipe output is published (for feedstock/staged-recipes use).
-- Homebrew formula output is published (`esl-psc.rb`).
-- Debian package artifact is published (`esl-psc_<version>_amd64.deb`) for direct install:
+- A Conda package artifact is published in releases (`.conda`).
+- Conda-forge recipe output is published for feedstock or staged-recipes use.
+- A Homebrew formula output is published as `esl-psc.rb`.
+- A Debian package artifact is published as `esl-psc_<version>_amd64.deb` for direct install:
   `sudo apt install ./esl-psc_<version>_amd64.deb`
 
 ### Linux install verification status (v2.4.1)
 
 - Source install: verified on this Linux host (`esl-psc`, `pairs`, `site-counter` help commands).
-- Prebuilt Linux toolkit and `.deb` binaries: on this host they require a newer glibc (`GLIBC_2.39`). If you hit that, use source install or conda.
+- Prebuilt Linux toolkit and `.deb` binaries: on this host they require a newer glibc (`GLIBC_2.39`). If you run into that, use the source install path or conda.
 
 ## Graphical User Interface ##
+
+If you are new to ESL-PSC and want the simplest path, start with the screenshot guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
 
 June 2025:
 
@@ -211,10 +224,9 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 ### Stand-alone packaged applications ###
 
-Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a toolkit package for terminal use centered on `esl-psc` with subcommands including `pairs` and `site-counter`.
+Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a toolkit package for terminal use centered on `esl-psc` and its utility subcommands, including `pairs` and `site-counter`.
 
-The toolkit package includes Rust binaries plus Python CLI modules and wrappers,
-and is intended to run with your system Python (no duplicate bundled Python runtime).
+The toolkit package includes Rust binaries along with the remaining Python CLI modules and wrappers, and is intended to run with your system Python rather than bundling another Python runtime.
 After extracting the toolkit, install dependencies with:
 
 `python3 -m pip install -r requirements-toolkit.txt`
@@ -223,8 +235,8 @@ Toolkit release artifacts are versioned by platform as:
 `esl-psc-toolkit-v<version>-<os>-<arch>.<tar.gz|zip>`, with companion
 `.sha256` and `.manifest.json` files for integrity and metadata.
 
-A conda recipe for packaging `esl-psc` is provided at
-`packaging/conda/recipe/` (work in progress).
+The conda recipe for packaging `esl-psc` is provided at
+`packaging/conda/recipe/`.
 
 Package-manager scaffolding is included for:
 
@@ -255,64 +267,14 @@ If you are on a non-Debian Linux distribution or prefer to run from source, use 
 
 
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands including `esl-psc pairs` and `esl-psc site-counter`.
+The full CLI reference was split into its own page as a verbatim copy of the previous README section:
 
-You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+- [`docs/commands/cli-reference.md`](docs/commands/cli-reference.md)
 
-Here is an example of how to run the script:
+Quick links:
 
-`esl-psc --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
-
-To list CLI options, run `esl-psc --help`.
-
-See [Demo](#demo) for an example of a run command you can try with an included data set.
-
-Legacy Python wrappers are still available for maintainability and historical reference, but they are no longer kept in the repository root. They now live under `legacy/python_entrypoints/`.
-
-If you need to run the legacy Python implementation directly, use module entry points such as:
-
-- `python -m esl_psc_cli.esl_multimatrix`
-- `python -m esl_psc_cli.auto_pairs_cli`
-- `python -m esl_psc_cli.fast_scan_cli`
-- `python -m esl_psc_cli.plot_cli`
-
-### Auto Pair Selection CLI
-
-Toolkit command: `esl-psc pairs --help`
-
-Auto pair-selection docs:
-
-- [`docs/commands/pairs.md`](docs/commands/pairs.md) (quick usage and examples)
-- [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) (full option reference)
-
-### Site Counter CLI
-
-Toolkit command: `esl-psc site-counter --help`
-
-Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
-
-Site Counter docs:
-
-- [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
-
-**Parsimony-based ancestral reconstruction** is available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment.
-
-### NEW: Checkpointing & Resuming Interrupted Runs
-
-ESL-PSC automatically checkpoints progress by default for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
-
-How it works in brief:
-
-1. Command-line arguments from the current run are compared to those stored in `checkpoint/command.json`. Benign flags (e.g. `--make_sps_plot`) may differ; critical parameters must match.
-2. If they match, ESL-PSC sets `--use_existing_alignments` and `--use_existing_preprocess` automatically and starts with the next unfinished combo.
-3. If they do **not** match you will get a descriptive message and the run will stop, prompting you to either adjust your command or start fresh with `--force_from_beginning`.
-
-Flags you can use:
-
-* `--no_checkpoint` — Disable checkpointing entirely (In tests it takes minimal time so it is recommended to leave it on).
-* `--force_from_beginning` — Delete any existing `checkpoint/` folder in `--output_dir` and start from scratch.
-
-To resume after an unexpected interruption, simply rerun the original command.
+- Pair selection: [`docs/commands/pairs.md`](docs/commands/pairs.md)
+- Site Counter: [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
 
 ## Using a Configuration File with ESL-PSC ##
 

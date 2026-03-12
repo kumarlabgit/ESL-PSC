@@ -1,6 +1,6 @@
 # ESL-PSC Site Counter CLI
 
-`esl-psc site-counter` scans alignments for convergent-change site metrics.
+`esl-psc site-counter` scans alignments and reports convergent-change site metrics.
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ esl-psc site-counter \
 
 ## Tree-Based Ancestral Mode
 
-Use `--tree_file` instead of a fixed outgroup to reconstruct MRCA states:
+Use `--tree_file` instead of a fixed outgroup to reconstruct ancestral states at the MRCA:
 
 ```bash
 esl-psc site-counter \
@@ -30,7 +30,7 @@ esl-psc site-counter \
   --output_path /path/to/site_counter_output.csv
 ```
 
-Useful related flags:
+Related flags:
 
 - `--require_unambiguous_mrca`
 - `--compute_mrca_representative`
@@ -40,4 +40,4 @@ Useful related flags:
 
 ## Output
 
-Writes site-level results to the CSV path given by `--output_path`.
+Writes site-level results to the CSV file given by `--output_path`.

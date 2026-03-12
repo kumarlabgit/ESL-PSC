@@ -1,4 +1,5 @@
 # CLI Command Docs
 
-- `pairs.md`: automatic pair-selection command reference.
-- `site-counter.md`: site-counter command reference.
+- `cli-reference.md`: the full command-line reference, copied verbatim from the main README
+- `pairs.md`: a focused guide to automatic pair selection
+- `site-counter.md`: a focused guide to Site Counter

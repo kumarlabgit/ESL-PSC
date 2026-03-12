@@ -1,6 +1,6 @@
 # Auto Pair Selection CLI
 
-This CLI generates an ESL-PSC species groups file from a phylogenetic tree and a species phenotype file.
+This CLI generates an ESL-PSC species-groups file from a phylogenetic tree and a species phenotype file.
 
 Recommended command:
 
@@ -8,7 +8,7 @@ Recommended command:
 esl-psc pairs --help
 ```
 
-Python module form (equivalent):
+Equivalent Python module form:
 
 ```bash
 python -m esl_psc_cli.auto_pairs_cli --help
@@ -24,8 +24,8 @@ python -m esl_psc_cli.auto_pairs_cli --help
 
 Output format:
 - 2 lines per contrast pair.
-- Odd line = convergent side.
-- Even line = control side.
+- Odd-numbered line = convergent side.
+- Even-numbered line = control side.
 - If alternates are requested, they are comma-delimited on the same line.
 
 ## Basic Usage
@@ -54,7 +54,7 @@ esl-psc pairs \
 
 ## Random Pair Set Generation
 
-Use `--method random --num_random_sets N` to generate multiple random species-group files in one command.
+Use `--method random --num_random_sets N` to generate multiple random species-groups files in one command.
 
 Example:
 
@@ -67,7 +67,7 @@ esl-psc pairs \
   --num_random_sets 100
 ```
 
-This writes:
+This produces:
 - `/path/random_pairs/pairs_001.txt`
 - `/path/random_pairs/pairs_002.txt`
 - ...
@@ -82,7 +82,7 @@ Seed behavior:
 
 ## Method Notes
 
-- `simple_deterministic` (or alias `default`): use the initial deterministic adjacent-transition pairing behavior.
+- `simple_deterministic` (or alias `default`): use the original deterministic adjacent-transition pairing behavior.
 - `shortest`: prioritize shortest phylogenetic distance tie-breaks.
 - `longest`: tie-break by longer sequence evidence (requires `--alignments_dir`).
 - `contrast`: in continuous mode, prefers larger trait contrast.
@@ -126,7 +126,7 @@ esl-psc pairs \
   --min_pct_diff 25
 ```
 
-## Validation and Common Errors
+## Validation and common errors
 
 - `--num_random_sets > 1` requires `--method random`.
 - `--method longest` and `--method composite` require `--alignments_dir`.
