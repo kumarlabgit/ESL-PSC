@@ -65,7 +65,7 @@ def sha256_of_url(url: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render Homebrew formula from GitHub source tag tarball.")
     parser.add_argument("--repo", required=True, help="GitHub repo in owner/name form")
-    parser.add_argument("--tag", required=True, help="Release tag, e.g. v2.5.0")
+    parser.add_argument("--tag", required=True, help="Release tag, e.g. v2.4.2")
     parser.add_argument("--output", required=True, help="Output .rb formula path")
     args = parser.parse_args()
 

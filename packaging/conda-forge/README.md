@@ -7,7 +7,7 @@ This directory contains a conda-forge-oriented recipe and helper tooling.
 ```bash
 python3 packaging/conda-forge/render_meta_from_tag.py \
   --repo John-Allard/ESL-PSC \
-  --tag v2.5.0 \
+  --tag v2.4.2 \
   --output dist/conda-forge/meta.yaml
 ```
 
