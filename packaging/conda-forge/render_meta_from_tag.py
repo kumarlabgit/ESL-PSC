@@ -22,7 +22,7 @@ def sha256_url(url: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render conda-forge meta.yaml for a release tag.")
     parser.add_argument("--repo", required=True, help="GitHub repo in owner/name form")
-    parser.add_argument("--tag", required=True, help="Release tag, e.g. v2.4.1")
+    parser.add_argument("--tag", required=True, help="Release tag, e.g. v2.5.0")
     parser.add_argument(
         "--template",
         default="packaging/conda-forge/recipe/meta.yaml",

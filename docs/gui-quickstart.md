@@ -6,9 +6,9 @@ This guide is for first-time users who want the desktop app and do not want to s
 
 Pick the download that matches your computer:
 
-- If you use a Mac, download [`ESL-PSC-v2.4.1-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.1/ESL-PSC-v2.4.1-macOS.dmg)
-- If you use a Windows PC, download [`ESL-PSC-v2.4.1-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.1/ESL-PSC-v2.4.1-Windows.zip)
-- If you use Ubuntu or Debian Linux, download [`esl-psc-gui_2.4.1_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.1/esl-psc-gui_2.4.1_amd64.deb)
+- If you use a Mac, download [`ESL-PSC-v2.5.0-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.0/ESL-PSC-v2.5.0-macOS.dmg)
+- If you use a Windows PC, download [`ESL-PSC-v2.5.0-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.0/ESL-PSC-v2.5.0-Windows.zip)
+- If you use Ubuntu or Debian Linux, download [`esl-psc-gui_2.5.0_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.0/esl-psc-gui_2.5.0_amd64.deb)
 
 
 Install the app:
@@ -38,7 +38,7 @@ Windows may warn that the app is unsigned. If that happens, click **More info**,
 If you prefer the terminal on Linux, you can also install it with:
 
 ```bash
-sudo dpkg -i esl-psc-gui_2.4.1_amd64.deb
+sudo dpkg -i esl-psc-gui_2.5.0_amd64.deb
 ```
 
 ## Getting started

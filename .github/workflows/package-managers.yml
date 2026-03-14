@@ -14,7 +14,7 @@ on:
           - homebrew_formula
           - apt_deb
       release_tag:
-        description: "Release tag for recipe/formula rendering (e.g. v2.4.1)"
+        description: "Release tag for recipe/formula rendering (e.g. v2.5.0)"
         required: false
         default: ""
       github_repo:

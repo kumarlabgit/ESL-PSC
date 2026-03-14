@@ -47,7 +47,8 @@ class ESLWorker(QRunnable):
         self.total_combos: int | None = None
         # Progress phase tracking for per-combo "sub-bar" so that the bar fills
         # only once per combo instead of resetting multiple times.
-        # 0 = not started, 1 = deletion-canceler, 2 = preprocess, 3 = build models, 4 = predictions
+        # 0 = not started, 1 = initial input loading / pre-combo setup,
+        # 2 = preprocess, 3 = build models, 4 = predictions
         self.phase: int = 0
         self.phase_weights: list[int] = [10, 10, 60, 20]  # must sum to 100
         self.total_phases: int = len(self.phase_weights)
@@ -312,6 +313,50 @@ class ESLWorker(QRunnable):
                     self.signals.step_status.emit(line.strip().replace("---", "").strip())
                     self._emit_step_progress(0)
                     return True
+
+                # Initial in-memory alignment loading before any combo starts.
+                if "Loading input alignments from" in line:
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("Loading input alignments...")
+                    return False
+
+                if "Loading prediction alignments from" in line:
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("Loading prediction alignments...")
+                    return False
+
+                m_load_total = re.search(r"Loading (input|prediction) alignment files:\s+(\d+)", line)
+                if m_load_total:
+                    label, total = m_load_total.groups()
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    noun = "input alignments" if label.lower() == "input" else "prediction alignments"
+                    self.signals.step_status.emit(f"Loading {noun} (0/{total})...")
+                    return True
+
+                m_load_step = re.search(r"Loaded (input|prediction) alignment file (\d+) of (\d+)", line)
+                if m_load_step:
+                    label, current, total = m_load_step.groups()
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                    current_i, total_i = int(current), int(total)
+                    if total_i > 0:
+                        self._emit_step_progress(int(current_i / total_i * 100))
+                    noun = "input alignments" if label.lower() == "input" else "prediction alignments"
+                    self.signals.step_status.emit(f"Loading {noun} ({current_i}/{total_i})...")
+                    return True
+
+                m_loaded_total = re.search(r"Loaded (\d+) gene alignments", line)
+                if m_loaded_total and self.worker.phase <= 1:
+                    self.worker.phase = max(self.worker.phase, 1)
+                    self._emit_step_progress(100)
+                    self.signals.step_status.emit(f"Loaded {m_loaded_total.group(1)} gene alignments")
+                    return False
 
                 # Deletion-canceler overall progress – first record total # combos
                 m_del_total = re.search(r"Generated (\d+) species combinations", line)

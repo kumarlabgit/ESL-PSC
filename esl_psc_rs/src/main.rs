@@ -16,6 +16,19 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+fn emit_status(args: std::fmt::Arguments<'_>) {
+    let mut stdout = std::io::stdout().lock();
+    let _ = stdout.write_fmt(args);
+    let _ = stdout.write_all(b"\n");
+    let _ = stdout.flush();
+}
+
+macro_rules! statusln {
+    ($($arg:tt)*) => {{
+        emit_status(format_args!($($arg)*));
+    }};
+}
+
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(name = "esl-psc")]
 #[command(
@@ -548,7 +561,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         None
     };
 
-    println!(
+    statusln!(
         "Loading input alignments from {}",
         resolved_alignments.display()
     );
@@ -562,10 +575,11 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         &resolved_alignments,
         limited_gene_set.as_ref(),
         path_file_order.as_deref(),
+        Some("input"),
     )?;
     if train_alignments.is_empty() {
         if args.use_existing_alignments {
-            println!(
+            statusln!(
                 "No FASTA files found in base alignments directory; using per-combo existing alignments."
             );
         } else {
@@ -575,14 +589,14 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
             );
         }
     } else {
-        println!("Loaded {} gene alignments", train_alignments.len());
+        statusln!("Loaded {} gene alignments", train_alignments.len());
     }
 
     let prediction_alignments_owned: Option<Vec<GeneAlignment>> =
         if args.no_pred_output || resolved_prediction == resolved_alignments {
             None
         } else {
-            println!(
+            statusln!(
                 "Loading prediction alignments from {}",
                 resolved_prediction.display()
             );
@@ -590,6 +604,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                 &resolved_prediction,
                 limited_gene_set.as_ref(),
                 None,
+                Some("prediction"),
             )?)
         };
     let prediction_alignments: &[GeneAlignment] = if args.no_pred_output {
@@ -632,7 +647,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
     let use_continuous = args.use_continuous_phenotypes || auto_continuous;
 
     if auto_continuous && !args.use_continuous_phenotypes {
-        println!("Detected non-binary response values; using continuous solver mode automatically");
+        statusln!("Detected non-binary response values; using continuous solver mode automatically");
     }
     let preserve_canceled_root = if args.preserve_canceled_alignments
         && is_multimatrix_mode
@@ -648,8 +663,8 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         None
     };
 
-    println!("Lambda grid has {} pairs", lambda_grid.len());
-    println!("Lambda model workers: {}", model_workers);
+    statusln!("Lambda grid has {} pairs", lambda_grid.len());
+    statusln!("Lambda model workers: {}", model_workers);
 
     let mut gene_aggregates: Vec<GeneAggregate> = train_alignments
         .iter()
@@ -684,9 +699,9 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         )? {
             start_combo_index = restored;
             if start_combo_index >= combos.len() {
-                println!("All combos completed according to checkpoint; skipping integration.");
+                statusln!("All combos completed according to checkpoint; skipping integration.");
             } else if start_combo_index > 0 {
-                println!(
+                statusln!(
                     "Resuming from checkpoint at combo {} of {}",
                     start_combo_index + 1,
                     combos.len()
@@ -697,7 +712,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
 
     let mut combo_alignment_cache: HashMap<PathBuf, Vec<GeneAlignment>> = HashMap::new();
     for combo in combos.iter().skip(start_combo_index) {
-        println!(
+        statusln!(
             "\n--- Processing combo {} of {} ({}) ---",
             combo.index + 1,
             combos.len(),
@@ -812,7 +827,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
             } else {
                 build_penalty_terms(&args, &prep.genes)?
             };
-            println!("Penalty schedule for {}: {:?}", rep_label, penalty_terms);
+            statusln!("Penalty schedule for {}: {:?}", rep_label, penalty_terms);
 
             let pred_design = if args.no_pred_output {
                 None
@@ -851,7 +866,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                 } else {
                     combo.combo_tag.clone()
                 };
-                println!("Building models...");
+                statusln!("Building models...");
                 let grid_run_total = lambda_grid.len();
                 let progress_counter = Arc::new(AtomicUsize::new(0));
                 let progress_done = Arc::new(AtomicBool::new(false));
@@ -864,7 +879,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                             .load(AtomicOrdering::Relaxed)
                             .min(grid_run_total);
                         if current != last_reported {
-                            println!(
+                            statusln!(
                                 "run {} of {} in current grid;  time: {}",
                                 current,
                                 grid_run_total,
@@ -874,7 +889,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                         }
                         if progress_done_for_thread.load(AtomicOrdering::Relaxed) {
                             if last_reported < grid_run_total {
-                                println!(
+                                statusln!(
                                     "run {} of {} in current grid;  time: {}",
                                     grid_run_total,
                                     grid_run_total,
@@ -1023,7 +1038,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         }
     }
 
-    println!("\nFinished {} model runs", total_model_runs);
+    statusln!("\nFinished {} model runs", total_model_runs);
 
     if !args.no_pred_output {
         let pred_path = write_predictions_csv(
@@ -1057,7 +1072,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         }
     }
 
-    println!(
+    statusln!(
         "Unified run complete in {:.3}s",
         start.elapsed().as_secs_f64()
     );
@@ -1071,7 +1086,7 @@ fn parse_args_with_config(cli_tail: &[String]) -> Args {
         argv.extend(cli_tail.iter().cloned());
         return Args::parse_from(argv);
     }
-    println!("getting args from esl_psc_config.txt...");
+    statusln!("getting args from esl_psc_config.txt...");
     let cfg_text = fs::read_to_string(cfg).unwrap_or_default();
     let mut merged: Vec<String> = Vec::with_capacity(1 + cli_tail.len() + cfg_text.len() / 4);
     merged.push("esl-psc".to_string());
@@ -1727,7 +1742,7 @@ fn resolve_combo_alignments<'a>(
     };
 
     if !cache.contains_key(&use_dir) {
-        let loaded = load_alignments(&use_dir, limited_genes, None)?;
+        let loaded = load_alignments(&use_dir, limited_genes, None, None)?;
         cache.insert(use_dir.clone(), loaded);
     }
     Ok(cache
@@ -1885,7 +1900,7 @@ fn maybe_generate_plots(args: &Args, pred_csv_path: &Path, use_continuous: bool)
         return Ok(());
     }
     if use_continuous {
-        println!("Skipping SPS density plots for continuous phenotypes.");
+        statusln!("Skipping SPS density plots for continuous phenotypes.");
         return Ok(());
     }
     let plot_type = if args.make_sps_plot { "violin" } else { "kde" };
@@ -2403,6 +2418,7 @@ fn load_alignments(
     alignments_dir: &Path,
     limited_genes: Option<&HashSet<String>>,
     ordered_fasta_files: Option<&[PathBuf]>,
+    progress_label: Option<&str>,
 ) -> Result<Vec<GeneAlignment>> {
     let fasta_files: Vec<PathBuf> = if let Some(ordered) = ordered_fasta_files {
         ordered.to_vec()
@@ -2415,20 +2431,33 @@ fn load_alignments(
             .filter(|p| p.is_file() && is_fasta_path(p))
             .collect()
     };
+    let fasta_files: Vec<PathBuf> = if let Some(allowed) = limited_genes {
+        fasta_files
+            .into_iter()
+            .filter(|fasta| {
+                fasta.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|gene_name| allowed.contains(gene_name))
+                    .unwrap_or(false)
+            })
+            .collect()
+    } else {
+        fasta_files
+    };
 
-    let mut out = Vec::new();
-    for fasta in fasta_files {
+    let total_files = fasta_files.len();
+    if let Some(label) = progress_label {
+        statusln!("Loading {} alignment files: {}", label, total_files);
+    }
+    let progress_interval = ((total_files + 49) / 50).max(1);
+
+    let mut out = Vec::with_capacity(total_files);
+    for (idx, fasta) in fasta_files.into_iter().enumerate() {
         let gene_name = fasta
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow!("invalid FASTA file name: {}", fasta.display()))?
             .to_string();
-
-        if let Some(allowed) = limited_genes {
-            if !allowed.contains(&gene_name) {
-                continue;
-            }
-        }
 
         let (seq_map, seq_len) = read_fasta_map(&fasta)?;
         out.push(GeneAlignment {
@@ -2436,6 +2465,12 @@ fn load_alignments(
             seq_len,
             seqs: seq_map,
         });
+        if let Some(label) = progress_label {
+            let current = idx + 1;
+            if current == 1 || current == total_files || current % progress_interval == 0 {
+                statusln!("Loaded {} alignment file {} of {}", label, current, total_files);
+            }
+        }
     }
 
     Ok(out)

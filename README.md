@@ -1,5 +1,10 @@
 # Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC) #
 
+[![Release](https://img.shields.io/github/v/release/John-Allard/ESL-PSC?label=release)](https://github.com/John-Allard/ESL-PSC/releases/latest)
+[![GUI builds](https://img.shields.io/github/actions/workflow/status/John-Allard/ESL-PSC/nuitka-build.yml?label=GUI%20builds)](https://github.com/John-Allard/ESL-PSC/actions/workflows/nuitka-build.yml)
+[![Package artifacts](https://img.shields.io/github/actions/workflow/status/John-Allard/ESL-PSC/package-managers.yml?label=package%20artifacts)](https://github.com/John-Allard/ESL-PSC/actions/workflows/package-managers.yml)
+[![License](https://img.shields.io/github/license/John-Allard/ESL-PSC)](LICENSE)
+
 ## Table of Contents ##
 
 1. [Description](#description)
@@ -118,7 +123,7 @@ This path avoids prebuilt binary ABI mismatches on some Linux systems.
 - A Debian package artifact is published as `esl-psc_<version>_amd64.deb` for direct install:
   `sudo apt install ./esl-psc_<version>_amd64.deb`
 
-### Linux install verification status (v2.4.1)
+### Linux install verification status (v2.5.0)
 
 - Source install: verified on this Linux host (`esl-psc`, `pairs`, `site-counter` help commands).
 - Prebuilt Linux toolkit and `.deb` binaries: on this host they require a newer glibc (`GLIBC_2.39`). If you run into that, use the source install path or conda.
