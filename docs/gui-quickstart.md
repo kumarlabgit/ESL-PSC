@@ -100,5 +100,3 @@ If you want to practice with the bundled demo data first, use:
 - alignments folder: `demo_data/photosynthesis/alignments`
 - tree file: `demo_data/photosynthesis/photo_tree.nwk`
 - phenotype file: `demo_data/photosynthesis/photo_species_phenotypes.txt`
-
-The repository also includes a ready-made GUI config at `demo_data/photosynthesis/demo_config_for_gui.json`.

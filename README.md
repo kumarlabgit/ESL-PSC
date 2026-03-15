@@ -143,7 +143,7 @@ Step-by-step workflow guiding you through:
   4. **Run** – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
   5. **View results** – View gene rankings and examine convergent sites in an interactive alignment viewer.
 
-Save your configuration in a file and re-load it later. You can load the included `demo_data/photosynthesis/demo_config_for_gui.json` to run the C4/C3 [demo](#demo).
+Save your configuration in a file and re-load it later.
 
 Now compatible with Windows, Mac, and Linux.
 
@@ -431,8 +431,11 @@ Problems with the inputs can cause segmentation fault errors in the ESL preproce
 ### Running the demo in the GUI ###
 To run the C3/C4 demo using the graphical interface:
 1. Launch the GUI (see the installation and launch instructions above).
-2. Click **Load Configuration** (bottom left of the page) and open `demo_data/photosynthesis/demo_config_for_gui.json`.
-3. Click **Next** through the pre-filled wizard pages and press **Run Analysis** on the final page.
+2. On the Input page, choose:
+   - `demo_data/photosynthesis/alignments`
+   - `demo_data/photosynthesis/photo_single_LC_matrix_species_groups.txt`
+   - `demo_data/photosynthesis/photo_species_phenotypes.txt`
+3. Click **Next** through the wizard pages and press **Run Analysis** on the final page.
 4. When the run finishes, press **Show SPS Plot** to view the violin plot, or **Show Top Gene Ranks** to view the most influential genes. You can double click a gene's name to open the protein sequence alignment in the convergent site viewer and examine the residues present in the input species and other species at the strongest convergent sites.
 
 ### Running the demo with the command line ###

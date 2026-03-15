@@ -48,3 +48,4 @@ continuous_pheno_test_file.csv
 
 local_scripts/
 test_artifacts/
+demo_data/photosynthesis/demo_config_for_gui.json
