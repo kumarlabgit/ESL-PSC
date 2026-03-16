@@ -4,11 +4,13 @@ This guide is for first-time users who want the desktop app and do not want to s
 
 ## Download and install
 
-Pick the download that matches your computer:
+If you are not sure where to start, open the [latest ESL-PSC release page](https://github.com/John-Allard/ESL-PSC/releases/latest).
 
-- If you use a Mac, download [`ESL-PSC-v2.4.2-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/ESL-PSC-v2.4.2-macOS.dmg)
-- If you use a Windows PC, download [`ESL-PSC-v2.4.2-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/ESL-PSC-v2.4.2-Windows.zip)
-- If you use Ubuntu or Debian Linux, download [`esl-psc-gui_2.4.2_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/esl-psc-gui_2.4.2_amd64.deb)
+To go straight to the GUI download for your computer, use one of these links:
+
+- Mac: [`ESL-PSC-v2.4.2-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/ESL-PSC-v2.4.2-macOS.dmg)
+- Windows: [`ESL-PSC-v2.4.2-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/ESL-PSC-v2.4.2-Windows.zip)
+- Ubuntu or Debian Linux: [`esl-psc-gui_2.4.2_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.4.2/esl-psc-gui_2.4.2_amd64.deb)
 
 
 Install the app:
