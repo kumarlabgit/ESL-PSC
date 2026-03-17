@@ -4,17 +4,130 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Dict, List
 
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QAbstractTableModel, QModelIndex
 from PySide6.QtGui import QColor, QBrush, QFont, QPalette
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QSlider, QComboBox, QLabel, QPushButton,
-    QCheckBox, QAbstractItemView, QMessageBox, QMenu
+    QCheckBox, QAbstractItemView, QMessageBox, QMenu, QTableView
 )
 
 from gui.ui.widgets.histogram_canvas import HistogramCanvas
 from gui.constants import ZAPPO_STATIC_COLORS
 
+
+_CENTER_ALIGNMENT = int(Qt.AlignmentFlag.AlignCenter)
+_LEFT_ALIGNMENT = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+
+def _build_amino_acid_style_cache() -> dict[str, tuple[QBrush, QBrush]]:
+    cache: dict[str, tuple[QBrush, QBrush]] = {}
+    for aa, color_hex in ZAPPO_STATIC_COLORS.items():
+        color = QColor(color_hex)
+        avg_rgb = (color.red() + color.green() + color.blue()) / 3
+        text_color = QColor(0, 0, 0) if avg_rgb >= 128 else QColor(255, 255, 255)
+        cache[aa.upper()] = (QBrush(color), QBrush(text_color))
+
+    default_color = QColor("#C8C8C8")
+    cache["_default"] = (QBrush(default_color), QBrush(QColor(0, 0, 0)))
+    return cache
+
+
+_AA_STYLE_CACHE = _build_amino_acid_style_cache()
+
+
+class _AlignmentTableView(QTableView):
+    """QTableView with a small compatibility surface matching QTableWidget usage."""
+
+    def rowCount(self) -> int:
+        model = self.model()
+        return model.rowCount() if model is not None else 0
+
+    def columnCount(self) -> int:
+        model = self.model()
+        return model.columnCount() if model is not None else 0
+
+
+class _AlignmentTableModel(QAbstractTableModel):
+    """Lazy table model for alignment cells to avoid eager QTableWidgetItem creation."""
+
+    def __init__(
+        self,
+        row_defs: list[tuple[str, str | None]],
+        displayed_sites: list[Dict[str, Any]],
+        seq_by_species: Dict[str, str],
+        pss_scores: Dict[int, float],
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._row_defs = row_defs
+        self._seq_by_species = seq_by_species
+        self._site_positions = [int(site["position"]) for site in displayed_sites]
+        self._positions = [str(pos + 1) for pos in self._site_positions]
+        self._scores = [
+            f"{site['converge_degree']}*" if site.get("is_ccs") else str(site["converge_degree"])
+            for site in displayed_sites
+        ]
+        self._pss_values = [
+            (f"{pss_scores[pos]:.3f}" if pos in pss_scores else "")
+            for pos in self._site_positions
+        ]
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        if parent.isValid():
+            return 0
+        return len(self._row_defs)
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        if parent.isValid():
+            return 0
+        return len(self._site_positions)
+
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+
+        row_kind, payload = self._row_defs[index.row()]
+        col = index.column()
+
+        if row_kind == "position":
+            if role == Qt.ItemDataRole.DisplayRole:
+                return self._positions[col]
+            if role == Qt.ItemDataRole.TextAlignmentRole:
+                return _CENTER_ALIGNMENT
+            return None
+
+        if row_kind == "score":
+            if role == Qt.ItemDataRole.DisplayRole:
+                return self._scores[col]
+            if role == Qt.ItemDataRole.TextAlignmentRole:
+                return _CENTER_ALIGNMENT
+            return None
+
+        if row_kind == "pss":
+            if role == Qt.ItemDataRole.DisplayRole:
+                return self._pss_values[col]
+            if role == Qt.ItemDataRole.TextAlignmentRole:
+                return _CENTER_ALIGNMENT
+            return None
+
+        if row_kind != "species" or payload is None:
+            return None
+
+        seq = self._seq_by_species.get(payload)
+        if not seq:
+            return None
+
+        aa = seq[self._site_positions[col]]
+        if role == Qt.ItemDataRole.DisplayRole:
+            return aa
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            return _CENTER_ALIGNMENT
+        if role == Qt.ItemDataRole.BackgroundRole:
+            return _AA_STYLE_CACHE.get(aa.upper(), _AA_STYLE_CACHE["_default"])[0]
+        if role == Qt.ItemDataRole.ForegroundRole:
+            return _AA_STYLE_CACHE.get(aa.upper(), _AA_STYLE_CACHE["_default"])[1]
+        return None
 
 
 class SiteViewer(QWidget):
@@ -166,6 +279,7 @@ class SiteViewer(QWidget):
         self.all_species = sorted([r[0] for r in records])
         self.species_ids = [r[0] for r in records]
         self.sequences = [r[1] for r in records]
+        self._seq_by_species = dict(records)
         self.seq_length = len(self.sequences[0]) if self.sequences else 0
 
         self.scores = [s['converge_degree'] for s in self.all_sites_info]
@@ -179,7 +293,6 @@ class SiteViewer(QWidget):
         self._initial_threshold_aligned = False
 
         self.default_sort_mode = "position"
-        # Always show all species; the checkbox will be hidden but kept in the layout
         self.show_all_species = True
 
         # Additional controls if we have all three groups
@@ -193,6 +306,7 @@ class SiteViewer(QWidget):
         self.has_all_three = bool(self.convergent_species) and bool(self.control_species) and bool(self.outgroup_species)
 
         self._syncing_horizontal_splitters = False
+        self._scores_dirty = True
 
         self.initUI()
         self.rebuildTables()
@@ -309,12 +423,8 @@ class SiteViewer(QWidget):
         self.top_left_table.horizontalHeader().setStretchLastSection(True)
         self.top_left_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
-        self.top_right_table = QTableWidget()
-        self.top_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.top_right_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.top_right_table.verticalHeader().setVisible(False)
-        self.top_right_table.horizontalHeader().setVisible(False)
-        self.top_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.top_right_table = _AlignmentTableView()
+        self._configure_alignment_view(self.top_right_table)
 
         # Sync vertical scrolling
         self.top_left_table.verticalScrollBar().valueChanged.connect(
@@ -351,12 +461,8 @@ class SiteViewer(QWidget):
         self.bottom_left_table.horizontalScrollBar().setEnabled(False)
         self.bottom_left_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        self.bottom_right_table = QTableWidget()
-        self.bottom_right_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.bottom_right_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.bottom_right_table.verticalHeader().setVisible(False)
-        self.bottom_right_table.horizontalHeader().setVisible(False)
-        self.bottom_right_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.bottom_right_table = _AlignmentTableView()
+        self._configure_alignment_view(self.bottom_right_table)
 
         # Sync vertical scrolling
         self.bottom_left_table.verticalScrollBar().valueChanged.connect(
@@ -393,7 +499,6 @@ class SiteViewer(QWidget):
         self.vertical_splitter.addWidget(self.top_splitter)
         self.vertical_splitter.addWidget(self.bottom_splitter)
 
-        # if user unchecks 'Show All Species', we hide bottom
         self.bottom_splitter.setVisible(True)
 
         self.top_splitter.splitterMoved.connect(self.syncHorizontalSplitter)
@@ -457,6 +562,14 @@ class SiteViewer(QWidget):
 
         # Initial sync of auxiliary scrollbars to avoid bottom-row misalignment
         self._syncAuxScrollbars()
+
+    def _configure_alignment_view(self, table: _AlignmentTableView) -> None:
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setVisible(False)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        table.verticalHeader().setDefaultSectionSize(24)
 
 
     def showHelp(self):
@@ -709,8 +822,8 @@ class SiteViewer(QWidget):
         SiteViewer.REMEMBERED_CONVERGENT = self.convergent_species.copy()
         SiteViewer.REMEMBERED_CONTROL = self.control_species.copy()
 
-        # now recalc scores + rebuild
-        self.recalc_scores()
+        # Group membership changes require score recomputation.
+        self._scores_dirty = True
         self.rebuildTables()
 
     # ------------------------------------------------------------------
@@ -731,6 +844,8 @@ class SiteViewer(QWidget):
         # Initialize threshold_slider if it doesn't exist yet
         if not hasattr(self, 'threshold_slider'):
             return  # UI not fully initialized yet
+        if not self._scores_dirty:
+            return
 
         conv_indices = [self.species_ids.index(sp) for sp in self.convergent_species if sp in self.species_ids]
         ctrl_indices = [self.species_ids.index(sp) for sp in self.control_species if sp in self.species_ids]
@@ -849,6 +964,7 @@ class SiteViewer(QWidget):
 
         # Redraw histogram using the (possibly updated) threshold
         self.hist_canvas.plot_scores(self.scores, self.current_threshold)
+        self._scores_dirty = False
         
 
     def rebuildTables(self):
@@ -890,8 +1006,9 @@ class SiteViewer(QWidget):
         self._syncAuxScrollbars()
 
     def _buildTopTables(self, displayed_sites):
+        self.top_left_table.setUpdatesEnabled(False)
+        self.top_right_table.setUpdatesEnabled(False)
         self.top_left_table.clearContents()
-        self.top_right_table.clearContents()
 
         conv_size = len(self.convergent_species)
         ctrl_size = len(self.control_species)
@@ -935,7 +1052,7 @@ class SiteViewer(QWidget):
 
         def left_item(txt, b=False):
             i = QTableWidgetItem(txt)
-            i.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            i.setTextAlignment(_LEFT_ALIGNMENT)
             if b:
                 i.setFont(bold_f)
             return i
@@ -951,90 +1068,62 @@ class SiteViewer(QWidget):
         # blank separator
         self.top_left_table.setItem(next_row, 0, left_item(""))
 
+        right_row_defs: list[tuple[str, str | None]] = [("position", None), ("score", None)]
+        if self.pss_scores:
+            right_row_defs.append(("pss", None))
+        right_row_defs.append(("blank", None))
+
         # conv
         if conv_label_row is not None:
             self.top_left_table.setItem(conv_label_row, 0, left_item("Convergent Species", True))
+            right_row_defs.append(("blank", None))
             for i, sp in enumerate(self.convergent_species):
                 rr = conv_label_row + 1 + i
                 self.top_left_table.setItem(rr,0, self._create_species_item(sp))
+                right_row_defs.append(("species", sp))
 
         # ctrl
         if ctrl_label_row is not None:
+            if conv_label_row is not None:
+                right_row_defs.append(("blank", None))
             self.top_left_table.setItem(ctrl_label_row, 0, left_item("Control Species", True))
+            right_row_defs.append(("blank", None))
             for i, sp in enumerate(self.control_species):
                 rr = ctrl_label_row + 1 + i
                 self.top_left_table.setItem(rr,0, self._create_species_item(sp))
+                right_row_defs.append(("species", sp))
 
         # outgroup
         if out_label_row is not None:
+            if ctrl_label_row is not None:
+                right_row_defs.append(("blank", None))
             self.top_left_table.setItem(out_label_row, 0, left_item("Outgroup Species", True))
+            right_row_defs.append(("blank", None))
             for i, sp in enumerate(self.outgroup_species):
                 rr = out_label_row + 1 + i
                 self.top_left_table.setItem(rr,0, self._create_species_item(sp))
+                right_row_defs.append(("species", sp))
 
         for r in range(total_rows):
             self.top_left_table.setRowHeight(r, 24)
 
-        self.top_right_table.setRowCount(total_rows)
-        displayed_cols = len(displayed_sites)
-        self.top_right_table.setColumnCount(displayed_cols)
-
-        # row0 => position, row1 => score, optional PSS row, then blank
-        for c, site in enumerate(displayed_sites):
-            pos_str = str(site['position']+1)
-            pi = QTableWidgetItem(pos_str)
-            pi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.top_right_table.setItem(0,c, pi)
-
-            sc_val = site['converge_degree']
-            sc_str = f"{sc_val}*" if site['is_ccs'] else str(sc_val)
-            si = QTableWidgetItem(sc_str)
-            si.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.top_right_table.setItem(1, c, si)
-
-            if self.pss_scores:
-                pss_val = self.pss_scores.get(site['position'])
-                pss_str = f"{pss_val:.3f}" if pss_val is not None else ""
-                pi2 = QTableWidgetItem(pss_str)
-                pi2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.top_right_table.setItem(2, c, pi2)
-
-        # conv
-        if conv_label_row is not None:
-            for i, sp in enumerate(self.convergent_species):
-                rr = conv_label_row + 1 + i
-                seq = self.get_seq_for_species(sp)
-                if seq:
-                    for c, site in enumerate(displayed_sites):
-                        aa = seq[site['position']]
-                        it = self.make_aa_item(aa)
-                        self.top_right_table.setItem(rr,c, it)
-
-        # ctrl
-        if ctrl_label_row is not None:
-            for i, sp in enumerate(self.control_species):
-                rr = ctrl_label_row + 1 + i
-                seq = self.get_seq_for_species(sp)
-                if seq:
-                    for c, site in enumerate(displayed_sites):
-                        aa = seq[site['position']]
-                        it = self.make_aa_item(aa)
-                        self.top_right_table.setItem(rr,c, it)
-
-        # outgroup
-        if out_label_row is not None:
-            for i, sp in enumerate(self.outgroup_species):
-                rr = out_label_row + 1 + i
-                seq = self.get_seq_for_species(sp)
-                if seq:
-                    for c, site in enumerate(displayed_sites):
-                        aa = seq[site['position']]
-                        it = self.make_aa_item(aa)
-                        self.top_right_table.setItem(rr,c, it)
+        self.top_right_table.setModel(
+            _AlignmentTableModel(
+                right_row_defs,
+                displayed_sites,
+                self._seq_by_species,
+                self.pss_scores,
+                self.top_right_table,
+            )
+        )
         for r in range(total_rows):
             self.top_right_table.setRowHeight(r, 24)
+        self.top_left_table.setUpdatesEnabled(True)
+        self.top_right_table.setUpdatesEnabled(True)
 
     def _buildBottomTables(self, displayed_sites):
+        self.bottom_left_table.setUpdatesEnabled(False)
+        self.bottom_right_table.setUpdatesEnabled(False)
         # "other" species
         used_set = set(self.convergent_species + self.control_species + self.outgroup_species)
         other_species = [sp for sp in self.all_species if sp not in used_set]
@@ -1059,11 +1148,14 @@ class SiteViewer(QWidget):
 
         if not other_species:
             self.bottom_left_table.setRowCount(0)
-            self.bottom_right_table.setRowCount(0)
+            self.bottom_right_table.setModel(
+                _AlignmentTableModel([], [], self._seq_by_species, self.pss_scores, self.bottom_right_table)
+            )
+            self.bottom_left_table.setUpdatesEnabled(True)
+            self.bottom_right_table.setUpdatesEnabled(True)
             return
 
         self.bottom_left_table.clearContents()
-        self.bottom_right_table.clearContents()
 
         bold_f = QFont()
         bold_f.setBold(True)
@@ -1080,7 +1172,7 @@ class SiteViewer(QWidget):
 
         def left_item(txt, b=False):
             i = QTableWidgetItem(txt)
-            i.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            i.setTextAlignment(_LEFT_ALIGNMENT)
             if b:
                 i.setFont(bold_f)
             return i
@@ -1103,28 +1195,21 @@ class SiteViewer(QWidget):
         for r in range(total_rows):
             self.bottom_left_table.setRowHeight(r, 24)
 
-        self.bottom_right_table.setRowCount(total_rows)
-        cols = len(displayed_sites)
-        self.bottom_right_table.setColumnCount(cols)
-
-        for r in range(total_rows):
-            for c in range(cols):
-                self.bottom_right_table.setItem(r,c, QTableWidgetItem(""))
-
-        for c in range(cols):
-            self.bottom_right_table.setItem(row0_label,c, QTableWidgetItem(""))
-
-        for i, sp in enumerate(other_species):
-            rr = row_sp_start + i
-            seq = self.get_seq_for_species(sp)
-            if seq:
-                for cc, site in enumerate(displayed_sites):
-                    aa = seq[site['position']]
-                    it = self.make_aa_item(aa)
-                    self.bottom_right_table.setItem(rr,cc, it)
-
+        right_row_defs: list[tuple[str, str | None]] = [("blank", None)]
+        right_row_defs.extend(("species", sp) for sp in other_species)
+        self.bottom_right_table.setModel(
+            _AlignmentTableModel(
+                right_row_defs,
+                displayed_sites,
+                self._seq_by_species,
+                self.pss_scores,
+                self.bottom_right_table,
+            )
+        )
         for r in range(total_rows):
             self.bottom_right_table.setRowHeight(r,24)
+        self.bottom_left_table.setUpdatesEnabled(True)
+        self.bottom_right_table.setUpdatesEnabled(True)
 
     def _create_species_item(self, sp: str) -> QTableWidgetItem:
         """Return a table item for a species with phenotype annotation and coloring."""
@@ -1132,7 +1217,7 @@ class SiteViewer(QWidget):
         if sp in self.species_pheno_map:
             disp_txt += f" ({self._format_pheno_for_label(sp)})"
         item = QTableWidgetItem(disp_txt)
-        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        item.setTextAlignment(_LEFT_ALIGNMENT)
         if sp in self.species_pheno_map and self.species_pheno_map[sp] == self.convergent_pheno_value:
             item.setForeground(QBrush(QColor("blue")))
         return item
@@ -1204,40 +1289,31 @@ class SiteViewer(QWidget):
 
 
     def _unifyCols(self):
-        self.top_right_table.resizeColumnsToContents()
         tcols = self.top_right_table.columnCount()
-        twidths = [self.top_right_table.columnWidth(c) for c in range(tcols)]
-
-        self.bottom_right_table.resizeColumnsToContents()
         bcols = self.bottom_right_table.columnCount()
-        bwidths = [self.bottom_right_table.columnWidth(c) for c in range(bcols)]
-
-        combined = twidths + bwidths
-        if not combined:
+        total_cols = max(tcols, bcols)
+        if total_cols == 0:
             return
-        max_w = max(combined)
 
-        for c in range(tcols):
-            self.top_right_table.setColumnWidth(c, max_w)
-        for c in range(bcols):
-            self.bottom_right_table.setColumnWidth(c, max_w)
+        metrics = self.top_right_table.fontMetrics()
+        max_width = metrics.horizontalAdvance(str(self.seq_length)) + 12
 
-    def make_aa_item(self, aa):
-        it = QTableWidgetItem(aa)
-        it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        color_hex = ZAPPO_STATIC_COLORS.get(aa.upper(), "#C8C8C8")
-        color = QColor(color_hex)
-        avg_rgb = (color.red()+color.green()+color.blue())/3
-        text_c = QColor(0,0,0) if avg_rgb>=128 else QColor(255,255,255)
-        it.setBackground(QBrush(color))
-        it.setForeground(QBrush(text_c))
-        return it
+        # Base columns mostly show one-character amino acids; the score rows can
+        # be wider, especially when a CCS marker or PSS values are present.
+        if self.scores:
+            score_text = str(max(self.scores))
+            if any(site.get('is_ccs') for site in self.all_sites_info):
+                score_text += "*"
+            max_width = max(max_width, metrics.horizontalAdvance(score_text) + 12)
+        if self.pss_scores:
+            max_width = max(max_width, metrics.horizontalAdvance(f"{max(self.pss_scores.values()):.3f}") + 12)
+        max_w = max(max_width, 28)
+
+        self.top_right_table.horizontalHeader().setDefaultSectionSize(max_w)
+        self.bottom_right_table.horizontalHeader().setDefaultSectionSize(max_w)
 
     def get_seq_for_species(self, sid):
-        for r_sid, seq in self.records:
-            if r_sid == sid:
-                return seq
-        return None
+        return self._seq_by_species.get(sid)
 
     # ------------------------------------------------------------------
     def _apply_gridline_style(self) -> None:
