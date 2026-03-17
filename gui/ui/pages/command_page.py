@@ -118,7 +118,7 @@ class CommandPage(BaseWizardPage):
         
     def browse_output_dir(self):
         """Open a directory dialog to select the output directory."""
-        current_dir = self.output_dir_edit.text() or os.getcwd()
+        current_dir = self.output_dir_edit.text() or os.path.expanduser("~")
         dir_path = QFileDialog.getExistingDirectory(
             self, 
             "Select Output Directory",
@@ -134,6 +134,12 @@ class CommandPage(BaseWizardPage):
         
     def on_enter(self):
         """Update the command preview and summary when the page is shown."""
+        if not getattr(self.config, "output_dir", ""):
+            self.cmd_display.setPlainText(
+                "Choose an output directory on the previous page to enable the command preview."
+            )
+            self.update_summary()
+            return
         # Use the config's get_command_string method to generate the command
         try:
             cmd_str = self.config.get_command_string()
@@ -249,6 +255,8 @@ class CommandPage(BaseWizardPage):
         # Output directory and base name
         if hasattr(self.config, 'output_dir') and self.config.output_dir:
             self.add_summary_item(layout, "Output Directory:", self.config.output_dir)
+        else:
+            self.add_summary_item(layout, "Output Directory:", "Not selected")
         
         if hasattr(self.config, 'output_file_base_name') and self.config.output_file_base_name:
             self.add_summary_item(layout, "Output Base Name:", self.config.output_file_base_name)

@@ -52,11 +52,28 @@ def test_hiding_advanced_without_manual_points_edit_reapplies_policy(qt_app):
 
     params.show_advanced_chk.setChecked(True)
     params.both_outputs_btn.setChecked(True)
-    # No auto-switch while advanced options are visible.
-    assert params.num_log_points.value() == 4
+    # Because the user did not manually edit the field, output-mode changes should
+    # still keep the visible value in sync even while advanced options are open.
+    assert params.num_log_points.value() == 20
 
     params.show_advanced_chk.setChecked(False)
     assert params.num_log_points.value() == 20
     assert cfg.num_points == 20
+
+    params.close()
+
+
+def test_advanced_visible_manual_override_blocks_auto_switch(qt_app):
+    cfg = ESLConfig()
+    params = ParametersPage(cfg)
+    params.show()
+
+    params.show_advanced_chk.setChecked(True)
+    params.num_log_points.setValue(37)
+    assert cfg.num_points == 37
+
+    params.genes_only_btn.setChecked(True)
+    assert params.num_log_points.value() == 37
+    assert cfg.num_points == 37
 
     params.close()

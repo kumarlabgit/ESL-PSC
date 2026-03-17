@@ -158,6 +158,13 @@ class RunPage(BaseWizardPage):
         """Detect checkpoint compatibility and update run button/label."""
         from esl_psc_cli.checkpoint import Checkpointer  # local import to avoid GUI start-time cost
         output_dir = self.config.output_dir
+        if not output_dir:
+            self.resume_available = False
+            self.checkpoint_label.setText("Choose an output directory before running.")
+            self.checkpoint_label.show()
+            self.ignore_cp_checkbox.hide()
+            self._update_run_btn_text(False)
+            return
         cp = Checkpointer(output_dir)
         self.resume_available = False
         self.checkpoint_label.clear()
@@ -189,7 +196,7 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(True)
                 self.wizard().button(QWizard.WizardButton.FinishButton).hide()
 
-            self.run_btn.setEnabled(True)
+            self.run_btn.setEnabled(bool(self.config.output_dir))
             self.stop_btn.setEnabled(False)
 
         except ValueError as e:
@@ -212,6 +219,13 @@ class RunPage(BaseWizardPage):
                 return
 
             output_dir = self.config.output_dir
+            if not output_dir:
+                QMessageBox.warning(
+                    self,
+                    "Output Directory Required",
+                    "Choose an output directory before running the analysis.",
+                )
+                return
             base_name = self.config.output_file_base_name
 
 

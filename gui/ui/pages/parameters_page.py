@@ -43,6 +43,8 @@ class ParametersPage(BaseWizardPage):
 
         # Store references to widgets that might be accessed after deletion
         self.widgets_initialized = False
+        self._output_dir_selection_root: str | None = None
+        self._output_dir_selection_uses_base_name_subdir = False
         # Session-only flag: once user edits log-grid points in advanced mode,
         # hidden-mode auto defaults stop changing it until app restart.
         self._manual_num_log_points_override = False
@@ -114,9 +116,7 @@ class ParametersPage(BaseWizardPage):
         
         self.output_file_base_name = QLineEdit("esl_psc_results")
         self.output_file_base_name.setMinimumWidth(400)  # Make it wider
-        self.output_file_base_name.textChanged.connect(
-            lambda t: setattr(self.config, 'output_file_base_name', t)
-        )
+        self.output_file_base_name.textChanged.connect(self._on_output_file_base_name_changed)
         # Set the default value in config
         self.config.output_file_base_name = "esl_psc_results"
         output_name_layout.addWidget(self.output_file_base_name)
@@ -134,6 +134,7 @@ class ParametersPage(BaseWizardPage):
         self.output_dir_edit = QLineEdit()
         self.output_dir_edit.setReadOnly(True)
         self.output_dir_edit.setPlaceholderText("Click Browse to select output directory")
+        self.output_dir_edit.setText(self.config.output_dir)
         output_dir_layout.addWidget(self.output_dir_edit, 1)  # Allow expanding
         
         self.browse_btn = QPushButton("Browse...")
@@ -951,8 +952,8 @@ class ParametersPage(BaseWizardPage):
             self._apply_hidden_num_log_points_policy()
 
     def _apply_hidden_num_log_points_policy(self) -> None:
-        """Auto-manage log points only while advanced options are hidden."""
-        if self.show_advanced_chk.isChecked():
+        """Auto-manage log points unless the user explicitly overrode them in Advanced mode."""
+        if self.show_advanced_chk.isChecked() and self._manual_num_log_points_override:
             return
         if self._manual_num_log_points_override:
             if self.logspace_btn.isChecked():
@@ -960,6 +961,49 @@ class ParametersPage(BaseWizardPage):
             return
         desired_points = 4 if self.genes_only_btn.isChecked() else 20
         self._set_num_log_points_value(desired_points)
+
+    def _on_output_file_base_name_changed(self, text: str) -> None:
+        self.config.output_file_base_name = text
+        if (
+            self._output_dir_selection_root
+            and self._output_dir_selection_uses_base_name_subdir
+        ):
+            resolved_dir, _ = self._resolve_output_dir_selection(
+                self._output_dir_selection_root,
+                base_name=text,
+            )
+            self.config.output_dir = resolved_dir
+            self.output_dir_edit.setText(resolved_dir)
+
+    def _resolve_output_dir_selection(
+        self,
+        selected_dir: str,
+        *,
+        base_name: str | None = None,
+    ) -> tuple[str, bool]:
+        chosen_dir = os.path.abspath(selected_dir)
+        final_base_name = (base_name if base_name is not None else self.config.output_file_base_name).strip()
+
+        try:
+            with os.scandir(chosen_dir) as entries:
+                is_empty = next(entries, None) is None
+        except OSError:
+            is_empty = True
+
+        if is_empty or not final_base_name:
+            return chosen_dir, False
+        return os.path.join(chosen_dir, final_base_name), True
+
+    def _apply_output_dir_selection(self, selected_dir: str) -> None:
+        resolved_dir, uses_base_name_subdir = self._resolve_output_dir_selection(selected_dir)
+        self._output_dir_selection_root = os.path.abspath(selected_dir)
+        self._output_dir_selection_uses_base_name_subdir = uses_base_name_subdir
+        self.output_dir_edit.setText(resolved_dir)
+        self.config.output_dir = resolved_dir
+        self.completeChanged.emit()
+
+    def isComplete(self) -> bool:  # noqa: N802 (Qt override)
+        return bool(getattr(self.config, "output_dir", ""))
         
     def restore_defaults(self):
         """Reset all parameters to their default ESLConfig values and update the UI."""
@@ -986,6 +1030,8 @@ class ParametersPage(BaseWizardPage):
         self.final_lambda2.setValue(self.config.final_lambda2)
         self.lambda_step.setValue(self.config.lambda_step)
         self._manual_num_log_points_override = False
+        self._output_dir_selection_root = None
+        self._output_dir_selection_uses_base_name_subdir = False
         self._set_num_log_points_value(self.config.num_points)
 
         # Group penalty
@@ -1010,6 +1056,7 @@ class ParametersPage(BaseWizardPage):
         self.pheno_name1.setText(self.config.pheno_name1)
         self.pheno_name2.setText(self.config.pheno_name2)
         self.output_dir_edit.setText(self.config.output_dir)
+        self.completeChanged.emit()
 
         self.keep_raw_output_chk.setChecked(self.config.keep_raw_output)
         self.show_selected_sites.setChecked(self.config.show_selected_sites)
@@ -1046,6 +1093,8 @@ class ParametersPage(BaseWizardPage):
         if not getattr(self, 'widgets_initialized', False):
             return  # widgets not ready yet
         cfg = self.config
+        self._output_dir_selection_root = None
+        self._output_dir_selection_uses_base_name_subdir = False
         # Grid type & lambda values
         self.logspace_btn.setChecked(cfg.grid_type == 'log')
         self.linear_btn.setChecked(cfg.grid_type == 'linear')
@@ -1078,6 +1127,7 @@ class ParametersPage(BaseWizardPage):
         self.pheno_name1.setText(cfg.pheno_name1)
         self.pheno_name2.setText(cfg.pheno_name2)
         self.output_dir_edit.setText(cfg.output_dir)
+        self.completeChanged.emit()
         # Toggles
         self.keep_raw_output_chk.setChecked(cfg.keep_raw_output)
         self.show_selected_sites.setChecked(cfg.show_selected_sites)
@@ -1168,7 +1218,7 @@ class ParametersPage(BaseWizardPage):
         """Open a dialog to select the output directory."""
         try:
             # Get the current output directory or use the default
-            current_dir = getattr(self.config, 'output_dir', os.getcwd())
+            current_dir = getattr(self.config, 'output_dir', '') or os.path.expanduser("~")
             
             # Open directory dialog
             dir_path = QFileDialog.getExistingDirectory(
@@ -1179,8 +1229,7 @@ class ParametersPage(BaseWizardPage):
             )
             
             if dir_path:  # User didn't cancel
-                self.output_dir_edit.setText(dir_path)
-                self.config.output_dir = dir_path
+                self._apply_output_dir_selection(dir_path)
                 
         except Exception as e:
             print(f"Error browsing for output directory: {e}")

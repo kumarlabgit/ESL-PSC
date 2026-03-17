@@ -1,9 +1,11 @@
 """
 Configuration model for ESL-PSC analysis.
 """
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
 import os
+from typing import List, Optional, Tuple
+
+from gui.core.paths import default_output_dir
 
 @dataclass
 class ESLConfig:
@@ -76,7 +78,7 @@ class ESLConfig:
 
 
     # ─── Output options ─────────────────────────────────────────────────────────
-    output_dir: str = os.path.join(os.getcwd(), "esl_psc_output")
+    output_dir: str = field(default_factory=default_output_dir)
     output_file_base_name: str = "esl_psc_results"
     keep_raw_output: bool = False
     show_selected_sites: bool = False
@@ -97,6 +99,10 @@ class ESLConfig:
 
     # ─── Helpers ────────────────────────────────────────────────────────────────
 
+    def __post_init__(self) -> None:
+        if not self.output_dir:
+            self.output_dir = default_output_dir()
+
     # ─── Public API ─────────────────────────────────────────────────────────────
     def _flag(self, b: bool, name: str) -> List[str]:
         return [name] if b else []
@@ -108,6 +114,8 @@ class ESLConfig:
         # Required parameters
         if not self.output_file_base_name:
             raise ValueError("missing output_file_base_name")
+        if not self.output_dir:
+            raise ValueError("missing output_dir")
             
         # Input directories and files
         if self.alignments_dir:

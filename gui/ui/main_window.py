@@ -477,7 +477,7 @@ class ESLWizard(QWizard):
             next_btn.setStyleSheet("border: none; background: transparent;")
         else:
             # Restore the normal appearance/behaviour on non-last pages
-            next_btn.setEnabled(True)
+            next_btn.setEnabled(bool(current_page is None or current_page.isComplete()))
             next_btn.setFixedWidth(self._next_btn_placeholder_width)
             next_btn.setStyleSheet("")
             if next_btn.text() == "":
@@ -523,6 +523,15 @@ class ESLWizard(QWizard):
                     QMessageBox.warning(self, "Missing Required Field",
                                         "Please select a response matrix directory.")
                     return False
+
+        if current_page == self.params_page:
+            if not self.config.output_dir:
+                QMessageBox.warning(
+                    self,
+                    "Missing Required Field",
+                    "Please select an output directory.",
+                )
+                return False
 
         return super().validateCurrentPage()
 
