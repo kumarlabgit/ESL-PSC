@@ -13,6 +13,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+ARTIFACTS_DIR = ROOT_DIR / ".artifacts"
+PYCACHE_DIR = ARTIFACTS_DIR / "cache" / "pycache"
+PYCACHE_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("PYTHONPYCACHEPREFIX", str(PYCACHE_DIR))
+if hasattr(sys, "pycache_prefix"):
+    sys.pycache_prefix = str(PYCACHE_DIR)
+
 import pytest
 
 # pytest-qt provides a `qapp` fixture; in minimal environments it may be absent.
