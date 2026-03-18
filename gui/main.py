@@ -172,13 +172,14 @@ def main():
         sigint_timer.timeout.connect(lambda: None)
         sigint_timer.start(200)
         
-        # If we are running inside a packaged (Nuitka) build, kick off a
-        # background warm-up run of the CLI helper. This overlaps onefile
-        # extraction/startup with the time the user spends filling out the
-        # wizard so the later real invocation is faster.
-        if getattr(sys, "frozen", False):
+        # If we are running inside a packaged build, kick off a background
+        # warm-up run of the CLI helper. This overlaps startup/unpack cost with
+        # the time the user spends filling out the wizard so the later real
+        # invocation is faster.
+        from pathlib import Path
+        packaged = getattr(sys, "frozen", False) or Path(sys.argv[0]).suffix.lower() != ".py"
+        if packaged:
             import threading
-            from pathlib import Path
 
             def _warm_up_cli():
                 try:
