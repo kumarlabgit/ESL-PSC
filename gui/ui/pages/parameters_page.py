@@ -5,6 +5,7 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWizard
+from gui.core.paths import default_output_dir
 from gui.ui.widgets.file_selectors import FileSelector
 from dataclasses import fields
 from gui.core.config import ESLConfig
@@ -1093,6 +1094,8 @@ class ParametersPage(BaseWizardPage):
         if not getattr(self, 'widgets_initialized', False):
             return  # widgets not ready yet
         cfg = self.config
+        if not cfg.output_dir:
+            cfg.output_dir = default_output_dir()
         self._output_dir_selection_root = None
         self._output_dir_selection_uses_base_name_subdir = False
         # Grid type & lambda values

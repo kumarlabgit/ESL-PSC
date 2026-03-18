@@ -104,6 +104,18 @@ def test_parameters_page_starts_with_default_output_dir(qt_app):
     assert params.isComplete()
 
 
+def test_parameters_page_restores_default_output_dir_when_blank(qt_app):
+    cfg = ESLConfig()
+    cfg.output_dir = ""
+    params = ParametersPage(cfg)
+
+    params.update_ui_from_config()
+
+    assert cfg.output_dir == default_output_dir()
+    assert params.output_dir_edit.text() == cfg.output_dir
+    assert params.isComplete()
+
+
 def test_wizard_next_enabled_on_parameters_page_with_default_output_dir(qt_app):
     wiz = ESLWizard()
     wiz.setCurrentId(wiz.pageIds()[1])

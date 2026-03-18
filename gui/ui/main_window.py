@@ -418,6 +418,7 @@ class ESLWizard(QWizard):
                 for key, val in data.items():
                     if hasattr(self.config, key):
                         setattr(self.config, key, val)
+                self.config.ensure_defaults()
                 self.refresh_pages_from_config()
             except Exception as exc:
                 QMessageBox.critical(self, "Load Error", f"Could not load configuration:\n{exc}")

@@ -259,6 +259,7 @@ jobs:
             matplotlib
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
+          windows-console-mode: disable
           include-raw-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe

@@ -7,6 +7,7 @@ A graphical interface for running ESL-PSC analyses with an intuitive wizard.
 import sys
 import os
 import signal
+import subprocess
 from gui.core.logging_utils import setup_logging
 import traceback
 
@@ -17,6 +18,29 @@ def _stderr(msg: str) -> None:
     """Write directly to stderr (not routed through GUI debug logging)."""
     sys.__stderr__.write(msg + "\n")
     sys.__stderr__.flush()
+
+
+def _hidden_subprocess_kwargs() -> dict[str, object]:
+    """Return subprocess kwargs that suppress console windows on Windows."""
+    if os.name != "nt":
+        return {}
+
+    kwargs: dict[str, object] = {}
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if create_no_window:
+        kwargs["creationflags"] = create_no_window
+
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+    sw_hide = getattr(subprocess, "SW_HIDE", 0)
+    if startupinfo_cls is not None:
+        startupinfo = startupinfo_cls()
+        if use_show_window:
+            startupinfo.dwFlags |= use_show_window
+        startupinfo.wShowWindow = sw_hide
+        kwargs["startupinfo"] = startupinfo
+
+    return kwargs
 
 
 def _normalize_qt_platform_env():
@@ -149,11 +173,11 @@ def main():
         sigint_timer.start(200)
         
         # If we are running inside a packaged (Nuitka) build, kick off a
-        # background warm-up run of the CLI helper.  This forces the one-file
-        # binary to unpack while the user is filling out the wizard so the
-        # later real invocation is instantaneous.
-        if getattr(sys, "frozen", False) and os.name != 'nt':
-            import threading, subprocess
+        # background warm-up run of the CLI helper. This overlaps onefile
+        # extraction/startup with the time the user spends filling out the
+        # wizard so the later real invocation is faster.
+        if getattr(sys, "frozen", False):
+            import threading
             from pathlib import Path
 
             def _warm_up_cli():
@@ -169,7 +193,13 @@ def main():
                             str(exe),
                             "--esl_main_dir", bundle_dir,
                             "--help",
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                        ],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL,
+                            check=False,
+                            **_hidden_subprocess_kwargs(),
+                        )
                         break
                 except Exception as e:
                     # Log but never interrupt the GUI

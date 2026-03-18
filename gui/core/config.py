@@ -100,6 +100,9 @@ class ESLConfig:
     # ─── Helpers ────────────────────────────────────────────────────────────────
 
     def __post_init__(self) -> None:
+        self.ensure_defaults()
+
+    def ensure_defaults(self) -> None:
         if not self.output_dir:
             self.output_dir = default_output_dir()
 

@@ -157,6 +157,29 @@ class ESLWorker(QRunnable):
                 return command_args[i + 1], command_args[i + 2]
         return None
 
+    @staticmethod
+    def _hidden_subprocess_kwargs() -> dict[str, object]:
+        """Return subprocess kwargs that suppress console windows on Windows."""
+        if os.name != "nt":
+            return {}
+
+        kwargs: dict[str, object] = {}
+        create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if create_no_window:
+            kwargs["creationflags"] = create_no_window
+
+        startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+        use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+        sw_hide = getattr(subprocess, "SW_HIDE", 0)
+        if startupinfo_cls is not None:
+            startupinfo = startupinfo_cls()
+            if use_show_window:
+                startupinfo.dwFlags |= use_show_window
+            startupinfo.wShowWindow = sw_hide
+            kwargs["startupinfo"] = startupinfo
+
+        return kwargs
+
     def _run_inprocess_plot(self, mode: str, command_args: list[str]) -> bool:
         """Generate plots using the GUI's Python runtime (no extra bundled runtime)."""
         if "--no_pred_output" in command_args or "--no-pred-output" in command_args:
@@ -529,6 +552,8 @@ class ESLWorker(QRunnable):
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                stdin=subprocess.DEVNULL,
+                **self._hidden_subprocess_kwargs(),
             )
 
             def _reader(pipe, emitter: StreamEmitter):
