@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import os
 import sys
@@ -236,7 +237,6 @@ def main(argv=None) -> int:
             if k not in seen:
                 seen.add(k)
                 keys.append(k)
-    lines = [",".join(keys)]
     def _fmt(v):
         if isinstance(v, float):
             return f"{v:.6g}"
@@ -246,13 +246,11 @@ def main(argv=None) -> int:
             except Exception:
                 return str(v)
         return str(v)
-    for row in results:
-        lines.append(
-            ",".join(_fmt(row.get(k, "")) for k in keys)
-        )
-    text = "\n".join(lines)
-    with open(args.output_path, "w", encoding="utf-8") as fh:
-        fh.write(text + ("\n" if not text.endswith("\n") else ""))
+    with open(args.output_path, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(keys)
+        for row in results:
+            writer.writerow([_fmt(row.get(k, "")) for k in keys])
     # Print a small footer noting the backend used (stderr so it doesn't corrupt stdout)
     sys.stderr.write(f"Finished Site Counter using {'Rust' if used_rust else 'Python'} backend.\n")
     return 0
