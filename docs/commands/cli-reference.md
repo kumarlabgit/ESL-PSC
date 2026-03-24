@@ -9,6 +9,8 @@ Here is an example of how to run the script:
 
 To list CLI options, run `esl-psc --help`.
 
+For Linux compatibility with the original ESL-PSC paper results, add `--disable_ec` to the main analysis command. This disables epsilon-comparison line-search acceptance in the sparse-group-lasso solver and restores the strict paper-era acceptance behavior.
+
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
 Legacy Python wrappers are still available for maintainability and historical reference, but they are no longer kept in the repository root. They now live under `legacy/python_entrypoints/`.
@@ -57,4 +59,3 @@ Flags you can use:
 * `--force_from_beginning` — Delete any existing `checkpoint/` folder in `--output_dir` and start from scratch.
 
 To resume after an unexpected interruption, simply rerun the original command.
-

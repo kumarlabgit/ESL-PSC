@@ -27,6 +27,7 @@ Important options:
 
 - Alignment paths: `--alignments-dir` / `--input-alignments-dir`, `--prediction-alignments-dir`
 - Hyperparameters: lambda ranges, grid/logspace, group penalty settings
+- Solver compatibility: `--disable-ec` to disable epsilon-comparison line-search acceptance
 - Gap-cancel controls: `--use-uncanceled-alignments`, `--cancel-only-partner`,
   `--cancel-tri-allelic`, `--min-pairs`, `--outgroup-species`
 - Outputs: `--no-pred-output`, `--no-genes-output`, `--show-selected-sites`
@@ -62,6 +63,14 @@ You can also invoke the run pipeline explicitly as:
 ```bash
 ./target/release/esl-psc run ...
 ```
+
+If you need Linux compatibility with the original ESL-PSC paper-era solver behavior, add:
+
+```bash
+--disable-ec
+```
+
+This switches the sparse-group-lasso line search back to strict acceptance instead of the newer epsilon-comparison acceptance. On Linux, that allows the original paper ranking regime to be reproduced.
 
 Outputs:
 

@@ -8,48 +8,33 @@
 ## Table of Contents ##
 
 1. [Description](#description)
-2. [New: High performance reimplementation and packaging](#new-high-performance-reimplementation-and-packaging)
-3. [Quick Start](#quick-start)
-4. [Installation and Dependencies](#installation-and-dependencies)
-5. [Graphical User Interface](#graphical-user-interface)
-6. [Command Line Usage](#command-line-usage)
+2. [Quick Start](#quick-start)
+3. [Installation and Dependencies](#installation-and-dependencies)
+4. [Graphical User Interface](#graphical-user-interface)
+5. [Command Line Usage](#command-line-usage)
    - [Auto Pair Selection CLI](#auto-pair-selection-cli)
    - [Site Counter CLI](#site-counter-cli)
-7. [Using a Configuration File with ESL-PSC Scripts](#using-a-configuration-file-with-esl-psc)
-8. [Input Data](#input-data)
-9. [Output Data](#output-data)
-10. [Additional Options and Parameters](#additional-options-and-parameters)
-11. [Included Data](#included-data)
-12. [Demo](#demo)
-13. [Troubleshooting](#troubleshooting)
-14. [Citation](#citation)
+6. [Additional CLI Tools](#additional-cli-tools)
+7. [Input Data](#input-data)
+8. [Output Data](#output-data)
+9. [Additional Options and Parameters](#additional-options-and-parameters)
+10. [Included Data](#included-data)
+11. [Demo](#demo)
+12. [Troubleshooting](#troubleshooting)
+13. [Citation](#citation)
 
 ## Description ##
-This repository provides tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, preprocesses input data, performs gap cancellation, builds response matrices, and fits models across many sparsity settings. Typical outputs include gene rankings, species predictions, and summary plots.
+This repository provides tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes alignment files and a defined set of species contrast pairs as inputs, preprocesses input data and builds sparse group lasso models to explain the trait of interest. See [Allard et al., 2025, *Nature Communications*](https://www.nature.com/articles/s41467-025-58428-8) for methodological details. 
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
-## New: High performance reimplementation and packaging ##
-
-Updated February 2026:
-
-ESL-PSC now includes a high-performance unified Rust implementation of the main pipeline (`esl-psc`). It replaces the earlier Python-orchestrated preprocess and modeling handoff loop with a single in-memory workflow. In practice, this usually yields substantial speedups, often around 10-20x for full analyses and sometimes more depending on dataset size and lambda-grid settings, while preserving CLI behavior and output compatibility.
-
-Packaging has also been updated:
-
-- The GUI and toolkit builds now use the unified Rust CLI as the primary runtime backend.
-- The toolkit is distributed as a cross-platform CLI package centered on `esl-psc`, with utility subcommands:
-  - `esl-psc pairs`
-  - `esl-psc site-counter`
-- The toolkit relies on system Python only for the remaining Python modules used by pair selection and plotting, which avoids bundling a second Python runtime inside the toolkit.
-
 ## Quick Start ##
 
-If you want the desktop app and do not want to think about CLI setup, start with the beginner guide here:
+If you want to get started quickly, the GUI is the easiest way to run ESL-PSC without needing to assemble a CLI command manually. Start with the beginner guide here:
 
 - [`docs/gui-quickstart.md`](docs/gui-quickstart.md)
 
-It shows which GUI download to choose for Mac, Windows, or Ubuntu/Debian Linux and walks through a first run with screenshots.
+It shows which GUI download to choose for Mac, Windows, or Ubuntu/Debian Linux, and walks through a first analysis with screenshots. If you prefer the terminal, the command-line tools are described below.
 
 ## Installation and Dependencies ##
 
@@ -149,7 +134,7 @@ Now compatible with Windows, Mac, and Linux.
 
 ![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
 
-#### July  2025 Update – Interactive Tree Viewer & Automatic Contrast Pair Selection
+#### Interactive Tree Viewer & Automatic Contrast Pair Selection
 
 The GUI now features an interactive phylogenetic tree viewer that lets you:
 
@@ -169,7 +154,7 @@ Simply press **“Create a Species Groups File Using a Newick Tree”** on the f
 
 ![Tree Viewer](./images/tree_viewer.png)
 
-#### September 2025 Update – Continuous Phenotype Support
+#### Continuous Phenotype Support
 
 We expanded GUI support for continuous (numeric) phenotypes across the Tree Viewer, analysis options, Site Viewer, and plots:
 
@@ -194,7 +179,7 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
   - Binary phenotypes: violin or KDE SPS plots remain available when a binary phenotype file is supplied.
   - Continuous phenotypes: select the new Phenotype vs SPS density plot (GUI checkbox or `--make_continuous_plot`).
 
-#### February 2026 Update – Local Contrast Selector for Continuous Traits
+#### Local Contrast Selector for Continuous Traits
 
 - Tree Viewer (continuous mode)
   - Added a local percent-contrast selector for positive-valued continuous traits. This mode picks closest non-overlapping pairs that pass a user-chosen minimum percent-difference threshold.
@@ -272,6 +257,8 @@ If you are on a non-Debian Linux distribution or prefer to run from source, use 
 
 
 ## Command Line Usage ##
+The main CLI, `esl-psc`, now uses a high-performance unified Rust implementation of the analysis pipeline. It preserves the core CLI behavior while substantially reducing runtime for many analyses.
+
 The full CLI reference was split into its own page as a verbatim copy of the previous README section:
 
 - [`docs/commands/cli-reference.md`](docs/commands/cli-reference.md)
@@ -281,7 +268,7 @@ Quick links:
 - Pair selection: [`docs/commands/pairs.md`](docs/commands/pairs.md)
 - Site Counter: [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
 
-## Using a Configuration File with ESL-PSC ##
+### Using a Configuration File with ESL-PSC ###
 
 ESL-PSC scripts can utilize a configuration file to easily manage arguments that remain constant across multiple runs. The scripts will check for the presence of an esl_psc_config.txt file in the current working directory. If it exists, the function reads the arguments from the file and combines them with any additional command-line arguments provided when running the script. This allows you to keep common arguments in the configuration file, while providing run-specific arguments via the command line.
 
@@ -296,6 +283,18 @@ To use this feature:
 4. When running an ESL-PSC script, the scripts will automatically check for the presence of the esl_psc_config.txt file and incorporate its contents. Command-line arguments will override the values in the config file if both are provided for the same argument.
 
 5. If the esl_psc_config.txt file is not found in the current working directory, the function will only parse command-line arguments.
+
+## Additional CLI Tools ##
+
+In addition to the main `esl-psc` analysis command, ESL-PSC includes two utility CLIs for common supporting tasks:
+
+- `esl-psc pairs`: tools for building or assisting with species contrast pair selection workflows.
+- `esl-psc site-counter`: tools for counting and summarizing convergent or phenotype-associated sites from alignments and analysis outputs.
+
+See the command-specific documentation for details:
+
+- [`docs/commands/pairs.md`](docs/commands/pairs.md)
+- [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
 
 ## Input Data ##
 
@@ -373,8 +372,8 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--show_selected_sites`: Output the top-scoring sites for each gene. When enabled, the gene ranks file gains a `num_selected_sites` column and a separate `<output_name>_selected_sites.csv` file lists each site with its PSS (Position Sparsity Score). **Positions in this file are 1-indexed for readability**, whereas positions in the raw model output remain 0-indexed.
 * `--no_genes_output`: Don't output a gene ranks file. If only predictions output is desired, including the option will speed up the analysis.
 * `--no_pred_output`: Don't output a species predictions file. If only gene ranks output is desired, including the option will significantly speed up the analysis.
-* `--make_sps_plot`: Make a violin plot showing SPS density for each true phenotype (SPS of > 1 or < -1 as 1 and -1 by default).
-* `--make_sps_kde_plot`: Make a KDE plot showing SPS density for each true phenotype. Both plot types will produce two plots, one which includes models in the lowest 5% of MFS and one that includes models in the lowest 10% (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
+* `--make_sps_plot`: Make a two-panel violin plot showing SPS density for each true phenotype. The left panel uses the lowest 5% of MFS models; the right panel shows species-averaged SPS over all models. SPS values beyond `-1` and `1` are clipped to those bounds in the violin display and labeled accordingly.
+* `--make_sps_kde_plot`: Make a two-panel KDE plot showing SPS density for each true phenotype. The left panel uses the lowest 5% of MFS models; the right panel shows species-averaged SPS over all models (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8))
 * `--no_checkpoint`: Disable checkpointing entirely. No `checkpoint/` folder will be created and the run cannot be resumed later. Use this for quick exploratory runs where resumption is unnecessary.
 * `--force_from_beginning`: When a checkpoint folder already exists in `--output_dir`, delete it and start the analysis from scratch. This is the recommended way to rerun an experiment after changing critical parameters or if the checkpoint has become corrupted.
 
@@ -449,6 +448,10 @@ You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast
 the plot should look like this:
 ![predictions violin plot](./images/demo_output_image.png)
 7. See [Output Data](#output-data) above for descriptions of the fields in the output csv files.
+
+### Reproducing the original manuscript results ###
+
+If you need to reproduce the results from the initial ESL-PSC manuscript, use version `v0.1.0`.
 
 ## Citation ##
 If you use this software in your research, please cite our paper:
