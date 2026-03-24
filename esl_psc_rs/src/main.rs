@@ -143,6 +143,14 @@ struct Args {
     #[arg(long = "maxiter", default_value_t = 100)]
     maxiter: usize,
 
+    #[arg(
+        long = "disable_ec",
+        alias = "disable-ec",
+        default_value_t = false,
+        help = "Disable epsilon-comparison line-search acceptance in the sparse-group-lasso solver"
+    )]
+    disable_ec: bool,
+
     #[arg(long = "num_threads", alias = "num-threads")]
     num_threads: Option<usize>,
 
@@ -915,6 +923,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                                     *penalty,
                                     use_continuous,
                                     args.maxiter,
+                                    args.disable_ec,
                                     lipschitz,
                                     Some(Arc::clone(&progress_counter)),
                                 )
@@ -931,6 +940,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                                     *penalty,
                                     use_continuous,
                                     args.maxiter,
+                                    args.disable_ec,
                                     lipschitz,
                                     Some(Arc::clone(&progress_counter)),
                                 )
@@ -1429,7 +1439,11 @@ fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
 }
 
 fn report_compat_warnings(args: &Args) {
-    let _ = args;
+    if args.disable_ec {
+        statusln!(
+            "Compatibility mode: --disable_ec uses strict line-search acceptance. On Linux this reproduces the original ESL-PSC paper-era solver behavior."
+        );
+    }
 }
 
 fn make_null_combo_jobs(combos: &[ComboJob]) -> Result<Vec<ComboJob>> {
@@ -3800,6 +3814,7 @@ fn solve_lambda_row(
     penalty: f64,
     continuous: bool,
     maxiter: usize,
+    disable_ec: bool,
     lipschitz: f64,
     progress_counter: Option<Arc<AtomicUsize>>,
 ) -> Result<Vec<ModelResult>> {
@@ -3819,6 +3834,7 @@ fn solve_lambda_row(
                 *lambda2,
                 continuous,
                 maxiter,
+                disable_ec,
                 1e-4,
                 lipschitz,
                 &[],
@@ -4026,6 +4042,7 @@ fn solve_sparse_group_lasso(
     lambda2_frac: f64,
     continuous: bool,
     maxiter: usize,
+    disable_ec: bool,
     _tol: f64,
     _lipschitz: f64,
     _warm_beta: &[f64],
@@ -4122,7 +4139,7 @@ fn solve_sparse_group_lasso(
                 }
 
                 let target = r_sum * l_const;
-                if line_search_accept_legacy_f64(l_sum, target, false) {
+                if line_search_accept_legacy_f64(l_sum, target, disable_ec) {
                     break;
                 }
                 l_const = (2.0 * l_const).max(l_sum / r_sum);
@@ -4294,7 +4311,7 @@ fn solve_sparse_group_lasso(
                     break;
                 }
                 let target = r_sum * l_const;
-                if line_search_accept_legacy_f64(l_sum, target, false) {
+                if line_search_accept_legacy_f64(l_sum, target, disable_ec) {
                     break;
                 }
                 l_const = (2.0_f64 * l_const).max(l_sum / r_sum);
@@ -4404,6 +4421,25 @@ fn line_search_accept_legacy_f32(l_sum: f32, target: f32, disable_ec: bool) -> b
     }
     let diff = l_sum - target;
     l_sum < target || (diff as i32).abs() == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{line_search_accept_legacy_f32, line_search_accept_legacy_f64};
+
+    #[test]
+    fn epsilon_comparison_accepts_small_positive_diff() {
+        assert!(line_search_accept_legacy_f64(1.2, 1.0, false));
+        assert!(line_search_accept_legacy_f32(1.2, 1.0, false));
+    }
+
+    #[test]
+    fn disable_ec_restores_strict_acceptance() {
+        assert!(!line_search_accept_legacy_f64(1.2, 1.0, true));
+        assert!(!line_search_accept_legacy_f32(1.2, 1.0, true));
+        assert!(line_search_accept_legacy_f64(1.0, 1.0, true));
+        assert!(line_search_accept_legacy_f32(1.0, 1.0, true));
+    }
 }
 
 fn predict_scores(x: &[Vec<f64>], beta: &[f64], intercept: f64) -> Vec<f64> {
