@@ -296,7 +296,8 @@ class ParametersPage(BaseWizardPage):
         # Make SPS plot
         self.make_sps_plot = QRadioButton("Generate SPS Violin plots")
         self.make_sps_plot.setToolTip(
-            "Create violin plots showing SPS density for each true phenotype."
+            "Create a two-panel SPS violin plot: lowest 5% of MFS models on the left, "
+            "species-averaged SPS over all models on the right."
         )
         self.make_sps_plot.toggled.connect(
             lambda checked: setattr(self.config, 'make_sps_plot', checked)
@@ -307,7 +308,8 @@ class ParametersPage(BaseWizardPage):
         # Make SPS KDE plot
         self.make_sps_kde_plot = QRadioButton("Generate SPS KDE plots")
         self.make_sps_kde_plot.setToolTip(
-            "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
+            "Create a two-panel SPS KDE plot: lowest 5% of MFS models on the left, "
+            "species-averaged SPS over all models on the right."
         )
         self.make_sps_kde_plot.toggled.connect(
             lambda checked: setattr(self.config, 'make_sps_kde_plot', checked)

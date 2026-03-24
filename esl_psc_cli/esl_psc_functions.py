@@ -1055,7 +1055,18 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     # code borrowed largely from Louise, with some tweaks
     start_time = time.time()
     print("making sps density plot figure...")
-    rmse_cutoffs = [.05, .1]
+    panel_specs = [
+        {
+            'rmse_cutoff': 0.05,
+            'aggregate_species': False,
+            'panel_suffix': 'lowest 5% of MFS models combined',
+        },
+        {
+            'rmse_cutoff': None,
+            'aggregate_species': True,
+            'panel_suffix': 'species-averaged SPS over all models',
+        },
+    ]
 
     # headless in worker thread
     if threading.current_thread().name != "MainThread":
@@ -1066,10 +1077,10 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         # Create side-by-side subplots and widen the figure slightly so axis
         # labels don’t collide. We’ll manually add horizontal spacing.
         fig, axes = plt.subplots(
-            ncols=len(rmse_cutoffs), figsize=(8, 7)
+            ncols=len(panel_specs), figsize=(8, 7)
         )
     elif plot_type == 'kde':
-        fig, axes = plt.subplots(nrows=len(rmse_cutoffs), ncols=1, figsize=(8, 7))
+        fig, axes = plt.subplots(nrows=len(panel_specs), ncols=1, figsize=(8, 7))
     # Add extra horizontal padding between subplots to avoid label overlap
     fig.subplots_adjust(wspace=0.35)
     
@@ -1086,9 +1097,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     pos_pheno_name = pheno_names[0]
     neg_pheno_name = pheno_names[1]
         
-    for index, rmse_cutoff in enumerate(rmse_cutoffs):
+    for index, panel in enumerate(panel_specs):
         # create each plot
-        # print("making plot with MFS cutoff: " + str(rmse_cutoff))
+        rmse_cutoff = panel['rmse_cutoff']
         if plot_type == 'kde':    
             sps_density.create_sps_plot(df = df,
                                     RMSE_rank = rmse_cutoff,
@@ -1096,7 +1107,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     neg_pheno_name = neg_pheno_name,
                                     pos_pheno_name = pos_pheno_name,
                                     axes = axes[index],
-                                    min_genes = min_genes)
+                                    min_genes = min_genes,
+                                    aggregate_species = panel['aggregate_species'],
+                                    panel_suffix = panel['panel_suffix'])
         elif plot_type == 'violin':
             sps_density.create_sps_plot_violin(df = df,
                                     RMSE_rank = rmse_cutoff,
@@ -1104,7 +1117,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     neg_pheno_name = neg_pheno_name,
                                     pos_pheno_name = pos_pheno_name,
                                     axes = axes[index],
-                                    min_genes = min_genes)
+                                    min_genes = min_genes,
+                                    aggregate_species = panel['aggregate_species'],
+                                    panel_suffix = panel['panel_suffix'])
             axes[index].set_ylim([-1.1, 1.1])
             axes[index].axhline(y=0, linestyle='--', color='lightgray')
     fig.tight_layout(pad=2.0, w_pad=0.5)
