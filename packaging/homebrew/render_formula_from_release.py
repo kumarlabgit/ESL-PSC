@@ -11,7 +11,7 @@ from pathlib import Path
 FORMULA_TEMPLATE = """class EslPsc < Formula
   desc "Evolutionary Sparse Learning with Paired Species Contrast"
   homepage "https://github.com/John-Allard/ESL-PSC"
-  license "NOASSERTION"
+  license "MIT"
   url "{source_url}"
   sha256 "{source_sha}"
   version "{version}"

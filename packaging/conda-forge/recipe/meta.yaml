@@ -40,5 +40,6 @@ test:
 about:
   home: https://github.com/John-Allard/ESL-PSC
   summary: Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC)
-  license: NOASSERTION
+  license: MIT
+  license_file: LICENSE
   dev_url: https://github.com/John-Allard/ESL-PSC
