@@ -785,7 +785,12 @@ class ParametersPage(BaseWizardPage):
         )
         hyper_layout.addRow("Top rank fraction:", self.top_rank_frac)
         
-        # Max Iterations for optimizer
+        # Optimizer compatibility controls
+        maxiter_row = QWidget()
+        maxiter_row_layout = QHBoxLayout(maxiter_row)
+        maxiter_row_layout.setContentsMargins(0, 0, 0, 0)
+        maxiter_row_layout.setSpacing(12)
+
         self.maxiter_spin = QSpinBox()
         self.maxiter_spin.setRange(100, 1000)
         self.maxiter_spin.setValue(int(getattr(self.config, 'maxiter', 100)))
@@ -796,7 +801,21 @@ class ParametersPage(BaseWizardPage):
         self.maxiter_spin.setToolTip(
             "Maximum number of iterations for the sg_lasso optimizer. Default is 100. Increase to allow more gradient descent steps."
         )
-        hyper_layout.addRow("Max Iterations:", self.maxiter_spin)
+        maxiter_row_layout.addWidget(self.maxiter_spin)
+
+        self.disable_ec_chk = QCheckBox("Disable epsilon comparison")
+        self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', False)))
+        self.disable_ec_chk.toggled.connect(
+            lambda checked: setattr(self.config, 'disable_ec', bool(checked))
+        )
+        self.disable_ec_chk.setToolTip(
+            "Use strict line-search acceptance instead of epsilon-comparison acceptance. "
+            "On Linux this reproduces the original ESL-PSC paper-era solver behavior."
+        )
+        maxiter_row_layout.addWidget(self.disable_ec_chk)
+        maxiter_row_layout.addStretch()
+
+        hyper_layout.addRow("Max Iterations:", maxiter_row)
         
         self.hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
@@ -1047,8 +1066,10 @@ class ParametersPage(BaseWizardPage):
         self.top_rank_frac.setValue(self.config.top_rank_frac)
         
         # Max iterations
-        if hasattr(self, 'maxiter_combo'):
-            self.maxiter_combo.setCurrentText(str(self.config.maxiter))
+        if hasattr(self, 'maxiter_spin'):
+            self.maxiter_spin.setValue(int(self.config.maxiter))
+        if hasattr(self, 'disable_ec_chk'):
+            self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', False)))
 
         # Output options
         self.genes_only_btn.setChecked(False)
@@ -1125,8 +1146,10 @@ class ParametersPage(BaseWizardPage):
         # Top rank frac
         self.top_rank_frac.setValue(cfg.top_rank_frac)
         # Max iterations
-        if hasattr(self, 'maxiter_combo'):
-            self.maxiter_combo.setCurrentText(str(cfg.maxiter))
+        if hasattr(self, 'maxiter_spin'):
+            self.maxiter_spin.setValue(int(cfg.maxiter))
+        if hasattr(self, 'disable_ec_chk'):
+            self.disable_ec_chk.setChecked(bool(getattr(cfg, 'disable_ec', False)))
         # Output basics
         self.output_file_base_name.setText(cfg.output_file_base_name)
         self.pheno_name1.setText(cfg.pheno_name1)

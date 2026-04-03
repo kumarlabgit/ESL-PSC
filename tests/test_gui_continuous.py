@@ -80,7 +80,33 @@ def test_command_page_prompts_for_output_dir_when_unset(qt_app):
     qt_app.processEvents()
 
     text = cmd_page.cmd_display.toPlainText()
-    assert "Choose an output directory on the previous page" in text
+    assert "--output_dir" in text
+    assert default_output_dir() in text
+
+
+def test_disable_ec_checkbox_updates_command_preview(qt_app, tmp_path):
+    cfg = ESLConfig()
+    cfg.output_dir = str(tmp_path / "out")
+    params = ParametersPage(cfg)
+    params.show()
+    qt_app.processEvents()
+
+    params.show_advanced_chk.setChecked(True)
+    qt_app.processEvents()
+
+    assert params.disable_ec_chk.isVisible()
+    assert not cfg.disable_ec
+
+    params.disable_ec_chk.setChecked(True)
+    assert cfg.disable_ec
+
+    cmd_page = CommandPage(cfg)
+    cmd_page.on_enter()
+    cmd_page.show()
+    qt_app.processEvents()
+
+    text = cmd_page.cmd_display.toPlainText()
+    assert "--disable_ec" in text
 
 
 def test_output_dir_selection_uses_empty_folder_directly(qt_app, tmp_path):

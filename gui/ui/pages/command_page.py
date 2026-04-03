@@ -241,6 +241,8 @@ class CommandPage(BaseWizardPage):
         # Max iterations (only show when above default)
         if hasattr(self.config, 'maxiter') and isinstance(self.config.maxiter, int) and self.config.maxiter > 100:
             self.add_summary_item(layout, "Max Iterations:", str(self.config.maxiter))
+        if getattr(self.config, 'disable_ec', False):
+            self.add_summary_item(layout, "Strict Line Search:", "Enabled (--disable_ec)")
         
         # Phenotype names
         if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
