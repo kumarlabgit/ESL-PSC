@@ -9,7 +9,7 @@ Here is an example of how to run the script:
 
 To list CLI options, run `esl-psc --help`.
 
-For Linux compatibility with the original ESL-PSC paper results, add `--disable_ec` to the main analysis command. This disables epsilon-comparison line-search acceptance in the sparse-group-lasso solver and restores the strict paper-era acceptance behavior.
+Strict line-search acceptance is now the default solver behavior and matches the original ESL-PSC paper-era compatibility mode. Use `--enable_ec` only if you explicitly want the newer epsilon-comparison line-search acceptance.
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 

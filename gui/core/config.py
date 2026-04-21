@@ -58,7 +58,7 @@ class ESLConfig:
     # Maximum number of iterations for the optimizer (CLI: --maxiter). Default is 100.
     maxiter: int = 100
     # Disable epsilon-comparison line-search acceptance and use strict acceptance.
-    disable_ec: bool = False
+    disable_ec: bool = True
 
     # ─── Phenotype names ────────────────────────────────────────────────────────
     pheno_name1: str = "Convergent"
@@ -157,8 +157,8 @@ class ESLConfig:
         # Optimizer iterations (only include if not default)
         if hasattr(self, 'maxiter') and self.maxiter != 100:
             a += ["--maxiter", str(self.maxiter)]
-        if getattr(self, 'disable_ec', False):
-            a.append("--disable_ec")
+        if not getattr(self, 'disable_ec', True):
+            a.append("--enable_ec")
             
         # Group penalty - only include values if not using 'median' or 'std' type
         a += ["--group_penalty_type", self.group_penalty_type]

@@ -95,10 +95,16 @@ def test_disable_ec_checkbox_updates_command_preview(qt_app, tmp_path):
     qt_app.processEvents()
 
     assert params.disable_ec_chk.isVisible()
-    assert not cfg.disable_ec
-
-    params.disable_ec_chk.setChecked(True)
     assert cfg.disable_ec
+
+    text_default = CommandPage(cfg)
+    text_default.on_enter()
+    text_default.show()
+    qt_app.processEvents()
+    assert "--enable_ec" not in text_default.cmd_display.toPlainText()
+
+    params.disable_ec_chk.setChecked(False)
+    assert not cfg.disable_ec
 
     cmd_page = CommandPage(cfg)
     cmd_page.on_enter()
@@ -106,7 +112,7 @@ def test_disable_ec_checkbox_updates_command_preview(qt_app, tmp_path):
     qt_app.processEvents()
 
     text = cmd_page.cmd_display.toPlainText()
-    assert "--disable_ec" in text
+    assert "--enable_ec" in text
 
 
 def test_output_dir_selection_uses_empty_folder_directly(qt_app, tmp_path):

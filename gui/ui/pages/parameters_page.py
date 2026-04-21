@@ -804,13 +804,13 @@ class ParametersPage(BaseWizardPage):
         maxiter_row_layout.addWidget(self.maxiter_spin)
 
         self.disable_ec_chk = QCheckBox("Disable epsilon comparison")
-        self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', False)))
+        self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', True)))
         self.disable_ec_chk.toggled.connect(
             lambda checked: setattr(self.config, 'disable_ec', bool(checked))
         )
         self.disable_ec_chk.setToolTip(
             "Use strict line-search acceptance instead of epsilon-comparison acceptance. "
-            "On Linux this reproduces the original ESL-PSC paper-era solver behavior."
+            "This is now the default and matches the original ESL-PSC paper-era solver behavior."
         )
         maxiter_row_layout.addWidget(self.disable_ec_chk)
         maxiter_row_layout.addStretch()
@@ -1069,7 +1069,7 @@ class ParametersPage(BaseWizardPage):
         if hasattr(self, 'maxiter_spin'):
             self.maxiter_spin.setValue(int(self.config.maxiter))
         if hasattr(self, 'disable_ec_chk'):
-            self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', False)))
+            self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', True)))
 
         # Output options
         self.genes_only_btn.setChecked(False)
@@ -1149,7 +1149,7 @@ class ParametersPage(BaseWizardPage):
         if hasattr(self, 'maxiter_spin'):
             self.maxiter_spin.setValue(int(cfg.maxiter))
         if hasattr(self, 'disable_ec_chk'):
-            self.disable_ec_chk.setChecked(bool(getattr(cfg, 'disable_ec', False)))
+            self.disable_ec_chk.setChecked(bool(getattr(cfg, 'disable_ec', True)))
         # Output basics
         self.output_file_base_name.setText(cfg.output_file_base_name)
         self.pheno_name1.setText(cfg.pheno_name1)

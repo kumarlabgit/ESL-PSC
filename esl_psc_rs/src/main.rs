@@ -147,9 +147,20 @@ struct Args {
         long = "disable_ec",
         alias = "disable-ec",
         default_value_t = false,
-        help = "Disable epsilon-comparison line-search acceptance in the sparse-group-lasso solver"
+        conflicts_with = "enable_ec",
+        hide = true,
+        help = "Use strict line-search acceptance in the sparse-group-lasso solver (default)"
     )]
     disable_ec: bool,
+
+    #[arg(
+        long = "enable_ec",
+        alias = "enable-ec",
+        default_value_t = false,
+        conflicts_with = "disable_ec",
+        help = "Enable epsilon-comparison line-search acceptance in the sparse-group-lasso solver"
+    )]
+    enable_ec: bool,
 
     #[arg(long = "num_threads", alias = "num-threads")]
     num_threads: Option<usize>,
@@ -892,7 +903,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                                     *penalty,
                                     use_continuous,
                                     args.maxiter,
-                                    args.disable_ec,
+                                    !args.enable_ec,
                                     lipschitz,
                                     Some(Arc::clone(&progress_counter)),
                                 )
@@ -910,7 +921,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                                     *penalty,
                                     use_continuous,
                                     args.maxiter,
-                                    args.disable_ec,
+                                    !args.enable_ec,
                                     lipschitz,
                                     Some(Arc::clone(&progress_counter)),
                                 )
@@ -1405,9 +1416,9 @@ fn validate_args(args: &Args, alignments_dir: &Path) -> Result<()> {
 }
 
 fn report_compat_warnings(args: &Args) {
-    if args.disable_ec {
+    if args.enable_ec {
         statusln!(
-            "Compatibility mode: --disable_ec uses strict line-search acceptance. On Linux this reproduces the original ESL-PSC paper-era solver behavior."
+            "Non-default solver mode: --enable_ec uses epsilon-comparison line-search acceptance instead of the strict default."
         );
     }
 }
