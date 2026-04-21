@@ -15,16 +15,16 @@ build:
 
 requirements:
   build:
-    - {{ compiler('c') }}
-    - {{ compiler('cxx') }}
     - {{ compiler('rust') }}
+    - {{ stdlib("c") }}
+    - cargo-auditable
   host:
-    - python >=3.10
+    - python
   run:
-    - python >=3.10
+    - python
     - numpy >=1.20.0
     - pandas >=1.3.0
-    - matplotlib >=3.4.0
+    - matplotlib-base >=3.4.0
     - seaborn >=0.11.0
     - biopython >=1.85.0
 
