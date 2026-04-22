@@ -800,6 +800,9 @@ class ParametersPage(BaseWizardPage):
             "Maximum number of iterations for the sg_lasso optimizer. Default is 100. Increase to allow more gradient descent steps."
         )
         maxiter_row_layout.addWidget(self.maxiter_spin)
+        maxiter_row_layout.addStretch()
+
+        hyper_layout.addRow("Max Iterations:", maxiter_row)
 
         self.disable_ec_chk = QCheckBox("Disable epsilon comparison")
         self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', True)))
@@ -810,10 +813,7 @@ class ParametersPage(BaseWizardPage):
             "Use strict line-search acceptance instead of epsilon-comparison acceptance. "
             "This is now the default and matches the original ESL-PSC paper-era solver behavior."
         )
-        maxiter_row_layout.addWidget(self.disable_ec_chk)
-        maxiter_row_layout.addStretch()
-
-        hyper_layout.addRow("Max Iterations:", maxiter_row)
+        hyper_layout.addRow("", self.disable_ec_chk)
         
         self.hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
