@@ -44,8 +44,6 @@ class ParametersPage(BaseWizardPage):
 
         # Store references to widgets that might be accessed after deletion
         self.widgets_initialized = False
-        self._output_dir_selection_root: str | None = None
-        self._output_dir_selection_uses_base_name_subdir = False
         # Session-only flag: once user edits log-grid points in advanced mode,
         # hidden-mode auto defaults stop changing it until app restart.
         self._manual_num_log_points_override = False
@@ -133,9 +131,9 @@ class ParametersPage(BaseWizardPage):
         output_dir_layout.addWidget(QLabel("Output Directory:"))
         
         self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setReadOnly(True)
-        self.output_dir_edit.setPlaceholderText("Click Browse to select output directory")
+        self.output_dir_edit.setPlaceholderText("Choose or enter an output directory")
         self.output_dir_edit.setText(self.config.output_dir)
+        self.output_dir_edit.textChanged.connect(self._on_output_dir_changed)
         output_dir_layout.addWidget(self.output_dir_edit, 1)  # Allow expanding
         
         self.browse_btn = QPushButton("Browse...")
@@ -986,43 +984,14 @@ class ParametersPage(BaseWizardPage):
 
     def _on_output_file_base_name_changed(self, text: str) -> None:
         self.config.output_file_base_name = text
-        if (
-            self._output_dir_selection_root
-            and self._output_dir_selection_uses_base_name_subdir
-        ):
-            resolved_dir, _ = self._resolve_output_dir_selection(
-                self._output_dir_selection_root,
-                base_name=text,
-            )
-            self.config.output_dir = resolved_dir
-            self.output_dir_edit.setText(resolved_dir)
-
-    def _resolve_output_dir_selection(
-        self,
-        selected_dir: str,
-        *,
-        base_name: str | None = None,
-    ) -> tuple[str, bool]:
-        chosen_dir = os.path.abspath(selected_dir)
-        final_base_name = (base_name if base_name is not None else self.config.output_file_base_name).strip()
-
-        try:
-            with os.scandir(chosen_dir) as entries:
-                is_empty = next(entries, None) is None
-        except OSError:
-            is_empty = True
-
-        if is_empty or not final_base_name:
-            return chosen_dir, False
-        return os.path.join(chosen_dir, final_base_name), True
+        
+    def _on_output_dir_changed(self, text: str) -> None:
+        self.config.output_dir = text.strip()
+        self.completeChanged.emit()
 
     def _apply_output_dir_selection(self, selected_dir: str) -> None:
-        resolved_dir, uses_base_name_subdir = self._resolve_output_dir_selection(selected_dir)
-        self._output_dir_selection_root = os.path.abspath(selected_dir)
-        self._output_dir_selection_uses_base_name_subdir = uses_base_name_subdir
-        self.output_dir_edit.setText(resolved_dir)
-        self.config.output_dir = resolved_dir
-        self.completeChanged.emit()
+        chosen_dir = os.path.abspath(selected_dir)
+        self.output_dir_edit.setText(chosen_dir)
 
     def isComplete(self) -> bool:  # noqa: N802 (Qt override)
         return bool(getattr(self.config, "output_dir", ""))
@@ -1052,8 +1021,6 @@ class ParametersPage(BaseWizardPage):
         self.final_lambda2.setValue(self.config.final_lambda2)
         self.lambda_step.setValue(self.config.lambda_step)
         self._manual_num_log_points_override = False
-        self._output_dir_selection_root = None
-        self._output_dir_selection_uses_base_name_subdir = False
         self._set_num_log_points_value(self.config.num_points)
 
         # Group penalty
@@ -1119,8 +1086,6 @@ class ParametersPage(BaseWizardPage):
         cfg = self.config
         if not cfg.output_dir:
             cfg.output_dir = default_output_dir()
-        self._output_dir_selection_root = None
-        self._output_dir_selection_uses_base_name_subdir = False
         # Grid type & lambda values
         self.logspace_btn.setChecked(cfg.grid_type == 'log')
         self.linear_btn.setChecked(cfg.grid_type == 'linear')

@@ -121,10 +121,10 @@ def test_output_dir_selection_uses_empty_folder_directly(qt_app, tmp_path):
     empty_dir = tmp_path / "empty_output"
     empty_dir.mkdir()
 
-    resolved, uses_subdir = params._resolve_output_dir_selection(str(empty_dir))
+    params._apply_output_dir_selection(str(empty_dir))
 
-    assert resolved == str(empty_dir)
-    assert not uses_subdir
+    assert cfg.output_dir == str(empty_dir)
+    assert params.output_dir_edit.text() == str(empty_dir)
 
 
 def test_parameters_page_starts_with_default_output_dir(qt_app):
@@ -159,7 +159,7 @@ def test_wizard_next_enabled_on_parameters_page_with_default_output_dir(qt_app):
     wiz.close()
 
 
-def test_output_dir_selection_uses_base_name_subdir_for_nonempty_folder(qt_app, tmp_path):
+def test_output_dir_selection_uses_selected_folder_directly_for_nonempty_folder(qt_app, tmp_path):
     cfg = ESLConfig()
     params = ParametersPage(cfg)
     parent_dir = tmp_path / "parent_output"
@@ -167,13 +167,13 @@ def test_output_dir_selection_uses_base_name_subdir_for_nonempty_folder(qt_app, 
     (parent_dir / "existing.txt").write_text("x", encoding="utf-8")
     params.output_file_base_name.setText("custom_run")
 
-    resolved, uses_subdir = params._resolve_output_dir_selection(str(parent_dir))
+    params._apply_output_dir_selection(str(parent_dir))
 
-    assert resolved == str(parent_dir / "custom_run")
-    assert uses_subdir
+    assert cfg.output_dir == str(parent_dir)
+    assert params.output_dir_edit.text() == str(parent_dir)
 
 
-def test_output_dir_selection_tracks_base_name_for_nonempty_parent(qt_app, tmp_path):
+def test_output_dir_selection_does_not_track_base_name_changes(qt_app, tmp_path):
     cfg = ESLConfig()
     params = ParametersPage(cfg)
     parent_dir = tmp_path / "parent_output"
@@ -182,7 +182,20 @@ def test_output_dir_selection_tracks_base_name_for_nonempty_parent(qt_app, tmp_p
 
     params.output_file_base_name.setText("first_run")
     params._apply_output_dir_selection(str(parent_dir))
-    assert cfg.output_dir == str(parent_dir / "first_run")
+    assert cfg.output_dir == str(parent_dir)
 
     params.output_file_base_name.setText("renamed_run")
-    assert cfg.output_dir == str(parent_dir / "renamed_run")
+    assert cfg.output_dir == str(parent_dir)
+
+
+def test_output_dir_field_is_editable_and_updates_config(qt_app, tmp_path):
+    cfg = ESLConfig()
+    params = ParametersPage(cfg)
+    custom_dir = tmp_path / "typed_output"
+
+    assert not params.output_dir_edit.isReadOnly()
+
+    params.output_dir_edit.setText(str(custom_dir))
+    qt_app.processEvents()
+
+    assert cfg.output_dir == str(custom_dir)
