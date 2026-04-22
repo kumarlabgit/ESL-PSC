@@ -157,7 +157,7 @@ def main():
         
         # Set application metadata
         app.setApplicationName("ESL-PSC Wizard")
-        app.setApplicationVersion("2.5.0")
+        app.setApplicationVersion("2.5.1")
         app.setOrganizationName("ESL-PSC")
         if sys.platform.startswith("linux"):
             try:
