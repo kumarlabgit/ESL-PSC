@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from PySide6.QtWidgets import QGraphicsView, QGraphicsTextItem
@@ -21,28 +22,58 @@ class ZoomableGraphicsView(QGraphicsView):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._zoom_level = 0
+        self._zoom_level = 0.0
         self._min_zoom = -5
         self._max_zoom = 10
+        self._angle_zoom_remainder = 0
         # Prevent smearing of foreground overlays (like the legend) during
         # interactive panning/zooming by forcing full viewport repaints.
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
     # ------------------------------------------------------------------
     def wheelEvent(self, event):
-        if event.angleDelta().y() > 0 and self._zoom_level < self._max_zoom:
-            factor = 1.25
-            self._zoom_level += 1
-            self.scale(factor, factor)
-        elif event.angleDelta().y() < 0 and self._zoom_level > self._min_zoom:
-            factor = 0.8
-            self._zoom_level -= 1
-            self.scale(factor, factor)
+        pixel_delta = event.pixelDelta().y()
+        if pixel_delta:
+            # Trackpads often report many small pixel deltas. Use a gentle,
+            # bounded exponential scale so one gesture does not leap through
+            # the whole zoom range.
+            steps = max(-0.4, min(0.4, pixel_delta / 240.0))
+            self._apply_zoom_steps(steps)
+            event.accept()
+            return
+
+        angle_delta = event.angleDelta().y()
+        if not angle_delta:
+            super().wheelEvent(event)
+            return
+
+        self._angle_zoom_remainder += angle_delta
+        steps = int(self._angle_zoom_remainder / 120)
+        if steps == 0:
+            event.accept()
+            return
+
+        self._angle_zoom_remainder -= steps * 120
+        self._apply_zoom_steps(max(-3, min(3, steps)))
+        event.accept()
+
+    # ------------------------------------------------------------------
+    def _apply_zoom_steps(self, steps: float) -> None:
+        if steps == 0:
+            return
+        target = max(self._min_zoom, min(self._max_zoom, self._zoom_level + steps))
+        actual_steps = target - self._zoom_level
+        if actual_steps == 0:
+            return
+        factor = math.pow(1.15, actual_steps)
+        self._zoom_level = target
+        self.scale(factor, factor)
 
     # ------------------------------------------------------------------
     def resetTransform(self):
         super().resetTransform()
-        self._zoom_level = 0
+        self._zoom_level = 0.0
+        self._angle_zoom_remainder = 0
 
     # ------------------------------------------------------------------
     def contextMenuEvent(self, event):

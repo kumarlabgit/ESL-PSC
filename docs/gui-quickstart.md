@@ -53,6 +53,62 @@ Before you open the program, gather these files:
 
 The phenotype CSV is helpful for tree coloring and for prediction summaries, but it is not required to start.
 
+## Input file formats
+
+### Alignment files
+
+The alignment input should be a folder containing one FASTA file per gene or protein. Each file should contain aligned sequences for homologous species, and the species names in the FASTA headers should match the species names used in the tree and phenotype files.
+
+ESL-PSC expects each sequence to be written on one line after its header. For example:
+
+```text
+>Homo_sapiens
+MSTNPKPQRKTKRNTNRRPQDVKFPGGGQIVGGVYLLPRRGPRLGVRATRKTSERSQPRGRRQPIPKARRPEGRTWAQPGYPWPLYGNEGLGWAGWLLSPRGSRPSWGPTDPRRRSRHWV
+>Mus_musculus
+MSTNPKPQRKTKRNTNRRPQDVKFPGGGQIVGGVYLLPRRGPRLGVRATRKTSERSQPRGRRQPIPKARRPEGRTWAQPGYPWPLYGNEGLGWAGWLLSPRGSRPSWGPTDPRRRSRHWV
+```
+
+If your FASTA files wrap sequences across multiple lines, the GUI can convert them to the required two-line FASTA format before running the analysis.
+
+### Newick tree file
+
+The tree file should be a rooted Newick tree containing the species you want to use for contrast-pair selection. Branch lengths are allowed. Species labels should match the alignment headers and phenotype names.
+
+Example:
+
+```text
+((Homo_sapiens:0.1,Pan_troglodytes:0.1):0.2,Mus_musculus:0.3);
+```
+
+### Phenotype file
+
+The optional phenotype file should be a CSV-style text file with one species per line. For binary traits, use `1` for the convergent or focal trait state and `-1` for the control state:
+
+```text
+Homo_sapiens,1
+Pan_troglodytes,1
+Mus_musculus,-1
+```
+
+For continuous traits, the second column can be a numeric value:
+
+```text
+Homo_sapiens,1.82
+Pan_troglodytes,1.55
+Mus_musculus,0.03
+```
+
+### Species groups file
+
+The species groups file defines the paired-species contrasts used for model training. The easiest way to make this file is with the Tree Viewer, but it is also a plain text file. Each contrast pair is represented by two consecutive lines: the focal or convergent species group first, then the paired control species group.
+
+```text
+convergent_species_A,convergent_species_B
+control_species_A,control_species_B
+```
+
+Multiple contrast pairs are written as additional two-line blocks. Species names should match the alignment headers.
+
 ### 1. Fill in the Input page
 
 ![Annotated ESL-PSC input page](../images/quickstart-input.png)
@@ -78,8 +134,9 @@ After you save the species groups file, close the tree viewer and return to the 
 ![Annotated parameters page](../images/quickstart-parameters.png)
 
 1. Choose an output folder for the results.
-2. For a first run, leave the rest of this page at the defaults.
-3. Click **Next**.
+2. Choose which outputs to generate. **Gene ranks only** skips the species-predictions file and is much faster for proteome-scale analyses whose main goal is to identify candidate convergent genes rather than predict trait values for species.
+3. For a first run, leave the rest of this page at the defaults.
+4. Click **Next**.
 
 ### 4. Skip the Command page
 
