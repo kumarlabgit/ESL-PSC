@@ -1,0 +1,180 @@
+name: Sign Windows Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Successful Build Nuitka Distributables run ID to sign"
+        required: true
+        type: string
+      release_tag:
+        description: "Release tag whose Windows assets should be replaced"
+        required: true
+        default: "v2.5.1"
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+
+concurrency:
+  group: sign-windows-release-${{ github.event.inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  sign-windows-release-assets:
+    if: github.actor == 'John-Allard'
+    runs-on: windows-latest
+    environment: windows-signing
+
+    env:
+      SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+      SIGNING_ACCOUNT: jallardcodesign
+      CERTIFICATE_PROFILE: johnallardpublictrust
+      TIMESTAMP_URL: http://timestamp.acs.microsoft.com
+      BUILD_RUN_ID: ${{ github.event.inputs.build_run_id }}
+      RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Download Windows build artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+
+          gh run download $env:BUILD_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --dir staging `
+            --name ESL-PSC-Windows `
+            --name esl-psc-toolkit-windows-x86_64
+
+      - name: Extract Windows assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path work\gui, work\toolkit, release-assets | Out-Null
+
+          Expand-Archive `
+            -LiteralPath staging\ESL-PSC-Windows\ESL-PSC-Windows.zip `
+            -DestinationPath work\gui `
+            -Force
+
+          $toolkitZip = Get-ChildItem `
+            -LiteralPath staging\esl-psc-toolkit-windows-x86_64 `
+            -Filter "esl-psc-toolkit-v*-windows-x86_64.zip" |
+            Select-Object -First 1
+
+          if (-not $toolkitZip) {
+            throw "Could not find Windows toolkit ZIP in workflow artifact."
+          }
+
+          Expand-Archive `
+            -LiteralPath $toolkitZip.FullName `
+            -DestinationPath work\toolkit `
+            -Force
+
+      - name: Azure login with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign GUI executable
+        uses: azure/artifact-signing-action@v1
+        with:
+          endpoint: ${{ env.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.CERTIFICATE_PROFILE }}
+          files-folder: ${{ github.workspace }}\work\gui
+          files-folder-filter: exe,dll,msi,msix,appx
+          file-digest: SHA256
+          timestamp-rfc3161: ${{ env.TIMESTAMP_URL }}
+          timestamp-digest: SHA256
+
+      - name: Sign toolkit executable
+        uses: azure/artifact-signing-action@v1
+        with:
+          endpoint: ${{ env.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.CERTIFICATE_PROFILE }}
+          files-folder: ${{ github.workspace }}\work\toolkit
+          files-folder-filter: exe,dll,msi,msix,appx
+          file-digest: SHA256
+          timestamp-rfc3161: ${{ env.TIMESTAMP_URL }}
+          timestamp-digest: SHA256
+
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signedFiles = @(
+            "work\gui\ESL-PSC.exe",
+            "work\toolkit\esl-psc-toolkit\bin\esl-psc.exe"
+          )
+
+          foreach ($file in $signedFiles) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            $signature | Format-List Path, Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+            if ($signature.Status -ne "Valid") {
+              throw "Signature verification failed for $file with status $($signature.Status)."
+            }
+          }
+
+      - name: Rebuild signed release assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = $env:RELEASE_TAG.TrimStart("v")
+          $guiAsset = "ESL-PSC-$($env:RELEASE_TAG)-Windows.zip"
+          $toolkitAsset = "esl-psc-toolkit-v$version-windows-x86_64.zip"
+          $toolkitShaAsset = "$toolkitAsset.sha256"
+          $toolkitManifestAsset = "$toolkitAsset.manifest.json"
+
+          Compress-Archive `
+            -Path work\gui\ESL-PSC.exe `
+            -DestinationPath "release-assets\$guiAsset" `
+            -CompressionLevel Optimal `
+            -Force
+
+          Compress-Archive `
+            -Path work\toolkit\* `
+            -DestinationPath "release-assets\$toolkitAsset" `
+            -CompressionLevel Optimal `
+            -Force
+
+          $toolkitHash = (Get-FileHash -LiteralPath "release-assets\$toolkitAsset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $toolkitSize = (Get-Item -LiteralPath "release-assets\$toolkitAsset").Length
+          "$toolkitHash  $toolkitAsset" | Set-Content -LiteralPath "release-assets\$toolkitShaAsset" -NoNewline -Encoding ascii
+
+          $sourceManifest = Get-ChildItem `
+            -LiteralPath staging\esl-psc-toolkit-windows-x86_64 `
+            -Filter "esl-psc-toolkit-v*-windows-x86_64.zip.manifest.json" |
+            Select-Object -First 1
+
+          if (-not $sourceManifest) {
+            throw "Could not find Windows toolkit manifest in workflow artifact."
+          }
+
+          $manifest = Get-Content -LiteralPath $sourceManifest.FullName -Raw | ConvertFrom-Json
+          $manifest.archive_file = $toolkitAsset
+          $manifest.archive_sha256 = $toolkitHash
+          $manifest.archive_size_bytes = $toolkitSize
+          $manifest |
+            ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath "release-assets\$toolkitManifestAsset" -Encoding ascii
+
+          Get-ChildItem -LiteralPath release-assets | Format-Table Name, Length
+
+      - name: Replace GitHub release assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          gh release upload $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber `
+            release-assets\*.zip `
+            release-assets\*.sha256 `
+            release-assets\*.manifest.json
