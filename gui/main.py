@@ -189,6 +189,9 @@ def main():
                     for exe in candidates:
                         if not exe.is_file():
                             continue
+                        if os.path.normcase(os.path.abspath(exe)) == os.path.normcase(os.path.abspath(launcher)):
+                            print(f"[warm-up] Skipping self-referential CLI candidate: {exe}", file=sys.__stderr__)
+                            continue
                         bundle_dir = str(launcher.parent)  # Contents/MacOS or exe dir
                         subprocess.run([
                             str(exe),
