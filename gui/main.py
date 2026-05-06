@@ -185,7 +185,13 @@ def main():
                 try:
                     launcher = Path(os.path.realpath(sys.argv[0]))
                     names = ["esl-psc" + (".exe" if os.name == "nt" else "")]
-                    candidates = [launcher.with_name(names[0]), launcher.parent / "bin" / names[0]]
+                    module_dir = Path(__file__).resolve().parent
+                    candidates = [
+                        launcher.with_name(names[0]),
+                        launcher.parent / "bin" / names[0],
+                        module_dir / "bin" / names[0],
+                        module_dir.parent / "bin" / names[0],
+                    ]
                     for exe in candidates:
                         if not exe.is_file():
                             continue
