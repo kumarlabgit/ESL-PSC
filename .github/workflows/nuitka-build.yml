@@ -37,6 +37,73 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
+  publish-existing-apple-silicon-assets:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-label latest macOS assets as Apple Silicon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_tag="$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)"
+          version="${release_tag#v}"
+          mkdir -p work release-assets
+
+          gh release download "${release_tag}" \
+            --repo "${{ github.repository }}" \
+            --dir work \
+            --pattern "ESL-PSC-v${version}-macOS.dmg" \
+            --pattern "esl-psc-toolkit-v${version}-macos-x86_64.tar.gz" \
+            --pattern "esl-psc-toolkit-v${version}-macos-x86_64.tar.gz.manifest.json"
+
+          cp "work/ESL-PSC-v${version}-macOS.dmg" \
+            "release-assets/ESL-PSC-v${version}-macOS-Apple-Silicon.dmg"
+          cp "work/esl-psc-toolkit-v${version}-macos-x86_64.tar.gz" \
+            "release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz"
+
+          tar -xzf "release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz" \
+            -C work \
+            esl-psc-toolkit/bin/esl-psc
+          file work/esl-psc-toolkit/bin/esl-psc | grep -q "arm64"
+
+          export VERSION="${version}"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          source_manifest = Path(f"work/esl-psc-toolkit-v{version}-macos-x86_64.tar.gz.manifest.json")
+          archive = Path(f"release-assets/esl-psc-toolkit-v{version}-macos-arm64.tar.gz")
+
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          archive.with_name(f"{archive.name}.sha256").write_text(
+              f"{digest}  {archive.name}\n",
+              encoding="utf-8",
+          )
+
+          manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
+          manifest["arch"] = "arm64"
+          manifest["archive_file"] = archive.name
+          manifest["archive_sha256"] = digest
+          manifest["archive_size_bytes"] = archive.stat().st_size
+          archive.with_name(f"{archive.name}.manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          gh release upload "${release_tag}" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            release-assets/ESL-PSC-v${version}-macOS-Apple-Silicon.dmg \
+            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz \
+            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz.sha256 \
+            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz.manifest.json
+
   build-linux-toolkit:
     if: ${{ github.event.inputs.target_os == 'linux_toolkit' }}
     runs-on: ubuntu-22.04
@@ -133,7 +200,7 @@ jobs:
             dist/gui/esl-psc-gui_*.deb.sha256
 
   build-macos-apple-silicon:
-    if: ${{ github.event_name == 'push' || github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
+    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
