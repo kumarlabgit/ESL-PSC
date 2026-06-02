@@ -1,6 +1,11 @@
 name: Build Nuitka Distributables
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/nuitka-build.yml
   workflow_dispatch:
     inputs:
       target_os:
@@ -14,6 +19,19 @@ on:
           - windows
           - linux_gui
           - linux_toolkit
+      upload_to_release:
+        description: "Upload Apple Silicon macOS assets to the release after building"
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: "Release tag to upload to; defaults to v<package version>"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
 
 env:
   PYTHON_VERSION: "3.11"
@@ -115,7 +133,7 @@ jobs:
             dist/gui/esl-psc-gui_*.deb.sha256
 
   build-macos-apple-silicon:
-    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
+    if: ${{ github.event_name == 'push' || github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -190,6 +208,23 @@ jobs:
           path: |
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
+      - name: Upload Apple Silicon assets to GitHub release
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${{ github.event.inputs.release_tag }}"
+          if [ -z "${release_tag}" ]; then
+            release_tag="v${{ steps.version.outputs.version }}"
+          fi
+
+          gh release upload "${release_tag}" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            dist/gui/ESL-PSC-v*-macOS-Apple-Silicon.dmg \
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz \
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256 \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
 
   build-windows:
