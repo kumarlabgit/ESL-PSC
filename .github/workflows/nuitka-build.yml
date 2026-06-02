@@ -7,8 +7,9 @@ on:
         description: "Platform to build"
         required: true
         type: choice
-        default: macos
+        default: macos_apple_silicon
         options:
+          - macos_apple_silicon
           - macos
           - windows
           - linux_gui
@@ -113,9 +114,9 @@ jobs:
             dist/gui/esl-psc-gui_*.deb
             dist/gui/esl-psc-gui_*.deb.sha256
 
-  build-macos:
-    if: ${{ github.event.inputs.target_os == 'macos' }}
-    runs-on: macos-latest
+  build-macos-apple-silicon:
+    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -130,6 +131,11 @@ jobs:
       - name: Build Rust binaries
         run: |
           cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Detect release version
+        id: version
+        run: |
+          version="$(python -c 'import tomllib; from pathlib import Path; data = tomllib.loads(Path("esl_psc_rs/Cargo.toml").read_text(encoding="utf-8")); print(data["package"]["version"])')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
@@ -162,28 +168,29 @@ jobs:
             --rust-main esl_psc_rs/target/release/esl-psc \
             --platform posix \
             --os-tag macos \
-            --arch x86_64 \
+            --arch arm64 \
             --git-sha "${{ github.sha }}"
       - name: Smoke-test toolkit artifact
         run: |
           python packaging/toolkit/smoke_test_toolkit.py \
-            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz)"
+            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)"
       - name: Create DMG
         run: |
+          mkdir -p dist/gui
           hdiutil create -volname "ESL-PSC" \
                          -srcfolder build/ESL-PSC.app \
-                         -ov -format UDZO build/ESL-PSC.dmg
+                         -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS-Apple-Silicon.dmg"
       - uses: actions/upload-artifact@v4
         with:
-          name: ESL-PSC-macOS
-          path: build/ESL-PSC.dmg
+          name: ESL-PSC-macOS-Apple-Silicon
+          path: dist/gui/ESL-PSC-v*-macOS-Apple-Silicon.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: esl-psc-toolkit-macos-x86_64
+          name: esl-psc-toolkit-macos-arm64
           path: |
-            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz
-            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.sha256
-            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.manifest.json
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
