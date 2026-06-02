@@ -160,7 +160,7 @@ jobs:
           script-name: gui/main.py
           mode: app
           output-dir: build
-          lto: "yes"
+          lto: "no"
           no-deployment-flag: self-execution
           enable-plugins: |
             pyside6
