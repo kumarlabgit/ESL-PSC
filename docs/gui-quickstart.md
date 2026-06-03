@@ -154,8 +154,12 @@ On the final page:
 
 ## First practice run
 
-If you want to practice with the bundled demo data first, use:
+If you installed the desktop GUI from a release download, download and unzip the
+separate [`ESL-PSC-v2.5.1-demo-data.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/ESL-PSC-v2.5.1-demo-data.zip)
+archive first.
 
-- alignments folder: `demo_data/photosynthesis/alignments`
-- tree file: `demo_data/photosynthesis/photo_tree.nwk`
-- phenotype file: `demo_data/photosynthesis/photo_species_phenotypes.txt`
+For the photosynthesis practice run, use:
+
+- alignments folder: `ESL-PSC-demo-data/photosynthesis/alignments`
+- tree file: `ESL-PSC-demo-data/photosynthesis/photo_tree.nwk`
+- phenotype file: `ESL-PSC-demo-data/photosynthesis/photo_species_phenotypes.txt`
