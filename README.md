@@ -38,58 +38,34 @@ It shows which GUI download to choose for Mac, Windows, or Ubuntu/Debian Linux, 
 
 ## Installation and Dependencies ##
 
-ESL-PSC requires Python 3.10+ and has been tested on recent macOS, Windows, and Linux systems.
-
-### Python dependencies
-
-- biopython
-- numpy
-- pandas
-- matplotlib
-- seaborn
-
-Install directly with:
-
-`pip install biopython numpy pandas matplotlib seaborn`
-
-or via:
-
-`pip install -r requirements-toolkit.txt`
-
 ### Install options
 
-Choose the path that matches how you want to use ESL-PSC.
+Prepackaged software is available for download.
 
 #### 1. GUI app downloads (macOS/Windows/Linux)
 
-Download from [GitHub Releases](../../releases/latest):
+Download the GUI app for your platform from [GitHub Releases](../../releases/latest):
 
-- `ESL-PSC-v<version>-macOS.dmg`
-- `ESL-PSC-v<version>-Windows.zip`
-- `esl-psc-gui_<version>_amd64.deb` (Linux)
 
-These are desktop app packages. The GUI can still generate CLI commands for terminal use when needed.
 
 #### 2. Toolkit archive (Linux/macOS/Windows)
 
-Download the toolkit archive for your platform from [GitHub Releases](../../releases/latest):
+The Toolkit provides the CLI for ESL-PSC. Download the toolkit archive for your platform from [GitHub Releases](../../releases/latest):
 
-- `esl-psc-toolkit-v<version>-linux-x86_64.tar.gz`
-- `esl-psc-toolkit-v<version>-macos-x86_64.tar.gz`
-- `esl-psc-toolkit-v<version>-windows-x86_64.zip`
+
 
 Then:
 
 1. Extract archive.
-2. Install toolkit Python dependencies:
+2. Use Python 3.10+ to install toolkit Python dependencies:
    `python -m pip install -r requirements-toolkit.txt`
 3. Run:
    - `./bin/esl-psc --help` (Linux/macOS)
    - `.\bin\esl-psc.exe --help` (Windows)
 
-#### 3. Build/install from source (most reliable Linux path)
+#### 3. Build/install from source (most reliable on Linux)
 
-This path avoids prebuilt binary ABI mismatches on some Linux systems.
+This avoids prebuilt binary issues on some Linux systems.
 
 1. Install Rust toolchain.
 2. Install CLI:
@@ -100,24 +76,12 @@ This path avoids prebuilt binary ABI mismatches on some Linux systems.
    - `ESL_PSC_PYTHON` should point to your Python executable
    - `ESL_PSC_PYTHONPATH` should point to a directory containing `esl_psc_cli` and `gui` modules (the repo root works)
 
-#### 4. Package-manager artifacts
-
-- A Conda package artifact is published in releases (`.conda`).
-- Conda-forge recipe output is published for feedstock or staged-recipes use.
-- A Homebrew formula output is published as `esl-psc.rb`.
-- A Debian package artifact is published as `esl-psc_<version>_amd64.deb` for direct install:
-  `sudo apt install ./esl-psc_<version>_amd64.deb`
-
-### Linux install verification status (v2.5.1)
-
-- Source install: verified on this Linux host (`esl-psc`, `pairs`, `site-counter` help commands).
-- Prebuilt Linux toolkit and `.deb` binaries: on this host they require a newer glibc (`GLIBC_2.39`). If you run into that, use the source install path or conda.
+  
 
 ## Graphical User Interface ##
 
-If you are new to ESL-PSC and want the simplest path, start with the screenshot guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
+If you are new to ESL-PSC and want the simplest path, start with the guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
 
-June 2025:
 
 We introduced a GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
 
