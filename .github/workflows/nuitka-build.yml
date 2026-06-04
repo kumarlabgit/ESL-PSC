@@ -15,12 +15,11 @@ on:
         default: macos_apple_silicon
         options:
           - macos_apple_silicon
-          - macos
           - windows
           - linux_gui
           - linux_toolkit
       upload_to_release:
-        description: "Upload Apple Silicon macOS assets to the release after building"
+        description: "Upload macOS assets to the release after building"
         required: false
         type: boolean
         default: false
@@ -37,73 +36,6 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
-  publish-existing-apple-silicon-assets:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Re-label latest macOS assets as Apple Silicon
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          release_tag="$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)"
-          version="${release_tag#v}"
-          mkdir -p work release-assets
-
-          gh release download "${release_tag}" \
-            --repo "${{ github.repository }}" \
-            --dir work \
-            --pattern "ESL-PSC-v${version}-macOS.dmg" \
-            --pattern "esl-psc-toolkit-v${version}-macos-x86_64.tar.gz" \
-            --pattern "esl-psc-toolkit-v${version}-macos-x86_64.tar.gz.manifest.json"
-
-          cp "work/ESL-PSC-v${version}-macOS.dmg" \
-            "release-assets/ESL-PSC-v${version}-macOS-Apple-Silicon.dmg"
-          cp "work/esl-psc-toolkit-v${version}-macos-x86_64.tar.gz" \
-            "release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz"
-
-          tar -xzf "release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz" \
-            -C work \
-            esl-psc-toolkit/bin/esl-psc
-          file work/esl-psc-toolkit/bin/esl-psc | grep -q "arm64"
-
-          export VERSION="${version}"
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-
-          version = os.environ["VERSION"]
-          source_manifest = Path(f"work/esl-psc-toolkit-v{version}-macos-x86_64.tar.gz.manifest.json")
-          archive = Path(f"release-assets/esl-psc-toolkit-v{version}-macos-arm64.tar.gz")
-
-          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-          archive.with_name(f"{archive.name}.sha256").write_text(
-              f"{digest}  {archive.name}\n",
-              encoding="utf-8",
-          )
-
-          manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
-          manifest["arch"] = "arm64"
-          manifest["archive_file"] = archive.name
-          manifest["archive_sha256"] = digest
-          manifest["archive_size_bytes"] = archive.stat().st_size
-          archive.with_name(f"{archive.name}.manifest.json").write_text(
-              json.dumps(manifest, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-          gh release upload "${release_tag}" \
-            --repo "${{ github.repository }}" \
-            --clobber \
-            release-assets/ESL-PSC-v${version}-macOS-Apple-Silicon.dmg \
-            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz \
-            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz.sha256 \
-            release-assets/esl-psc-toolkit-v${version}-macos-arm64.tar.gz.manifest.json
-
   build-linux-toolkit:
     if: ${{ github.event.inputs.target_os == 'linux_toolkit' }}
     runs-on: ubuntu-22.04
@@ -200,7 +132,7 @@ jobs:
             dist/gui/esl-psc-gui_*.deb.sha256
 
   build-macos-apple-silicon:
-    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' || github.event.inputs.target_os == 'macos' }}
+    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -264,11 +196,11 @@ jobs:
           mkdir -p dist/gui
           hdiutil create -volname "ESL-PSC" \
                          -srcfolder build/ESL-PSC.app \
-                         -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS-Apple-Silicon.dmg"
+                         -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
       - uses: actions/upload-artifact@v4
         with:
-          name: ESL-PSC-macOS-Apple-Silicon
-          path: dist/gui/ESL-PSC-v*-macOS-Apple-Silicon.dmg
+          name: ESL-PSC-macOS
+          path: dist/gui/ESL-PSC-v*-macOS.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: esl-psc-toolkit-macos-arm64
@@ -276,7 +208,7 @@ jobs:
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
-      - name: Upload Apple Silicon assets to GitHub release
+      - name: Upload macOS assets to GitHub release
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -289,7 +221,7 @@ jobs:
           gh release upload "${release_tag}" \
             --repo "${{ github.repository }}" \
             --clobber \
-            dist/gui/ESL-PSC-v*-macOS-Apple-Silicon.dmg \
+            dist/gui/ESL-PSC-v*-macOS.dmg \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256 \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json

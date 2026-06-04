@@ -682,7 +682,7 @@ def validate_tree_for_site_counter(
             if base_children != 2:
                 return False, (
                     "The tree does not appear to be properly rooted: the basal split is not a bifurcation. "
-                    "Please root your tree (e.g., midpoint or outgroup rooting) before running Site Counter."
+                    "Please root your tree before running Site Counter."
                 )
         except Exception:
             # If detection fails, do not block; continue with other validations

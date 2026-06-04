@@ -173,7 +173,7 @@ Toolkit release artifacts are versioned by platform as:
 
 
 #### macOS build
-1. Download the Apple Silicon GUI release asset for M-series Macs, or the Intel GUI release asset for older Intel Macs.
+1. Download the macOS GUI release asset. The current macOS GUI release is built for Apple Silicon Macs.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
 3. Drag `ESL-PSC.app` to your **Applications** folder.
 4. Open the app via Launchpad, Spotlight or Finder. Because the build is notarized, macOS should open it without additional warnings. If a confirmation dialog appears, click **Open**.
