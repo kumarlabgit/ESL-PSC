@@ -1,84 +1,83 @@
 # ESL-PSC GUI Wizard
 
-A graphical user interface for running ESL-PSC analyses with an intuitive wizard interface.
+This directory contains the PySide6 desktop interface for ESL-PSC. The GUI
+collects the same inputs used by the command-line program, writes an executable
+command, runs the analysis, and opens the main output tables and alignment
+viewer from within the application.
 
-## Features Overview
+## Main windows and tools
 
-### Core Workflow
-- **Step-by-step wizard** for configuring ESL-PSC analyses
-- **Intuitive file selection** with validation and feedback
-- **Parameter configuration** with sensible defaults and helpful tooltips
-- **Real-time progress tracking** during analysis
-- **Command preview** - see and copy the exact CLI command before running
-- **Results viewer** - examine gene rankings and convergent sites interactively
-- **Configuration management** - save/load analysis configurations as JSON files
-- **Cross-platform support** (Windows, macOS, Linux)
+### Analysis wizard
 
-### Interactive Tree Viewer
+The main window is a `QWizard` with pages for input files, run parameters,
+command review, execution, and output inspection. It supports:
 
-Load and visualize phylogenetic trees with phenotype data:
+- alignment directories using `.fas`, `.fasta`, `.fa`, or `.faa` files
+- species groups files, response matrix inputs, and optional phenotype files
+- separate prediction alignment directories
+- JSON configuration save/load
+- terminal output from the running `esl-psc` process
+- access to gene ranks, species predictions, selected sites, and SPS plots
 
-- **Tree file support**: Newick (`.nwk`, `.newick`, `.tree`, `.tre`) and NEXUS (`.nexus`, `.nex`)
-- **Phenotype visualization**:
-  - Binary (-1/1) phenotypes color labels red/blue
-  - Continuous float phenotypes render via Viridis gradient (low→high)
-  - Pair-based coloring overrides phenotype colors for clarity
-  - Species without phenotype data appear black
-- **Interactive editing**:
-  - Right-click species to assign convergent/non-convergent phenotypes
-  - Manually assign species to contrast pairs
-  - Drag to pan, scroll to zoom
-- **Automatic contrast pair selection**:
-  - One-click generation of sensible convergent/control pairs
-  - **Continuous phenotype thresholds**: Interactive histogram with tail-percentage control
-  - **Tie-breaking options**: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Default
-  - **Alternate selection**: Generate multiple alternates per species for robust analysis
-- **Export**: Save SVG graphics with annotations, colorbar, and pair labels
-- **Tree validation**: Warns if basal split is not a bifurcation
+### Tree viewer
 
-### Continuous Phenotype Support
+The tree viewer opens Newick (`.nwk`, `.newick`, `.tree`, `.tre`) and NEXUS
+(`.nexus`, `.nex`) trees. It can load phenotype files, color species labels by
+binary or continuous phenotype values, and write a species groups file for the
+main ESL-PSC analysis.
 
-Full support for numeric (continuous) phenotypes:
+Tree annotations include:
 
-- **Analysis mode**: Toggle "Use continuous phenotype values?" to run linear regression (OLS) instead of binary logistic
-- **Tree viewer gradient**: Percentile-based Viridis coloring with numeric values displayed
-- **Threshold picker**: Interactive histogram with quantile controls for binarizing continuous values during pair selection
-- **Site viewer**: Display phenotype values alongside species names, sortable by phenotype magnitude
-- **Continuous plots**: Phenotype vs SPS density plot (2D heatmap) instead of binary violin/KDE plots
+- binary phenotype labels colored by class
+- continuous phenotype labels colored by percentile
+- contrast-pair colors for species assigned to training pairs
+- manually assigned phenotypes and contrast pairs
+- exported SVG files with tree labels, pair labels, and continuous color bars
+
+The automatic pair selector can choose contrast pairs from the tree. Available
+tie-breaking modes include longest sequence, shortest distance, maximum trait
+contrast, composite score, random choice, and the default deterministic method.
+Continuous traits can be converted to high/low classes with explicit thresholds
+or quantile-tail thresholds. Positive-valued continuous traits can also use the
+local percent-contrast selector.
+
+### Continuous phenotype options
+
+Continuous phenotype values are used in three places:
+
+- the tree viewer, where species labels are colored by phenotype value
+- automatic pair selection, where thresholds or percent contrast rules define
+  high and low training species
+- ESL-PSC runs, where the Parameters page can request linear regression instead
+  of binary logistic regression
+
+For continuous runs, the GUI can request the phenotype-vs-SPS density plot
+instead of binary SPS violin or KDE plots.
 
 ### Site Counter
 
-Quick convergence screening of alignments without running full ESL-PSC:
+The Site Counter dialog runs `esl-psc site-counter` from the GUI. It accepts the
+same species groups design used by ESL-PSC and reports convergence-count
+statistics for each alignment. The dialog supports:
 
-- **Rapid screening**: Scan thousands of genes in minutes
-- **Convergence metrics**: Avg true convergence, control convergence, difference, CS sites
-- **Multi-combo support**: Analyze multiple species combinations and rank by cross-combo consistency
-- **Two-pair mode**: Generate all 2×2 pair combinations from species groups
-- **Adjustable outgroup agreement**: Relax the requirement for 100% control-outgroup agreement (0–100%)
-- **Outgroup options**:
-  - **Single species outgroup** (traditional)
-  - **Parsimony ancestral reconstruction** (NEW) - see [Ancestral Reconstruction](#ancestral-reconstruction-outgroup) below
-- **Results viewer**: Sortable table with gene details, click to open site viewer
-- **Export**: Save results as CSV for further analysis
+- fixed single-species outgroups
+- parsimony-reconstructed ancestral outgroups from a tree file
+- multiple species combinations
+- two-pair combinations generated from species groups
+- configurable control/outgroup agreement thresholds
+- CSV export
 
-### Site Viewer
+### Site viewer
 
-Interactive alignment viewer for examining convergent sites:
+The site viewer opens an alignment and displays residues in separate panes for
+the convergent, control, and other species. It can highlight convergent sites,
+show CCS-compatible sites, and sort the other-species pane by phenotype when
+phenotype annotations are available.
 
-- **Alignment display**: Color-coded residues with convergent sites highlighted
-- **Species grouping**: Convergent, Control, and Other species in separate panes
-- **Phenotype-aware sorting**: Sort "Other" species by phenotype (high→low, low→high) when available
-- **Site navigation**: Jump to specific convergent sites
-- **CCS highlighting**: Convergent sites marked with yellow background
-- **Statistics panel**: Display convergent site metrics and sequence information
+### Existing-output viewer
 
-### Additional Features
-
-- **Response matrix mode**: Use pre-computed response matrices instead of species groups
-- **Output options**: Control which outputs are generated (gene ranks, predictions, plots, etc.)
-- **Load existing output**: Browse and view results from previous runs
-- **Checkpoint/resume**: Resume interrupted analyses (checkpoints stored per alignment set)
-- **Multi-format alignment support**: `.fas`, `.fasta`, `.fa`, `.faa`
+The output viewer can open result files from previous ESL-PSC runs, including
+gene ranks, selected-site summaries, species predictions, and SVG plots.
 
 ## Installation
 
@@ -97,63 +96,49 @@ From the project root directory, run:
 python -m gui.main
 ```
 
-The wizard window will appear. Navigate through the pages and click **Run** on the final page to start the analysis.
+The wizard window will appear. Fill in the pages and click **Run** on the final
+page to start the analysis.
 
 ## Ancestral Reconstruction Outgroup
 
-### Overview
+Site Counter can use a parsimony-reconstructed ancestral sequence as the
+outgroup instead of a named extant species. In this mode, the outgroup state is
+estimated at the MRCA of the species included in the convergence analysis.
 
-Site Counter now supports using a **parsimony-reconstructed ancestral sequence** as the outgroup instead of selecting a single species. This provides more robust convergence detection when no single species serves as an ideal outgroup, or when you want to infer the ancestral state at the MRCA of your analysis species.
+### Algorithm
 
-### How It Works
+1. For each alignment, the input tree is pruned to species present in that
+   alignment.
+2. The MRCA of all analysis species is identified in the full tree and in the
+   pruned tree.
+3. Alignments are skipped if the MRCA is at the root of the pruned tree, because
+   no outgroup species remain for that alignment.
+4. Ancestral residues are reconstructed position-by-position with Fitch
+   parsimony:
+   - downpass (tips to root): intersect child state sets if non-empty, otherwise
+     take their union
+   - uppass (root to tips): assign states while preferring the parent state when
+     it is valid
+5. The reconstructed ancestral sequence is used as the outgroup sequence for CCS
+   detection.
 
-1. **Tree Pruning**: For each alignment, the input tree is pruned to only include species present in that alignment
-2. **MRCA Identification**: The MRCA of all analysis species is identified in both the full tree and each pruned tree
-3. **Validation**: Alignments are automatically skipped if the MRCA is at the root of the pruned tree (no outgroup available)
-4. **Fitch Parsimony**: The algorithm reconstructs ancestral sequences position-by-position using a two-pass approach:
-   - **Downpass** (tips → root): Intersect child state sets if non-empty, else union
-   - **Uppass** (root → tips): Assign states preferring parent state when valid
-5. **Convergence Detection**: The reconstructed ancestral sequence is used as the outgroup for CCS detection
+### GUI use
 
-### Usage in GUI
-
-1. **Start Site Counter** from the Input Page
-2. In the **Outgroup Dialog**, select **"Use parsimony ancestral reconstruction"**
-3. Click **Browse** to select a tree file (Newick or NEXUS format)
+1. Start Site Counter from the Input page.
+2. In the outgroup dialog, select **Use parsimony ancestral reconstruction**.
+3. Click **Browse** and select a Newick or NEXUS tree file.
 4. The tree is validated automatically:
-   - ✓ **Green check**: Tree is valid for ancestral reconstruction
-   - ✗ **Red X**: Tree is missing species or has other issues (see error message)
-5. Continue with Site Counter as normal
+   - green check: tree is valid for ancestral reconstruction
+   - red X: tree is missing species or has another validation error
+5. Continue with Site Counter.
 
 ### Tree File Requirements
 
-Your tree must:
+The tree must:
 - Be in **Newick** or **NEXUS** format (`.nwk`, `.newick`, `.tree`, `.nexus`, etc.)
 - Contain **all species** from your species groups file
 - Have the MRCA of analysis species **not at the root** (outgroup species must exist in the tree)
 - Use species names matching your alignment files
-
-### Advantages
-
-- **Robustness**: Not dependent on a single species with potentially unique substitutions
-- **Accuracy**: Infers the actual ancestral state using all available outgroup information
-- **Flexibility**: Handles alignments with different species subsets automatically
-- **Quality Control**: Skips alignments without proper outgroup context (logged with reason)
-
-### Example Workflow
-
-**Scenario**: Studying photosynthesis loss across 4 plant species with a phylogeny including 2 outgroups.
-
-1. Create species groups file with your 4 analysis species
-2. Launch Site Counter, choose ancestral reconstruction
-3. Select your tree file (e.g., `plants_tree.nwk`)
-4. Site Counter will:
-   - Prune tree to present species per alignment
-   - Identify MRCA of analysis species
-   - Skip alignments where MRCA is at root
-   - Reconstruct ancestral sequence at MRCA
-   - Use ancestral sequence for convergence detection
-5. Results show genes with significant convergence, excluding genes lacking outgroup context
 
 ### Validation and Skipping
 
@@ -162,13 +147,13 @@ Alignments are **skipped** (not counted as errors) when:
 - No outgroup species are present in that alignment
 - Reconstruction fails for technical reasons
 
-This ensures only alignments with appropriate outgroup context are analyzed.
+Skipped alignments are logged with the reason they were skipped.
 
 ### Technical Details
 
 - **Algorithm**: Fitch parsimony (Fitch 1971, Systematic Zoology 20:406-416)
 - **Implementation**: `gui/core/ancestral_reconstruction.py`
-- **Tests**: Comprehensive test suite in `tests/test_ancestral_reconstruction.py`
+- **Tests**: `tests/test_ancestral_reconstruction.py`
 - **Performance**:
   - **Compiled backend**: Performs both ancestral reconstruction and CCS detection natively. End-to-end runtime stays within a few milliseconds per gene (≈6 s for 20 k genes on test hardware).
   - **Python fallback**: Available when Rust is missing. Single-species outgroups are modestly slower (~0.26 s for 67 genes). Parsimony ancestor mode is much heavier (~30 s for 67 genes) because Python must parse the tree and reconstruct every alignment; use only when Rust cannot run.

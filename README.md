@@ -27,7 +27,7 @@ This repository provides GUI and command-line tools for analyzing signatures of 
 
 ## Quick Start ##
 
-If you want to get started quickly, the GUI is the easiest way to run ESL-PSC without needing to assemble a CLI command manually. Start with the beginner guide here:
+The GUI is the easiest way to run ESL-PSC. Start with the beginner guide here:
 
 - [`docs/gui-quickstart.md`](docs/gui-quickstart.md)
 
@@ -44,12 +44,9 @@ Prepackaged software is available for download.
 Download the GUI app for your platform from [GitHub Releases](../../releases/latest):
 
 
-
-#### 2. Toolkit archive (Linux/macOS/Windows)
+#### 2. CLI Toolkit archive (macOS/Windows/Linux)
 
 The Toolkit provides the CLI for ESL-PSC. Download the toolkit archive for your platform from [GitHub Releases](../../releases/latest):
-
-
 
 Then:
 
@@ -79,19 +76,9 @@ This avoids prebuilt binary issues on some Linux systems.
 
 If you are new to ESL-PSC and want the simplest path, start with the guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
 
+Install the GUI app from the [GitHub Releases page](../../releases/latest).
 
-We introduced a GUI that wraps all of ESL-PSC's functionality in an easy-to-use wizard-style app:
-
-Step-by-step workflow guiding you through:
-  1. **Input selection** – Select files and directories for each required and optional input 
-  2. **Analysis parameters** – adjust settings within allowed ranges using controls with helpful tooltips
-  3. **Command preview** – view the exact CLI command that will be executed. This can be copied to the clipboard and run from the command line if you prefer.
-  4. **Run** – Execute the analysis and view the terminal output within the GUI. When SPS plots are generated, they remain closed by default – use the **Show SPS Plot** button to open them. Running the same command directly from the CLI will display the plot automatically.
-  5. **View results** – View gene rankings and examine convergent sites in an interactive alignment viewer.
-
-Save your configuration in a file and re-load it later.
-
-Now compatible with Windows, Mac, and Linux.
+Compatible with Windows, Mac, and Linux.
 
 ![ESL-PSC GUI](./images/ESL-PSC_GUI.png)
 
@@ -107,7 +94,7 @@ The GUI now features an interactive phylogenetic tree viewer that lets you:
   - Species without phenotype data remain black.
   - Contrast pair coloring takes precedence over phenotype coloring to keep analysis pairs clear.
 * Assign species to contrast pairs which are then marked on the tree view.
-* Automatically generate sensible convergent/control contrast pairs with a single click.
+* Automatically generate sensible convergent/control contrast pairs.
 * Save / load phenotype assignments and the species groups file to use in the analysis.  No need to create text or CSV files manually. 
 * Export an SVG graphic of the annotated tree graphic with pairs selected to keep track of and display your experimental design.
 
@@ -149,7 +136,10 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
   - Added method `pct_contrast` with `--min_pct_diff` for the same local percent-contrast selection workflow.
 
 
-### Running the GUI
+### Running the GUI from source
+
+If you installed a pre-built GUI package from GitHub Releases, you do not need these steps. Use these instructions only if you want to run the GUI from source after cloning this repo.
+
 1. Ensure the GUI dependencies are installed:
    ```bash
    pip install -r requirements-gui.txt  
@@ -166,17 +156,13 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
    sudo apt install libxcb-cursor0
    ```
 
-### Additional dependencies
-The GUI requires **PySide6** on top of other ESL-PSC requirements (`biopython`, `numpy`, `pandas`, `matplotlib`, `seaborn`). The `requirements-gui.txt` file lists everything you need.
-
-
 Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](https://github.com/John-Allard/ESL-PSC/issues) if you have any questions or suggestions.
 
 ### Stand-alone packaged applications ###
 
-Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a toolkit package for terminal use centered on `esl-psc` and its utility subcommands, including `pairs` and `site-counter`.
+Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a CLI toolkit package.
 
-The toolkit package includes the compiled `esl-psc` binary plus Python support modules used by utility subcommands such as `pairs` and `site-counter`. It is intended to run with your system Python rather than bundling another Python runtime.
+The CLI toolkit package includes the compiled `esl-psc` binary plus Python support modules used by utility subcommands such as `pairs` and `site-counter`. It is intended to run with your system Python rather than bundling another Python runtime.
 After extracting the toolkit, install dependencies with:
 
 `python3 -m pip install -r requirements-toolkit.txt`
@@ -185,26 +171,20 @@ Toolkit release artifacts are versioned by platform as:
 `esl-psc-toolkit-v<version>-<os>-<arch>.<tar.gz|zip>`, with companion
 `.sha256` and `.manifest.json` files for integrity and metadata.
 
-The conda recipe for packaging `esl-psc` is provided at
-`packaging/conda/recipe/`.
 
-Package-manager scaffolding is included for:
 
-- conda-forge recipe rendering: `packaging/conda-forge/`
-- Homebrew formula rendering: `packaging/homebrew/`
-- apt/deb package building: `packaging/apt/`
 
-#### macOS build (Apple-notarized)
+
+#### macOS build
 1. Download the macOS GUI release asset.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
 3. Drag `ESL-PSC.app` to your **Applications** folder.
 4. Open the app via Launchpad, Spotlight or Finder. Because the build is notarized, macOS should open it without additional warnings. If a confirmation dialog appears, click **Open**.
 
-#### Windows build (currently unsigned)
+#### Windows build
 1. Download the Windows GUI release asset.
 2. Right-click the file and select **Extract All…** (or use your preferred unzip tool).
 3. Inside the extracted folder, double-click `ESL-PSC.exe` to launch.
-   • Windows SmartScreen will warn that the executable is unsigned. Click **More info** and then **Run anyway** to continue.
 
 #### Linux build (Debian/Ubuntu)
 1. Download the Linux GUI release asset `esl-psc-gui_<version>_amd64.deb`.
