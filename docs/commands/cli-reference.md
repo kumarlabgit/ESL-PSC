@@ -1,9 +1,21 @@
 ## Command Line Usage ##
-To use the ESL-PSC command line interface (CLI), run `esl-psc` with the necessary arguments and options. The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands including `esl-psc pairs` and `esl-psc site-counter`.
+The ESL-PSC command line interface is provided by the unified `esl-psc` executable. Most users will run it either from a downloaded Toolkit archive or from a source build.
+
+If you installed the Toolkit archive, run the executable from the extracted archive unless you have added it to your `PATH`:
+
+- Linux/macOS: `./bin/esl-psc --help`
+- Windows: `.\bin\esl-psc.exe --help`
+
+If you built from source with Cargo, run the installed executable if it is on your `PATH`, or run the release binary from the Rust build directory:
+
+- `esl-psc --help`
+- `./esl_psc_rs/target/release/esl-psc --help`
+
+The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands including `esl-psc pairs` and `esl-psc site-counter`.
 
 You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
 
-Here is an example of how to run the script:
+Here is an example of how to run the main analysis command when `esl-psc` is on your `PATH`:
 
 `esl-psc --output_file_base_name output_file_name --species_groups_file /path/to/species_groups_file --alignments_dir /path/to/alignments/dir --use_logspace --cancel_only_partner`
 
@@ -13,37 +25,11 @@ Strict line-search acceptance is now the default solver behavior and matches the
 
 See [Demo](#demo) for an example of a run command you can try with an included data set.
 
-Legacy Python wrappers are still available for maintainability and historical reference, but they are no longer kept in the repository root. They now live under `legacy/python_entrypoints/`.
+### Legacy Python Wrappers
 
-If you need to run the legacy Python implementation directly, use module entry points such as:
+Legacy Python wrappers are retained only for maintainability and historical reference. New analyses should use the unified `esl-psc` executable.
 
-- `python -m esl_psc_cli.esl_multimatrix`
-- `python -m esl_psc_cli.auto_pairs_cli`
-- `python -m esl_psc_cli.fast_scan_cli`
-- `python -m esl_psc_cli.plot_cli`
-
-### Auto Pair Selection CLI
-
-Toolkit command: `esl-psc pairs --help`
-
-Auto pair-selection docs:
-
-- [`docs/commands/pairs.md`](docs/commands/pairs.md) (quick usage and examples)
-- [`esl_psc_cli/auto_pairs_cli_README.md`](esl_psc_cli/auto_pairs_cli_README.md) (full option reference)
-
-### Site Counter CLI
-
-Toolkit command: `esl-psc site-counter --help`
-
-Site Counter is integrated into the unified `esl-psc` binary and exposed through the `site-counter` subcommand. See [`esl_psc_rs/README.md`](esl_psc_rs/README.md) for unified CLI behavior and implementation details.
-
-Site Counter docs:
-
-- [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
-
-**Parsimony-based ancestral reconstruction** is available in Site Counter via the `--tree_file` option. Instead of specifying a single outgroup species, provide a phylogenetic tree and Site Counter will reconstruct the ancestral sequence at the MRCA (Most Recent Common Ancestor) of your analysis species for each alignment.
-
-### NEW: Checkpointing & Resuming Interrupted Runs
+### Checkpointing & Resuming Interrupted Runs
 
 ESL-PSC automatically checkpoints progress by default for runs with multiple species combinations. After each species combination finishes, it saves a compact record inside a `checkpoint/` folder within your `--output_dir`. When you rerun the *same* command, the script detects the checkpoint and resumes exactly where it left off—skipping finished combos, reusing existing gap-canceled alignments and preprocess directories, and continuing to checkpoint as it goes.
 
@@ -60,7 +46,7 @@ Flags you can use:
 
 To resume after an unexpected interruption, simply rerun the original command.
 
-## Additional Options and Parameters ##
+## Options and Parameters ##
 
 The following additional options and parameters can be specified when running ESL-PSC to fine-tune the analysis and control various aspects of the process. These options can be added as command line arguments or specified in the config file. 
 
@@ -113,4 +99,3 @@ Note that the word the word "gene" is used here to refer to the genomic componen
 * `--make_null_models`: Make null response-flipped ESL-PSC models. Must have an even number of pairs. All balanced flippings of the response values will be generated for each combo and all will be run and aggregated to maximally decouple true convergences (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). 
 * `--make_pair_randomized_null_models`: Make null pair randomized ESL-PSC models. A copy of input deletion-canceled alignment will, for each variable site, be randomized such that the residues of each contrast pair will be either flipped or not and the ESL-PSC integration will be repeated for each one. The results are then aggregated for all (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)).
 * `--num_randomized_alignments`: Number of pair-randomized alignments to make. Default is 10.
-
