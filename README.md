@@ -223,7 +223,7 @@ If you are on a non-Debian Linux distribution or prefer to run from source, use 
 ## Command Line Usage ##
 The main CLI, `esl-psc`, now uses a high-performance unified Rust implementation of the analysis pipeline. It preserves the core CLI behavior while substantially reducing runtime for many analyses.
 
-The full CLI reference was split into its own page as a verbatim copy of the previous README section:
+For a concise overview of the unified command-line interface, configuration-file behavior, checkpointing, and utility subcommands, see:
 
 - [`docs/commands/cli-reference.md`](docs/commands/cli-reference.md)
 
