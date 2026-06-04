@@ -12,19 +12,16 @@
 3. [Installation and Dependencies](#installation-and-dependencies)
 4. [Graphical User Interface](#graphical-user-interface)
 5. [Command Line Usage](#command-line-usage)
-   - [Auto Pair Selection CLI](#auto-pair-selection-cli)
-   - [Site Counter CLI](#site-counter-cli)
 6. [Additional CLI Tools](#additional-cli-tools)
 7. [Input Data](#input-data)
 8. [Output Data](#output-data)
 9. [Additional Options and Parameters](#additional-options-and-parameters)
 10. [Included Data](#included-data)
 11. [Demo](#demo)
-12. [Troubleshooting](#troubleshooting)
-13. [Citation](#citation)
+12. [Citation](#citation)
 
 ## Description ##
-This repository provides tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). The main CLI, `esl-psc`, takes alignment files and a defined set of species contrast pairs as inputs, preprocesses input data and builds sparse group lasso models to explain the trait of interest. See [Allard et al., 2025, *Nature Communications*](https://www.nature.com/articles/s41467-025-58428-8) for methodological details. 
+This repository provides GUI and command-line tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). ESL-PSC takes alignment files and a defined set of species contrast pairs as inputs, preprocesses input data and builds sparse group lasso models to explain the trait of interest. See [Allard et al., 2025, *Nature Communications*](https://www.nature.com/articles/s41467-025-58428-8) for methodological details. 
 
 ![flow chart](./images/ESL_PSC_flowchart_image.png)
 
@@ -131,10 +128,9 @@ We expanded GUI support for continuous (numeric) phenotypes across the Tree View
   - Tie-breaking options are available when multiple sibling choices are valid: Longest sequence, Shortest distance, Max trait contrast, Composite best, Random, or Simple deterministic.
   - Exported SVGs include the continuous colorbar and low/high labels. In continuous mode, manual binary tools such as Invert Phenotype and Set All to Non‑convergent are disabled by design.
 
-- Analysis modes (Parameters page and CLI)
-  - New GUI toggle: Use continuous phenotype values? This runs ESL-PSC with linear regression (ordinary least squares; sg_lasso_leastr) instead of binary logistic regression.
-  - CLI flag: `--use_continuous_phenotypes` to enable continuous-response modeling. When active, binary SPS plots are disabled by default.
-  - New plot option for continuous runs: a 2D density plot of true phenotype (X) vs SPS (Y). In the GUI this appears as Generate phenotype density plot when continuous mode is on. CLI flag: `--make_continuous_plot`.
+- Analysis modes
+  - On the GUI Parameters page, select **Use continuous phenotype values?** to run ESL-PSC with linear regression (ordinary least squares; sg_lasso_leastr) instead of binary logistic regression (CLI: `--use_continuous_phenotypes`). When active, binary SPS plots are disabled by default.
+  - For continuous runs, select **Generate phenotype density plot** to create a 2D density plot of true phenotype (X) vs SPS (Y) (CLI: `--make_continuous_plot`).
 
 - Site Viewer: phenotype-aware “Other Species” pane
   - Phenotype values (if provided) are displayed alongside species names, and you can sort “Other” species by Phenotype High → Low or Phenotype Low → High in addition to Alphabetical and MSA Order.
@@ -180,7 +176,7 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a toolkit package for terminal use centered on `esl-psc` and its utility subcommands, including `pairs` and `site-counter`.
 
-The toolkit package includes Rust binaries along with the remaining Python CLI modules and wrappers, and is intended to run with your system Python rather than bundling another Python runtime.
+The toolkit package includes the compiled `esl-psc` binary plus Python support modules used by utility subcommands such as `pairs` and `site-counter`. It is intended to run with your system Python rather than bundling another Python runtime.
 After extracting the toolkit, install dependencies with:
 
 `python3 -m pip install -r requirements-toolkit.txt`
@@ -232,22 +228,6 @@ Quick links:
 - Pair selection: [`docs/commands/pairs.md`](docs/commands/pairs.md)
 - Site Counter: [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
 
-### Using a Configuration File with ESL-PSC ###
-
-ESL-PSC scripts can utilize a configuration file to easily manage arguments that remain constant across multiple runs. The scripts will check for the presence of an esl_psc_config.txt file in the current working directory. If it exists, the function reads the arguments from the file and combines them with any additional command-line arguments provided when running the script. This allows you to keep common arguments in the configuration file, while providing run-specific arguments via the command line.
-
-To use this feature:
-
-1. An existing esl_psc_config.txt file is included in the directory with the ESL-PSC scripts. 
-
-2. Add any desired arguments to the esl_psc_config.txt file, using the same format as you would when providing them on the command line. Each argument should be on a new line, followed by its corresponding value. For example: `--pheno_names C4 C3`
-
-3. Save the `esl_psc_config.txt` file.
-
-4. When running an ESL-PSC script, the scripts will automatically check for the presence of the esl_psc_config.txt file and incorporate its contents. Command-line arguments will override the values in the config file if both are provided for the same argument.
-
-5. If the esl_psc_config.txt file is not found in the current working directory, the function will only parse command-line arguments.
-
 ## Additional CLI Tools ##
 
 In addition to the main `esl-psc` analysis command, ESL-PSC includes two utility CLIs for common supporting tasks:
@@ -264,28 +244,28 @@ See the command-specific documentation for details:
 
 #### The main input files required for ESL-PSC are: ####
 
-1. A directory of alignment files. These should be in **2-line FASTA format** and whose file names must have the file extension `.fas`. Each sequence should appear entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, the run will continue but a warning will be issued and the deletion canceler will convert the files to 2-line format, which may be slower. It is assumed that each seperate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). Use the argument `--alignments_dir` and give the full absolute path to the directory.
+1. A directory of alignment files. These should be in **2-line FASTA format** and may use `.fas`, `.fasta`, `.fa`, or `.faa` file extensions. Each sequence should appear entirely on a single line below the line containing its identifier. If the sequence is split over multiple lines, the run will continue but a warning will be issued and the deletion canceler will convert the files to 2-line format, which may be slower. It is assumed that each separate alignment file will be a different genomic component, such as a gene, a protein, an exon, a domain, etc. and each component will be treated as a "group" of sites in the analysis (see Methods in [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8)). In the GUI, choose this folder in the **Alignment Directory** field on the Input page. In the CLI, use `--alignments_dir` and provide the full absolute path to the directory.
 
-2. A species groups file.  This is a text file that contains a comma delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8) for details on chosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a seperate analysis, along with all combinations of other alternative speices.  Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. Use the argument `--species_groups_file` and give the full absolute path to the file.
+2. A species groups file. This is a text file that contains a comma-delimited list of species on each line. In the simplest case, one species identifier can be placed on each line. The first line must contain one or more species that possess the convergent trait under analysis, and the next line must contain one or more species that can serve as trait-negative controls for the species in the first line, such that the first two lines, and each subsequent pair of lines will define a contrast pair of species to use in the analysis (see [Allard et al., 2025](https://doi.org/10.1038/s41467-025-58428-8) for details on choosing contrast pairs for ESL-PSC analysis). When more than one species is given in a line, each of those species will be used in a separate analysis, along with all combinations of other alternative species. Thus, the total number of species combinations can be calculated by the product of the number of species given on each line. In the analysis, species listed on the first line, and subsequent odd numbered lines, will be assigned a response value of 1, and the associated control species on the even numbered lines will be assigned a response value of -1. In the GUI, choose an existing file in the **Species Groups File** field or create one with the Tree Viewer. In the CLI, use `--species_groups_file` and provide the full absolute path to the file.
 
 #### Optional input files: ####
 
 1. A species phenotype file.
-   - CLI (analysis): a text file with each full species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the true phenotype will not be listed for each species prediction in the species_predictions output file. Use the argument `--species_pheno_path` and give the full absolute path to the file.
-   - GUI Tree Viewer (visualization only): also accepts continuous float phenotype values. Species labels are colored on a red→blue gradient (low→high). Species without phenotype entries are shown in black. When contrast pairs are assigned, pair colors override phenotype colors for those species.
+   - For analysis, provide a text file with each full species name followed by a comma and then a 1 or -1 for the true phenotype class to which that species belongs. A 1 typically refers to the convergent phenotype. If this file is not provided, the true phenotype will not be listed for each species prediction in the species_predictions output file. In the GUI, choose this file in the **Species Phenotypes File** field on the Input page. In the CLI, use `--species_pheno_path` and provide the full absolute path to the file.
+   - The GUI Tree Viewer also accepts continuous float phenotype values for visualization and continuous-trait pair selection. Species labels are colored on a red→blue gradient (low→high). Species without phenotype entries are shown in black. When contrast pairs are assigned, pair colors override phenotype colors for those species.
 
-2. A directory of alignments to use for preditions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a seperate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. Use the argument `--prediction_alignments_dir` and give the full absolute path to the directory.
+2. A directory of alignments to use for predictions. By default, any species in the input alignments that are not used in building any given model will be assigned a sequence prediction score (SPS) for that model, which will be included in the predictions output file. As an alternative, you can use a separate directory of alignments for the predictions, however these still need to be fully aligned to any input species alignments or the predictions will be meaningless. In the GUI, choose this folder in the **Prediction Alignments Directory** field on the Input page. In the CLI, use `--prediction_alignments_dir` and provide the full absolute path to the directory.
 
-3. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, provide a limited-genes list file. This is a plain-text file with one alignment file *name* per line – no directory paths. Each name must exactly match a `.fas` file in your alignments directory (including the `.fas` extension). Use the argument `--limited_genes_list` and give the full absolute path to this list file.
+3. Limited genes list. If you want to use a subset of the alignment files for model building without having to remove files from your alignments directory, provide a limited-genes list file. This is a plain-text file with one alignment file *name* per line and no directory paths. Each name must exactly match a FASTA file in your alignments directory, including the file extension. In the GUI, choose this file in the **Limited Genes File** field on the Input page. In the CLI, use `--limited_genes_list` and provide the full absolute path to this list file.
 
 ## Output Data ##
 
-ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the directory specified by `--output_dir`.
+ESL-PSC generates two main types of output files: a Predictions File and a Gene Ranks File. These files will be placed in the output directory selected on the GUI Parameters page or specified in the CLI with `--output_dir`.
 
 #### Predictions File ####
 The predictions file contains every prediction made by every model generated using every species combination in the analysis. Each line in the file lists the following information:
 
-1. Species combination (an abrevaited list of the species used to train the model. for very large numbers of species, a name like combo_1 will be assigned instead for each combination)
+1. Species combination (an abbreviated list of the species used to train the model; for very large numbers of species, a name like combo_1 will be assigned instead for each combination)
 2. Lambda1 (site sparsity hyperparameter)
 3. Lambda2 (gene sparsity hyperparameter)
 4. Penalty term (the constant term used to calculate the group penalty, see hyperparameters below for details)
@@ -299,16 +279,18 @@ The predictions file contains every prediction made by every model generated usi
 The gene ranks file lists the genes (or proteins or other genomic components) used in the analysis, along with information about their rankings based on their model contributions. It is recommended to perform ontology enrichment tests and/or other follow-up analyses on the highest ranking ~1% of genetic elements. Each line in the file includes the following information:
 
 1. Gene name (taken from the alignment file)
-2. Number of species combinations in which the gene is ranked (i.e. number of combinations for which it recieved a non-zero GSS as part of any model)
-3. Number of species combinations in which the gene is ranked among the top contributors (the percentage of genes to consider "top genes" by GSS in any model can be set using the `--top_rank_frac` argument.)
+2. Number of species combinations in which the gene is ranked (i.e. number of combinations for which it received a non-zero GSS as part of any model)
+3. Number of species combinations in which the gene is ranked among the top contributors. The percentage of genes to consider "top genes" by GSS in any model can be set in the GUI advanced parameters or in the CLI with `--top_rank_frac`.
 4. Highest ever Group Sparsity Score (GSS)
-5. Best ever rank (the best ever rank, 1 being the best possible, recieved in any model)
+5. Best ever rank (the best ever rank, 1 being the best possible, received in any model)
 
 ## Additional Options and Parameters ##
 
 Detailed command-line options and parameter descriptions are maintained in the CLI reference:
 
-- [`docs/commands/cli-reference.md`](docs/commands/cli-reference.md#additional-options-and-parameters)
+- [`docs/commands/cli-reference.md`](docs/commands/cli-reference.md#options-and-parameters)
+
+CLI users can also run `esl-psc --help` to see the current list of command-line parameters.
 
 ## Included Data ##
 
@@ -331,16 +313,6 @@ https://orthomam.mbb.cnrs.fr/#
 
 OrthoMaM v10: Scaling-Up Orthologous Coding Sequence and Exon Alignments with More than One Hundred Mammalian Genomes Celine Scornavacca, Khalid Belkhir, Jimmy Lopez, Rémy Dernat, Frédéric Delsuc, Emmanuel J P Douzery, Vincent Ranwez Molecular Biology and Evolution, Volume 36, Issue 4, April 2019, Pages 861–862
 
-## Troubleshooting ##
-
-Problems with the inputs can cause segmentation fault errors in the ESL preprocess step. Here are some common causes of problems:
-1. An incorrect file path. It is recommended to use absolute file paths. Dragging the file icon onto the terminal window is a good way to make sure the path is entered correctly.
-2. Having an extra blank new line in one of the input files.
-3. having a duplicate alignment file name.
-4. It is very easy to miss adding a ".txt" or other extension to one of the files names in the run command.
-5. Non-standard characters in the alignments, like "*" for stop codons will cause problems.
-6. Sequences must be aligned to each other in each file.
-
 ## Demo ##
 
 ### Running the demo in the GUI ###
@@ -356,12 +328,12 @@ To run the C3/C4 demo using the graphical interface:
 ### Running the demo with the command line ###
 You can run an ESL-PSC analysis of the C3/C4 trait with the included chloroplast data by following the steps below: 
 1. Clone this repository
-2. Make sure you have the dependencies installed (see [Installation and Dependncies](#installation-and-dependncies) above). You will need 
-3. Navigate to the `ESL_PSC/` directory on your computer
+2. Make sure you have the dependencies installed (see [Installation and Dependencies](#installation-and-dependencies) above).
+3. Navigate to the `ESL-PSC/` directory on your computer.
 4. Run this command from the ESL-PSC directory: `esl-psc --output_file_base_name demo_output --species_groups_file demo_data/photosynthesis/photo_single_LC_matrix_species_groups.txt --alignments_dir demo_data/photosynthesis/alignments/ --use_logspace --num_log_points 20 --cancel_only_partner --species_pheno_path demo_data/photosynthesis/photo_species_phenotypes.txt --make_sps_plot --pheno_names "C4" "C3"`
 5. The expected run time is approximately 30 seconds on a standard desktop computer.
-6. A set of violin plots depeicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL_PSC directory
-the plot should look like this:
+6. A set of violin plots depicting the prediction scores for C3 and C4 species will be displayed on the screen. The gene ranks (`demo_output_gene_ranks.csv`) and species prediction (`demo_output_species_predictions.csv`) csv files will be found in the ESL-PSC directory.
+The plot should look like this:
 ![predictions violin plot](./images/demo_output_image.png)
 7. See [Output Data](#output-data) above for descriptions of the fields in the output csv files.
 

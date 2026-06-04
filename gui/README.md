@@ -170,7 +170,7 @@ This ensures only alignments with appropriate outgroup context are analyzed.
 - **Implementation**: `gui/core/ancestral_reconstruction.py`
 - **Tests**: Comprehensive test suite in `tests/test_ancestral_reconstruction.py`
 - **Performance**:
-  - **Rust backend**: Performs both ancestral reconstruction and CCS detection natively. End-to-end runtime stays within a few milliseconds per gene (≈6 s for 20 k genes on test hardware).
+  - **Compiled backend**: Performs both ancestral reconstruction and CCS detection natively. End-to-end runtime stays within a few milliseconds per gene (≈6 s for 20 k genes on test hardware).
   - **Python fallback**: Available when Rust is missing. Single-species outgroups are modestly slower (~0.26 s for 67 genes). Parsimony ancestor mode is much heavier (~30 s for 67 genes) because Python must parse the tree and reconstruct every alignment; use only when Rust cannot run.
   - **Caching**: Tree parsing is cached internally to reduce repeated work when Python fallback is engaged.
 
@@ -200,4 +200,3 @@ For full test suite (if pytest is installed):
 ```bash
 pytest tests/test_ancestral_reconstruction.py -v
 ```
-

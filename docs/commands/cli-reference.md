@@ -13,7 +13,7 @@ If you built from source with Cargo, run the installed executable if it is on yo
 
 The main analysis pipeline can be run either directly (`esl-psc ...`) or explicitly as `esl-psc run ...`. Utility functionality is available as subcommands including `esl-psc pairs` and `esl-psc site-counter`.
 
-You can provide the input parameters and options through the command line or by creating a configuration file called esl_psc_config.txt. When using a configuration file, provide one argument per line.
+You can provide input parameters and options directly on the command line or through an `esl_psc_config.txt` configuration file.
 
 Here is an example of how to run the main analysis command when `esl-psc` is on your `PATH`:
 
@@ -23,11 +23,50 @@ To list CLI options, run `esl-psc --help`.
 
 Strict line-search acceptance is now the default solver behavior and matches the original ESL-PSC paper-era compatibility mode. Use `--enable_ec` only if you explicitly want the newer epsilon-comparison line-search acceptance.
 
-See [Demo](#demo) for an example of a run command you can try with an included data set.
+See the repository [Demo](../../README.md#demo) for an example of a run command you can try with an included data set.
+
+## Basic Input and Output Flags
+
+The examples below use underscore-style flags. The Rust executable also accepts hyphenated aliases for these long options, such as `--alignments-dir`.
+
+Required for a standard species-groups run:
+
+- `--alignments_dir`: directory containing alignment FASTA files (`.fas`, `.fasta`, `.fa`, or `.faa`). Use a full absolute path unless you are intentionally running from a directory where relative paths are unambiguous.
+- `--species_groups_file`: text file defining paired species contrasts. Provide exactly one input design source: `--species_groups_file`, `--response_dir`, or `--response_matrix_path`.
+- `--output_file_base_name`: base name used for output files, such as `<base>_gene_ranks.csv` and `<base>_species_predictions.csv`.
+
+Common optional input flags:
+
+- `--species_pheno_path`: species phenotype file with one species and phenotype value per line. Use this when you want true phenotypes in prediction outputs or prediction plots.
+- `--prediction_alignments_dir`: separate alignment directory for prediction species. If omitted, predictions are made from species in the main alignment directory that were not used to train each model.
+- `--limited_genes_list`: plain-text file with one alignment file name per line. Names must match files in `--alignments_dir`, including the FASTA extension.
+- `--response_dir`: directory of precomputed response matrix files. Use this instead of `--species_groups_file` when you already have response matrices.
+- `--response_matrix_path`: single response matrix file. Use this for a single-matrix run instead of a species-groups multimatrix run.
+
+Common output and run-control flags:
+
+- `--output_dir`: directory where output files and intermediate run folders are written. If omitted, ESL-PSC creates a timestamped output directory.
+- `--no_pred_output`: skip the species predictions file. This is faster for proteome-scale analyses focused on candidate gene ranking.
+- `--no_genes_output`: skip the gene ranks file.
+- `--show_selected_sites`: add selected-site summaries to the gene ranks output and write `<base>_selected_sites.csv`.
+- `--use_continuous_phenotypes`: use continuous phenotype values and linear regression rather than binary logistic regression.
+- `--make_sps_plot`, `--make_sps_kde_plot`, `--make_continuous_plot`: generate prediction plots when phenotype information is available.
+
+## Configuration Files
+
+If a file named `esl_psc_config.txt` exists in the current working directory, `esl-psc` reads arguments from that file before adding arguments supplied directly on the command line. This is useful for settings that stay the same across many runs. Command-line arguments supplied at runtime override values from the configuration file when both are present.
+
+Write arguments in the same form used on the command line, separated by whitespace or line breaks. For example:
+
+```text
+--pheno_names C4 C3
+--use_logspace
+--num_log_points 20
+```
 
 ### Legacy Python Wrappers
 
-Legacy Python wrappers are retained only for maintainability and historical reference. New analyses should use the unified `esl-psc` executable.
+Legacy Python wrappers are retained only for maintainability and historical reference. New analyses should use the unified `esl-psc` executable, which is substantially faster.
 
 ### Checkpointing & Resuming Interrupted Runs
 

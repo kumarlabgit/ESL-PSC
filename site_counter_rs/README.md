@@ -1,14 +1,23 @@
-# Site Counter Rust CLI
+# Site Counter Backend
 
-The `site_counter_rs` crate provides a compiled backend for ESL-PSC's site counter
-workflow. It mirrors the logic used by the Python implementation but uses
-Rust's parallel iterators to dramatically reduce scan time on large alignment
-collections.
+The `site_counter_rs` crate provides the compiled Site Counter backend for
+ESL-PSC. Site Counter analyses should usually be run through the unified
+command-line interface:
 
-The executable consumes a JSON description of the scan on **stdin** and writes
-its results as a JSON array on **stdout**. Progress updates (if enabled) are
-emitted to **stderr** so they will not interfere with downstream tools that
-expect machine-readable output.
+```bash
+esl-psc site-counter --help
+```
+
+See [`docs/commands/site-counter.md`](../docs/commands/site-counter.md) for
+the command documentation.
+
+The backend itself consumes a JSON description of the scan on **stdin** and
+writes its results as a JSON array on **stdout**. Progress updates, if enabled,
+are emitted to **stderr** so they do not interfere with tools that expect
+machine-readable output.
+
+This JSON interface is used by ESL-PSC and is also useful for development and
+packaging tests.
 
 ## Building the binary
 
@@ -18,15 +27,13 @@ cargo build --release
 ```
 
 The optimized binary will be created at
-`site_counter_rs/target/release/site_counter_rs`. The Python CLI
-(`esl_psc_cli/fast_scan_cli.py`) uses this binary when it is present and
-executable; otherwise it falls back to the pure-Python implementation.
+`site_counter_rs/target/release/site_counter_rs`.
 
 ## JSON input schema
 
 The executable expects a single JSON object that matches the structure below.
-Optional fields may be omitted. The values correspond to the parameters that
-ESL-PSC's Python site counter uses internally.
+Optional fields may be omitted. The values correspond to the backend request
+created by the GUI and `esl-psc site-counter` wrappers.
 
 ```json
 {
@@ -110,12 +117,14 @@ The program prints a JSON array. Each element summarizes one alignment file:
 * `per_combo_diff`: per-combo difference between convergent and control CCS
   counts when both sides were eligible.
 
-## Direct usage examples
+## Direct Backend Invocation
 
-### Example 1: Single-species outgroup
+Direct backend use requires a JSON request file. For ordinary Site Counter
+analyses, use `esl-psc site-counter` instead.
 
-```bash
-cat <<'JSON' | site_counter_rs/target/release/site_counter_rs > results.json
+Example `request.json`:
+
+```json
 {
   "alignment_dir": "demo_data/photosynthesis/alignments",
   "combos": [
@@ -124,34 +133,25 @@ cat <<'JSON' | site_counter_rs/target/release/site_counter_rs > results.json
   "outgroup": "Oryza_sativa",
   "emit_progress": true
 }
-JSON
 ```
 
-### Example 2: Parsimony ancestral reconstruction
+Run the standalone backend:
 
 ```bash
-cat <<'JSON' | site_counter_rs/target/release/site_counter_rs > results.json
-{
-  "alignment_dir": "demo_data/photosynthesis/alignments",
-  "combos": [
-    {"conv": ["SpeciesA", "SpeciesB"], "ctrl": ["SpeciesC", "SpeciesD"]}
-  ],
-  "outgroup": "ANCESTRAL_MRCA",
-  "tree_file": "demo_data/photosynthesis/photo_tree.nwk",
-  "analysis_species": ["SpeciesA", "SpeciesB", "SpeciesC", "SpeciesD"],
-  "emit_progress": true
-}
-JSON
+site_counter_rs/target/release/site_counter_rs < request.json > results.json
 ```
 
-The resulting `results.json` file contains the summarized statistics for each
-alignment processed by the binary. When using ancestral reconstruction, alignments
-where the MRCA is at the root (no outgroup context) are skipped.
+The same backend can also be reached through the unified executable:
 
-## Integration with the Python CLI
+```bash
+esl-psc site-counter-backend < request.json > results.json
+```
 
-`python -m esl_psc_cli.fast_scan_cli` (or packaged command `site-counter`)
-wraps this binary. When a compatible `site_counter_rs` build is available, the
-CLI streams the required JSON over stdin and performs the same post-processing,
-CSV export, and ranking logic as the GUI site counter workflow. Set
-`SITE_COUNTER_RS_DISABLE=1` to force the Python fallback if needed.
+The resulting `results.json` file contains the summarized statistics for the
+processed alignments.
+
+## Integration with ESL-PSC
+
+The `esl-psc site-counter` subcommand and the GUI Site Counter workflow call
+this backend automatically. They handle species-groups parsing, CSV export,
+ranking, and progress reporting.

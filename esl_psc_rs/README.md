@@ -110,10 +110,10 @@ and exits non-zero if any metric falls below the configured thresholds.
 
 ## CLI surface parity check
 
-You can verify long-option parity against the Python ESL-PSC CLI with:
+You can verify long-option parity against the legacy Python entrypoints with:
 
 ```bash
 python3 scripts/check_cli_parity.py
 ```
 
-This check confirms that all Python CLI long options are present in `esl-psc`.
+This check confirms that long options from the legacy Python entrypoints remain available through `esl-psc`.

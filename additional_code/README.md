@@ -26,7 +26,7 @@
 
 ## Description and dependencies ##
 
-This directory includes scritps used to implement the benchmarking and simulation analyses in (Allard et al. 2024). Many of these are designed to be run on an HPC cluster using the Torque resource manager. Several of these scripts automatically generate and submit PBS job scripts in order to run many thousands of analyses in parallel. A `requirements.txt` file is include in this directory that lists dependencies for these scripts on an HPC cluster. In order to use these scripts, it is necessary to create and use a virtual environment (env) that conatins these dependencies. The path to the env, along with the locations of local scratch memory etc. will need to be adjusted in each script as needed for the cluster on which they are running.
+This directory includes scripts used to implement the benchmarking and simulation analyses in (Allard et al. 2025). Many of these are designed to be run on an HPC cluster using the Torque resource manager. Several of these scripts automatically generate and submit PBS job scripts in order to run many thousands of analyses in parallel. A `requirements.txt` file is included in this directory that lists dependencies for these scripts on an HPC cluster. In order to use these scripts, it is necessary to create and use a virtual environment (env) that contains these dependencies. The path to the env, along with the locations of local scratch memory etc. will need to be adjusted in each script as needed for the cluster on which they are running.
 
 #### Note on software version ####
 
@@ -52,19 +52,19 @@ This script implements the Convergence at Conservative Sites (CCS) method. It ca
 
 ## csubst_sim_parallel_run.py ##
 
-This manages a single paralell run of a simulation using the CSUBST simulate function.  It is designed to be called as part of a large number of simulations run by the `run_conv_sim_grid.py` script on an HPC cluster.
+This manages a single parallel run of a simulation using the CSUBST simulate function.  It is designed to be called as part of a large number of simulations run by the `run_conv_sim_grid.py` script on an HPC cluster.
 
 ## esl_multi_trait_parallel_run.py ##
 
-This manages a single paralell run of ESL-PSC as part of a large number of runs on an HPC cluster orchestrated by the `run_multi_trait_esl_on_cluster.py` script on an HPC cluster.  This version is designed for implementation of runs across many combinations of randomly selected species designated as convergent in order to test ESL-PSC on simulated data across different numbers of species. "Multi trait" referrs to simulated traits, i.e. the randomly selected species used for simulations and testing.
+This manages a single parallel run of ESL-PSC as part of a large number of runs on an HPC cluster orchestrated by the `run_multi_trait_esl_on_cluster.py` script on an HPC cluster.  This version is designed for implementation of runs across many combinations of randomly selected species designated as convergent in order to test ESL-PSC on simulated data across different numbers of species. "Multi trait" refers to simulated traits, i.e. the randomly selected species used for simulations and testing.
 
 ## esl_parallel_run.py ##
 
-This manages a single paralell run of ESL-PSC as part of a large number of runs on an HPC cluster orchestrated by the `run_esl_psc_on_cluster.py` script. This version is designed to run ESL-PSC on the same set of combinations of species from the same two clades (i.e. the null echolocation simulation analysis).
+This manages a single parallel run of ESL-PSC as part of a large number of runs on an HPC cluster orchestrated by the `run_esl_psc_on_cluster.py` script. This version is designed to run ESL-PSC on the same set of combinations of species from the same two clades (i.e. the null echolocation simulation analysis).
 
 ## random_convergent_pairs.py ##
 
-This script generates random combinations of species in pairs with one convergent-designated and one control-designated species per pair.  Constraints are enforced in order to ensure that each combination meets the topological requiremnts to run ESL-PSC and CCS.  A file can be submitted to exclude a list of species from the selections in order to restrict the choices to a certian clade and to exclude outgroup speices to be used for CCS.
+This script generates random combinations of species in pairs with one convergent-designated and one control-designated species per pair.  Constraints are enforced in order to ensure that each combination meets the topological requirements to run ESL-PSC and CCS.  A file can be submitted to exclude a list of species from the selections in order to restrict the choices to a certain clade and to exclude outgroup species to be used for CCS.
 
 ## run_busted_on_many_alignments.py ##
 
@@ -112,7 +112,7 @@ This script iterates through the directories containing ESL-PSC, CCS, and CSUBST
 
 ## summarize_conv_multi_trait_benchmark_data.py ##
 
-This script perfroms the same summarization as the `summarize_conv_benchmark_data.py` script, but this is designed to summarize output from analyses of the random species combinations simulations for which only ESL-PSC were run due to computational constriants.
+This script performs the same summarization as the `summarize_conv_benchmark_data.py` script, but this is designed to summarize output from analyses of the random species combinations simulations for which only ESL-PSC were run due to computational constraints.
 
 ## TAAS_method.py ##
 
