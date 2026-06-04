@@ -71,7 +71,6 @@ This avoids prebuilt binary issues on some Linux systems.
    - `ESL_PSC_PYTHONPATH` should point to a directory containing `esl_psc_cli` and `gui` modules (the repo root works)
 
   
-
 ## Graphical User Interface ##
 
 If you are new to ESL-PSC and want the simplest path, start with the guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
@@ -172,9 +171,6 @@ Toolkit release artifacts are versioned by platform as:
 `.sha256` and `.manifest.json` files for integrity and metadata.
 
 
-
-
-
 #### macOS build
 1. Download the macOS GUI release asset.
 2. Double-click the `.zip` to extract the `ESL-PSC.app` bundle.
@@ -207,18 +203,6 @@ Quick links:
 
 - Pair selection: [`docs/commands/pairs.md`](docs/commands/pairs.md)
 - Site Counter: [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
-
-## Additional CLI Tools ##
-
-In addition to the main `esl-psc` analysis command, ESL-PSC includes two utility CLIs for common supporting tasks:
-
-- `esl-psc pairs`: tools for building or assisting with species contrast pair selection workflows.
-- `esl-psc site-counter`: tools for counting and summarizing convergent or phenotype-associated sites from alignments and analysis outputs.
-
-See the command-specific documentation for details:
-
-- [`docs/commands/pairs.md`](docs/commands/pairs.md)
-- [`docs/commands/site-counter.md`](docs/commands/site-counter.md)
 
 ## Input Data ##
 
@@ -322,6 +306,10 @@ The plot should look like this:
 If you need to reproduce the results from the initial ESL-PSC manuscript, use version `v0.1.0`.
 
 ## Citation ##
-If you use this software in your research, please cite our paper:
+If you use ESL-PSC in your research, please cite the original ESL-PSC paper:
 
 John B. Allard, Sudip Sharma, Ravi Patel, Maxwell Sanderford, Koichiro Tamura, Slobodan Vucetic, Glenn S. Gerhard & Sudhir Kumar. Evolutionary sparse learning reveals the shared genetic basis of convergent traits. Nature Communications 16, 3217 (2025). https://doi.org/10.1038/s41467-025-58428-8
+
+If you use the GUI or features introduced in the ESL-PSC Toolkit, such as automatic pair selection, Site Counter, continuous-trait analysis support, or the packaged Toolkit interface, please also cite:
+
+John B. Allard & Sudhir Kumar. ESL-PSC Toolkit: a graphical software environment for linking shared genetic changes to convergent phenotypes. arXiv:2605.27677 (2026). https://doi.org/10.48550/arXiv.2605.27677
