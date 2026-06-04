@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/John-Allard/ESL-PSC?label=release)](https://github.com/John-Allard/ESL-PSC/releases/latest)
 [![GUI builds](https://img.shields.io/github/actions/workflow/status/John-Allard/ESL-PSC/nuitka-build.yml?label=GUI%20builds)](https://github.com/John-Allard/ESL-PSC/actions/workflows/nuitka-build.yml)
 [![Package artifacts](https://img.shields.io/github/actions/workflow/status/John-Allard/ESL-PSC/package-managers.yml?label=package%20artifacts)](https://github.com/John-Allard/ESL-PSC/actions/workflows/package-managers.yml)
-[![License](https://img.shields.io/github/license/John-Allard/ESL-PSC)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Table of Contents ##
 
