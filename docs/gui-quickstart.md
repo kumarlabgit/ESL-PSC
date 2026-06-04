@@ -4,11 +4,10 @@ This guide is for first-time users who want the desktop app and do not want to s
 
 ## Download and install
 
-If you are not sure where to start, open the [latest ESL-PSC release page](https://github.com/John-Allard/ESL-PSC/releases/latest).
+Use the GUI download for your computer:
 
-To go straight to the GUI download for your computer, use one of these links:
-
-- Mac: [`ESL-PSC-v2.5.1-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/ESL-PSC-v2.5.1-macOS.dmg)
+- Mac with Apple Silicon: [`ESL-PSC-v2.5.1-macOS-Apple-Silicon.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/ESL-PSC-v2.5.1-macOS-Apple-Silicon.dmg)
+- Mac with Intel processor: [`ESL-PSC-v2.5.1-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/ESL-PSC-v2.5.1-macOS.dmg)
 - Windows: [`ESL-PSC-v2.5.1-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/ESL-PSC-v2.5.1-Windows.zip)
 - Ubuntu or Debian Linux: [`esl-psc-gui_2.5.1_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.1/esl-psc-gui_2.5.1_amd64.deb)
 
@@ -17,7 +16,7 @@ Install the app:
 
 ### Mac
 
-1. Download the `.dmg` file.
+1. Download the Apple Silicon `.dmg` file for M-series Macs, or the Intel `.dmg` file for older Intel Macs.
 2. Open it.
 3. Drag `ESL-PSC.app` into your `Applications` folder.
 4. Open `ESL-PSC` from `Applications`, Launchpad, or Spotlight.

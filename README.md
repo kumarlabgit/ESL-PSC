@@ -12,13 +12,12 @@
 3. [Installation and Dependencies](#installation-and-dependencies)
 4. [Graphical User Interface](#graphical-user-interface)
 5. [Command Line Usage](#command-line-usage)
-6. [Additional CLI Tools](#additional-cli-tools)
-7. [Input Data](#input-data)
-8. [Output Data](#output-data)
-9. [Additional Options and Parameters](#additional-options-and-parameters)
-10. [Included Data](#included-data)
-11. [Demo](#demo)
-12. [Citation](#citation)
+6. [Input Data](#input-data)
+7. [Output Data](#output-data)
+8. [Additional Options and Parameters](#additional-options-and-parameters)
+9. [Included Data](#included-data)
+10. [Demo](#demo)
+11. [Citation](#citation)
 
 ## Description ##
 This repository provides GUI and command-line tools for analyzing signatures of molecular convergence in a multiple sequence alignment using Evolutionary Sparse Learning with Paired Species Contrast (ESL-PSC). ESL-PSC takes alignment files and a defined set of species contrast pairs as inputs, preprocesses input data and builds sparse group lasso models to explain the trait of interest. See [Allard et al., 2025, *Nature Communications*](https://www.nature.com/articles/s41467-025-58428-8) for methodological details. 
@@ -74,6 +73,8 @@ This avoids prebuilt binary issues on some Linux systems.
 ## Graphical User Interface ##
 
 If you are new to ESL-PSC and want the simplest path, start with the guide in [`docs/gui-quickstart.md`](docs/gui-quickstart.md).
+
+For a description of the GUI and ESL-PSC Toolkit features, see the [ESL-PSC Toolkit preprint](https://doi.org/10.48550/arXiv.2605.27677).
 
 Install the GUI app from the [GitHub Releases page](../../releases/latest).
 
