@@ -5,6 +5,7 @@ from gui.core.paths import default_output_dir
 from gui.ui.main_window import ESLWizard
 from gui.ui.pages.parameters_page import ParametersPage
 from gui.ui.pages.command_page import CommandPage
+from gui.ui.widgets.results_display import PredictionMetricsDialog
 
 
 def test_checkbox_with_continuous_pheno(qt_app, tmp_path):
@@ -82,6 +83,72 @@ def test_command_page_prompts_for_output_dir_when_unset(qt_app):
     text = cmd_page.cmd_display.toPlainText()
     assert "--output_dir" in text
     assert default_output_dir() in text
+
+
+def test_pheno_names_are_included_in_prediction_command(qt_app, tmp_path):
+    cfg = ESLConfig()
+    cfg.output_dir = str(tmp_path / "out")
+    cfg.pheno_name1 = "C4"
+    cfg.pheno_name2 = "C3"
+    cfg.no_pred_output = False
+
+    args = cfg.to_cli_args()
+    idx = args.index("--pheno_names")
+    assert args[idx + 1:idx + 3] == ["C4", "C3"]
+
+    cmd_page = CommandPage(cfg)
+    cmd_page.on_enter()
+    cmd_page.show()
+    qt_app.processEvents()
+
+    text = cmd_page.cmd_display.toPlainText()
+    assert "--pheno_names C4 C3" in text
+
+
+def test_pheno_names_are_omitted_when_predictions_are_disabled():
+    cfg = ESLConfig()
+    cfg.no_pred_output = True
+    cfg.pheno_name1 = "C4"
+    cfg.pheno_name2 = "C3"
+
+    assert "--pheno_names" not in cfg.to_cli_args()
+
+
+def test_prediction_metrics_uses_configured_phenotype_names(qt_app, tmp_path):
+    pred_csv = tmp_path / "predictions.csv"
+    pred_csv.write_text(
+        "species,SPS,num_genes,input_RMSE,true_phenotype\n"
+        "Maize,0.8,10,0.1,1\n"
+        "Rice,-0.7,10,0.2,-1\n",
+        encoding="utf-8",
+    )
+    cfg = ESLConfig()
+    cfg.pheno_name1 = "C4"
+    cfg.pheno_name2 = "C3"
+    cfg.species_pheno_is_binary = True
+
+    dialog = PredictionMetricsDialog(str(pred_csv), cfg)
+    qt_app.processEvents()
+
+    assert dialog._ready
+    row_headers = [
+        dialog.rows_table.horizontalHeaderItem(i).text()
+        for i in range(dialog.rows_table.columnCount())
+    ]
+    assert "TPR (C4)" in row_headers
+    assert "TNR (C3)" in row_headers
+
+    species_headers = [
+        dialog.species_table.horizontalHeaderItem(i).text()
+        for i in range(dialog.species_table.columnCount())
+    ]
+    true_pheno_col = species_headers.index("True Phenotype")
+    true_pheno_values = {
+        dialog.species_table.item(row, true_pheno_col).text()
+        for row in range(dialog.species_table.rowCount())
+    }
+    assert true_pheno_values == {"C4", "C3"}
+    dialog.close()
 
 
 def test_disable_ec_checkbox_updates_command_preview(qt_app, tmp_path):

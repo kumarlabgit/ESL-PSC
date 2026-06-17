@@ -20,6 +20,11 @@ class ZoomableGraphicsView(QGraphicsView):
     - draws legend if parent has `_continuous_pheno` set to True
     """
 
+    _ANGLE_UNITS_PER_STEP = 120
+    _PIXELS_PER_TRACKPAD_STEP = 900.0
+    _MAX_TRACKPAD_STEPS_PER_EVENT = 0.12
+    _MAX_WHEEL_STEPS_PER_EVENT = 3
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._zoom_level = 0.0
@@ -34,10 +39,12 @@ class ZoomableGraphicsView(QGraphicsView):
     def wheelEvent(self, event):
         pixel_delta = event.pixelDelta().y()
         if pixel_delta:
-            # Trackpads often report many small pixel deltas. Use a gentle,
-            # bounded exponential scale so one gesture does not leap through
-            # the whole zoom range.
-            steps = max(-0.4, min(0.4, pixel_delta / 240.0))
+            # Trackpads report high-frequency pixel deltas. Keep each event
+            # small so macOS two-finger gestures do not jump through the tree.
+            steps = max(
+                -self._MAX_TRACKPAD_STEPS_PER_EVENT,
+                min(self._MAX_TRACKPAD_STEPS_PER_EVENT, pixel_delta / self._PIXELS_PER_TRACKPAD_STEP),
+            )
             self._apply_zoom_steps(steps)
             event.accept()
             return
@@ -48,13 +55,13 @@ class ZoomableGraphicsView(QGraphicsView):
             return
 
         self._angle_zoom_remainder += angle_delta
-        steps = int(self._angle_zoom_remainder / 120)
+        steps = int(self._angle_zoom_remainder / self._ANGLE_UNITS_PER_STEP)
         if steps == 0:
             event.accept()
             return
 
-        self._angle_zoom_remainder -= steps * 120
-        self._apply_zoom_steps(max(-3, min(3, steps)))
+        self._angle_zoom_remainder -= steps * self._ANGLE_UNITS_PER_STEP
+        self._apply_zoom_steps(max(-self._MAX_WHEEL_STEPS_PER_EVENT, min(self._MAX_WHEEL_STEPS_PER_EVENT, steps)))
         event.accept()
 
     # ------------------------------------------------------------------

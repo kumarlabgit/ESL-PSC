@@ -199,6 +199,11 @@ class ESLConfig:
         a += self._flag(getattr(self, 'no_genes_output', False), "--no_genes_output")
         no_pred = getattr(self, 'no_pred_output', False)
         a += self._flag(no_pred, "--no_pred_output")
+        if not no_pred:
+            pheno_name1 = str(getattr(self, 'pheno_name1', '') or '').strip()
+            pheno_name2 = str(getattr(self, 'pheno_name2', '') or '').strip()
+            if pheno_name1 and pheno_name2:
+                a += ["--pheno_names", pheno_name1, pheno_name2]
         
         # Only include plot flags if we're generating prediction output
         if not no_pred:
@@ -228,11 +233,21 @@ class ESLConfig:
         """
         parts = []
         args = self.to_cli_args()
+        multi_value_flags = {
+            "--pheno_names": 2,
+        }
         
         # Process arguments, grouping flags with their values
         i = 0
         while i < len(args):
             arg = args[i]
+            if arg in multi_value_flags:
+                value_count = multi_value_flags[arg]
+                values = args[i + 1:i + 1 + value_count]
+                if len(values) == value_count:
+                    parts.append(" ".join([arg, *values]))
+                    i += 1 + value_count
+                    continue
             # If this is a flag and there's a value after it, group them on one line
             if arg.startswith('--') and i + 1 < len(args) and not args[i+1].startswith('--'):
                 parts.append(f"{arg} {args[i+1]}")

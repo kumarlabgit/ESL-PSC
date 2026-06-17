@@ -8,7 +8,7 @@ source tag.
 ```bash
 python3 packaging/homebrew/render_formula_from_release.py \
   --repo John-Allard/ESL-PSC \
-  --tag v2.5.1 \
+  --tag v2.5.2 \
   --output dist/homebrew/esl-psc.rb
 ```
 

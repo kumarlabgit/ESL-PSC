@@ -443,11 +443,20 @@ class PredictionMetricsDialog(QDialog):
         self._thresholds: tuple[float, float] | None = None
         self._pearson_all: float = float("nan")
         self._last_species_stats = pd.DataFrame()
+        self._pos_pheno_name = str(getattr(config, "pheno_name1", "") or "Convergent")
+        self._neg_pheno_name = str(getattr(config, "pheno_name2", "") or "Control")
+        self._tpr_col = f"TPR ({self._pos_pheno_name})"
+        self._tnr_col = f"TNR ({self._neg_pheno_name})"
 
         layout = QVBoxLayout(self)
         info = QLabel("Metrics are computed from: " + os.path.basename(csv_path))
         info.setWordWrap(True)
         layout.addWidget(info)
+        pheno_info = QLabel(
+            f"Phenotype labels: +1 = {self._pos_pheno_name}; -1 = {self._neg_pheno_name}."
+        )
+        pheno_info.setWordWrap(True)
+        layout.addWidget(pheno_info)
 
         prog = QProgressDialog("Computing metrics…", "Cancel", 0, 40, self)
         prog.setWindowTitle("Computing Metrics")
@@ -609,7 +618,7 @@ class PredictionMetricsDialog(QDialog):
         if self._mode == "threshold" and self._thresholds is not None:
             lower, upper = self._thresholds
             extra_lines.append(
-                f"Applied thresholds: ≤ {lower:.3f} classified as Control (-1), ≥ {upper:.3f} as Convergent (+1)."
+                f"Applied thresholds: ≤ {lower:.3f} classified as {self._neg_pheno_name} (-1), ≥ {upper:.3f} as {self._pos_pheno_name} (+1)."
             )
         # Only show Pearson correlation summary when phenotypes are continuous
         if (not getattr(self, "_tp_is_binary", False)) and math.isfinite(self._pearson_all) and not math.isnan(self._pearson_all):
@@ -674,24 +683,42 @@ class PredictionMetricsDialog(QDialog):
         ss_res = float(np.sum((y_true - y_pred) ** 2))
         return float(1.0 - ss_res / ss_tot)
 
+    def _format_pheno_class(self, value) -> str:
+        try:
+            val = float(value)
+        except Exception:
+            return str(value)
+        if np.isnan(val):
+            return ""
+        if math.isclose(val, 1.0, rel_tol=0.0, abs_tol=1e-6):
+            return self._pos_pheno_name
+        if math.isclose(val, -1.0, rel_tol=0.0, abs_tol=1e-6):
+            return self._neg_pheno_name
+        if math.isclose(val, 0.0, rel_tol=0.0, abs_tol=1e-6):
+            return "Unassigned"
+        return str(value)
+
     def _format_table_value(self, column: str, value) -> str:
         if value is None:
             return ""
+        if column == "True Phenotype":
+            if self._mode == "binary":
+                return self._format_pheno_class(value)
+            try:
+                return f"{float(value):.5f}"
+            except Exception:
+                return str(value)
+        if column == "Threshold Label":
+            return self._format_pheno_class(value)
         if isinstance(value, (float, np.floating)):
             if np.isnan(value):
                 return ""
-            if column in {"Accuracy", "TPR", "TNR", "Balanced Acc", "Sign Match Frac"}:
+            if column in {"Accuracy", "Balanced Acc", "Sign Match Frac"} or column.startswith("TPR") or column.startswith("TNR"):
                 return f"{value:.0%}"
             if column in {"AUROC", "Pearson r", "Spearman ρ", "R²"}:
                 return f"{value:.5f}"
             if column in {"RMSE", "MAE", "Bias", "Mean SPS", "Predicted Mean", "IQR"}:
                 return f"{value:.5f}"
-            if column == "True Phenotype":
-                if self._mode == "binary":
-                    return str(int(round(value)))
-                return f"{value:.5f}"
-            if column == "Threshold Label":
-                return str(int(round(value)))
             return f"{value}"
         if isinstance(value, (int, np.integer)):
             return str(int(value))
@@ -760,7 +787,7 @@ class PredictionMetricsDialog(QDialog):
         # Include Pearson r column for binary/threshold metrics only if underlying phenotypes are continuous
         include_pearson = not getattr(self, "_tp_is_binary", False)
 
-        row_cols = ["Subset", "N rows", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC"]
+        row_cols = ["Subset", "N rows", "Accuracy", self._tpr_col, self._tnr_col, "Balanced Acc", "AUROC"]
         if include_pearson:
             row_cols.append("Pearson r")
         rows_summary: list[dict[str, object]] = []
@@ -776,8 +803,8 @@ class PredictionMetricsDialog(QDialog):
                 "Subset": label,
                 "N rows": int(len(work)),
                 "Accuracy": acc,
-                "TPR": tpr,
-                "TNR": tnr,
+                self._tpr_col: tpr,
+                self._tnr_col: tnr,
                 "Balanced Acc": bal,
                 "AUROC": auc_rows,
             }
@@ -809,7 +836,7 @@ class PredictionMetricsDialog(QDialog):
         except Exception:
             pass
 
-        sp_cols = ["Subset", "N species", "Accuracy", "TPR", "TNR", "Balanced Acc", "AUROC"]
+        sp_cols = ["Subset", "N species", "Accuracy", self._tpr_col, self._tnr_col, "Balanced Acc", "AUROC"]
         if include_pearson:
             sp_cols.append("Pearson r")
         sp_summary: list[dict[str, object]] = []
@@ -844,8 +871,8 @@ class PredictionMetricsDialog(QDialog):
                 "Subset": label,
                 "N species": n_species,
                 "Accuracy": acc,
-                "TPR": tpr,
-                "TNR": tnr,
+                self._tpr_col: tpr,
+                self._tnr_col: tnr,
                 "Balanced Acc": bal,
                 "AUROC": auc_species,
             }
