@@ -40,12 +40,12 @@ Prepackaged software is available for download.
 
 #### 1. GUI app downloads (macOS/Windows/Linux)
 
-Download the GUI app for your platform from [GitHub Releases](../../releases/latest):
+Download the GUI app for your platform from [GitHub Releases](https://github.com/John-Allard/ESL-PSC/releases/latest):
 
 
 #### 2. CLI Toolkit archive (macOS/Windows/Linux)
 
-The Toolkit provides the CLI for ESL-PSC. Download the toolkit archive for your platform from [GitHub Releases](../../releases/latest):
+The Toolkit provides the CLI for ESL-PSC. Download the toolkit archive for your platform from [GitHub Releases](https://github.com/John-Allard/ESL-PSC/releases/latest):
 
 Then:
 
@@ -76,7 +76,7 @@ If you are new to ESL-PSC and want the simplest path, start with the guide in [`
 
 For a description of the GUI and ESL-PSC Toolkit features, see the [ESL-PSC Toolkit preprint](https://doi.org/10.48550/arXiv.2605.27677).
 
-Install the GUI app from the [GitHub Releases page](../../releases/latest).
+Install the GUI app from the [GitHub Releases page](https://github.com/John-Allard/ESL-PSC/releases/latest).
 
 Compatible with Windows, Mac, and Linux.
 
@@ -160,7 +160,7 @@ Feedback on the GUI is welcome! Please open an issue on the [GitHub repository](
 
 ### Stand-alone packaged applications ###
 
-Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](../../releases/latest). We also publish a CLI toolkit package.
+Pre-built GUI packages are available for macOS, Windows, and Linux on the [GitHub Releases page](https://github.com/John-Allard/ESL-PSC/releases/latest). We also publish a CLI toolkit package.
 
 The CLI toolkit package includes the compiled `esl-psc` binary plus Python support modules used by utility subcommands such as `pairs` and `site-counter`. It is intended to run with your system Python rather than bundling another Python runtime.
 After extracting the toolkit, install dependencies with:
