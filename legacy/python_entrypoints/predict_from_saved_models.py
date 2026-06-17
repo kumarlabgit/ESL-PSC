@@ -15,8 +15,12 @@ import argparse, os, math, re
 from collections import defaultdict
 from tqdm import tqdm
 from Bio import SeqIO
-from esl_psc_functions import parse_ESL_weight_line, parse_ESL_weight_label, get_species_to_check
-from sps_density import (
+from esl_psc_cli.esl_psc_functions import (
+    parse_ESL_weight_line,
+    parse_ESL_weight_label,
+    get_species_to_check,
+)
+from esl_psc_cli.sps_density import (
     create_sps_plot,
     create_sps_plot_violin
 )

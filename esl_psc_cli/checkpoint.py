@@ -78,6 +78,7 @@ class Checkpointer:
             "canceled_alignments_dir",
             "use_existing_preprocess",
             "delete_preprocess",
+            "preserve_canceled_alignments",
             "use_uncanceled_alignments",
             "only_pos_gss",  # handled separately
             "lambda1_only",  # handled separately

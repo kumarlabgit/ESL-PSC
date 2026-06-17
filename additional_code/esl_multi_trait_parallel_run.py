@@ -28,7 +28,7 @@ def run_esl_analysis(input_dir, input_alignments_path, esl_directory, species_gr
         shutil.copy(simulated_file, f"{unique_tmp_dir}/input_alignments/")
 
     deletion_canceler_cmd = [
-        "python", f"{esl_directory}/deletion_canceler.py",
+        "python", f"{esl_directory}/esl_psc_cli/deletion_canceler.py",
         "--alignments_dir", f"{unique_tmp_dir}/input_alignments",
         "--canceled_alignments_dir", canceled_alignments_dir,
         "--species_groups_file", species_groups_file,
@@ -42,7 +42,7 @@ def run_esl_analysis(input_dir, input_alignments_path, esl_directory, species_gr
     subprocess.run(deletion_canceler_cmd, check=True)
 
     subprocess.run([
-        "python", f"{esl_directory}/esl_multimatrix.py",
+        "python", f"{esl_directory}/esl_psc_cli/esl_multimatrix.py",
         "--esl_inputs_outputs_dir", esl_inputs_outputs_dir,
         "--species_groups_file", species_groups_file,
         "--group_penalty_type", "median",

@@ -3,16 +3,19 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThreadPool, Qt
 import os
+import time
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QGroupBox, QPlainTextEdit, QPushButton,
-    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame, QCheckBox
+    QLabel, QProgressBar, QHBoxLayout, QWizard, QMessageBox, QFrame, QCheckBox,
+    QProgressDialog, QApplication
 )
 
 from gui.core.worker import ESLWorker
+from esl_psc_cli import esl_psc_functions as ecf
 from .base_page import BaseWizardPage
 from gui.ui.widgets.results_display import (
-    SpsPlotDialog, GeneRanksDialog
+    SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
 )
 
 class RunPage(BaseWizardPage):
@@ -33,6 +36,9 @@ class RunPage(BaseWizardPage):
         scroll = QScrollArea()
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         container = QWidget()
         scroll.setWidget(container)
         container_layout = QVBoxLayout(container)
@@ -64,12 +70,20 @@ class RunPage(BaseWizardPage):
         self.sps_btn = QPushButton("Show SPS Plot")
         self.sps_btn.hide()
         self.sps_btn.clicked.connect(self.show_sps_plot)
+        self.cont_btn = QPushButton("Show Phenotype Plot")
+        self.cont_btn.hide()
+        self.cont_btn.clicked.connect(self.show_cont_plot)
         self.gene_btn = QPushButton("Show Top Gene Ranks")
         self.gene_btn.hide()
         self.gene_btn.clicked.connect(self.show_gene_ranks)
+        self.metrics_btn = QPushButton("Show Prediction Metrics")
+        self.metrics_btn.hide()
+        self.metrics_btn.clicked.connect(self.show_prediction_metrics)
         self.results_layout.addStretch()
         self.results_layout.addWidget(self.sps_btn)
+        self.results_layout.addWidget(self.cont_btn)
         self.results_layout.addWidget(self.gene_btn)
+        self.results_layout.addWidget(self.metrics_btn)
         container_layout.addLayout(self.results_layout)
 
         # Progress Bars GroupBox
@@ -133,6 +147,9 @@ class RunPage(BaseWizardPage):
         self.sps_plot_path = None
         self.gene_ranks_path = None
         self.selected_sites_path = None
+        self.predictions_csv_path = None
+        # Timestamp for run start, to filter out stale artifacts from prior runs
+        self._run_start_time = None
     
     # ------------------------------------------------------------------
     # Checkpoint helpers
@@ -141,6 +158,13 @@ class RunPage(BaseWizardPage):
         """Detect checkpoint compatibility and update run button/label."""
         from esl_psc_cli.checkpoint import Checkpointer  # local import to avoid GUI start-time cost
         output_dir = self.config.output_dir
+        if not output_dir:
+            self.resume_available = False
+            self.checkpoint_label.setText("Choose an output directory before running.")
+            self.checkpoint_label.show()
+            self.ignore_cp_checkbox.hide()
+            self._update_run_btn_text(False)
+            return
         cp = Checkpointer(output_dir)
         self.resume_available = False
         self.checkpoint_label.clear()
@@ -172,7 +196,7 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(True)
                 self.wizard().button(QWizard.WizardButton.FinishButton).hide()
 
-            self.run_btn.setEnabled(True)
+            self.run_btn.setEnabled(bool(self.config.output_dir))
             self.stop_btn.setEnabled(False)
 
         except ValueError as e:
@@ -191,7 +215,17 @@ class RunPage(BaseWizardPage):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         os.chdir(project_root)
         try:
+            if not self._prepare_two_line_alignments():
+                return
+
             output_dir = self.config.output_dir
+            if not output_dir:
+                QMessageBox.warning(
+                    self,
+                    "Output Directory Required",
+                    "Choose an output directory before running the analysis.",
+                )
+                return
             base_name = self.config.output_file_base_name
 
 
@@ -199,6 +233,9 @@ class RunPage(BaseWizardPage):
             # Reset progress bars for new run
             self.overall_progress_bar.setValue(0)
             self.step_progress_bar.setValue(0)
+
+            # Record start time so we can verify which outputs were created by THIS run
+            self._run_start_time = time.time()
 
             # 2) Show overwrite warning only for a *fresh* run (no checkpoint or user forces fresh)
             from esl_psc_cli.checkpoint import Checkpointer
@@ -246,13 +283,17 @@ class RunPage(BaseWizardPage):
                 self.wizard().button(QWizard.WizardButton.BackButton).setEnabled(False)
             
             self.cmd_display.clear()
-            self.cmd_display.appendPlainText(f"$ python -m esl_multimatrix.py {self.config.get_command_string()}")
+            runner_prefix = ESLWorker.get_command_preview_prefix()
+            self.cmd_display.appendPlainText(f"$ {runner_prefix} {self.config.get_command_string()}")
             self.step_status_label.setText("Starting analysis (may take 10 seconds)...")
             self.sps_btn.hide()
+            self.cont_btn.hide()
             self.gene_btn.hide()
             self.sps_plot_path = None
+            self.cont_plot_path = None
             self.gene_ranks_path = None
             self.selected_sites_path = None
+            self.predictions_csv_path = None
 
             # Create and configure worker
             self.worker = ESLWorker(args)
@@ -269,6 +310,107 @@ class RunPage(BaseWizardPage):
         except Exception as e:
             self.append_error(f"Error starting analysis: {str(e)}")
             self.analysis_finished(1)
+
+    def _prepare_two_line_alignments(self) -> bool:
+        """Offer conversion to 2-line FASTA for directories requiring strict format."""
+        def _maybe_convert(attr_name: str, label: str, recursive: bool) -> bool:
+            dir_path = getattr(self.config, attr_name, "") or ""
+            if not dir_path:
+                return True
+            try:
+                non_two = ecf.find_non_two_line_fasta_files(dir_path, recursive=recursive)
+            except ValueError as e:
+                QMessageBox.critical(self, "Invalid FASTA", str(e))
+                return False
+            if not non_two:
+                return True
+
+            target_dir = ecf.default_two_line_dir(dir_path)
+            if os.path.isdir(target_dir):
+                reply = QMessageBox.question(
+                    self,
+                    "Use Existing 2-line Directory?",
+                    (
+                        f"A converted 2-line directory already exists for {label}:\n\n"
+                        f"{target_dir}\n\n"
+                        "Use this directory for the run?"
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    setattr(self.config, attr_name, target_dir)
+                    self.append_output(f"[INFO] Using existing converted directory: {target_dir}")
+                    return True
+                return False
+
+            msg = (
+                f"The selected {label} are not in strict 2-line FASTA format.\n\n"
+                f"Detected files: {len(non_two)}\n"
+                f"Example: {non_two[0]}\n\n"
+                "Create converted files now and continue this run?\n"
+                f"Converted directory:\n{target_dir}"
+            )
+            reply = QMessageBox.question(
+                self,
+                "Convert Alignments to 2-line FASTA?",
+                msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+
+            progress = QProgressDialog(f"Converting {label} to 2-line FASTA...", None, 0, 1, self)
+            progress.setWindowTitle("Preparing Alignments")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setCancelButton(None)
+            progress.setAutoClose(False)
+            progress.show()
+            QApplication.processEvents()
+
+            def _on_progress(cur: int, total: int, path: str) -> None:
+                progress.setMaximum(max(1, int(total)))
+                progress.setValue(int(cur))
+                if path:
+                    progress.setLabelText(
+                        f"Converting {label} to 2-line FASTA...\n"
+                        f"{cur}/{total}: {os.path.basename(path)}"
+                    )
+                else:
+                    progress.setLabelText(f"Converting {label} to 2-line FASTA...\n{cur}/{total}")
+                QApplication.processEvents()
+
+            try:
+                try:
+                    out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+                        dir_path,
+                        recursive=recursive,
+                        output_dir=target_dir,
+                        overwrite=False,
+                        progress_callback=_on_progress,
+                    )
+                finally:
+                    progress.close()
+            except Exception as e:
+                QMessageBox.critical(self, "2-line Conversion Failed", str(e))
+                return False
+
+            setattr(self.config, attr_name, out_dir)
+            self.append_output(
+                f"[INFO] Converted {n_written} FASTA file(s) to 2-line format for {label}."
+            )
+            self.append_output(f"[INFO] Using converted directory: {out_dir}")
+            return True
+
+        if not getattr(self.config, "no_pred_output", False):
+            if not _maybe_convert("prediction_alignments_dir", "prediction alignments", False):
+                return False
+        if getattr(self.config, "use_existing_alignments", False):
+            if not _maybe_convert("canceled_alignments_dir", "existing canceled alignments", True):
+                return False
+        return True
     
     def stop_analysis(self):
         """Stop the running analysis."""
@@ -306,17 +448,34 @@ class RunPage(BaseWizardPage):
         else:
             QMessageBox.warning(self, "File Not Found", "The SPS plot file could not be found.")
 
+    def show_cont_plot(self):
+        """Slot to show the continuous phenotype plot if available."""
+        if self.cont_plot_path and os.path.exists(self.cont_plot_path):
+            ContinuousPlotDialog.show_dialog(self.cont_plot_path, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The phenotype plot file could not be found.")
+
     def show_gene_ranks(self):
         """Slot to show the gene ranks table if available."""
         if self.gene_ranks_path and os.path.exists(self.gene_ranks_path):
+            # Launch as a top-level window (no parent) to keep stable stacking
+            # relative to the wizard when opening further child windows.
             GeneRanksDialog.show_dialog(
                 self.gene_ranks_path,
                 self.config,
                 self.selected_sites_path,
-                parent=self,
+                parent=None,
             )
         else:
             QMessageBox.warning(self, "File Not Found", "The gene ranks file could not be found.")
+
+    def show_prediction_metrics(self):
+        """Open metrics dialog for predictions when available (binary only)."""
+        if self.predictions_csv_path and os.path.exists(self.predictions_csv_path):
+            # Launch as a dialog with this page as parent for stacking
+            PredictionMetricsDialog.show_dialog(self.predictions_csv_path, self.config, parent=self)
+        else:
+            QMessageBox.warning(self, "File Not Found", "The species predictions file could not be found.")
 
 
     def analysis_finished(self, exit_code):
@@ -347,9 +506,19 @@ class RunPage(BaseWizardPage):
             ):
                 fig_name = f"{base}_pred_sps_plot.svg"
                 path = os.path.abspath(os.path.join(out_dir, fig_name))
-                if os.path.exists(path):
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
                     self.sps_plot_path = path
                     self.sps_btn.show()
+
+            self.cont_plot_path = None
+            if getattr(self.config, "make_continuous_plot", False) and not getattr(self.config, "no_pred_output", False):
+                cont_name = f"{base}_continuous_plot.svg"
+                path = os.path.abspath(os.path.join(out_dir, cont_name))
+                # Only accept if created/modified during this run
+                if os.path.exists(path) and self._run_start_time and os.path.getmtime(path) >= self._run_start_time:
+                    self.cont_plot_path = path
+                    self.cont_btn.show()
 
             ranks_path = os.path.abspath(os.path.join(out_dir, f"{base}_gene_ranks.csv"))
             # Only show the button if gene output was requested in this run
@@ -360,6 +529,15 @@ class RunPage(BaseWizardPage):
             sites_path = os.path.abspath(os.path.join(out_dir, f"{base}_selected_sites.csv"))
             if getattr(self.config, "show_selected_sites", False) and os.path.exists(sites_path):
                 self.selected_sites_path = sites_path
+
+            # Prediction Metrics (requires predictions CSV and binary phenotypes)
+            preds_path = os.path.abspath(os.path.join(out_dir, f"{base}_species_predictions.csv"))
+            self.metrics_btn.hide()
+            if not getattr(self.config, "no_pred_output", False) and os.path.exists(preds_path):
+                # Only enable metrics for binary phenotype mode
+                if getattr(self.config, "species_pheno_is_binary", False) and not getattr(self.config, "use_continuous_phenotypes", False) and not getattr(self.config, 'response_matrices_are_continuous', False):
+                    self.predictions_csv_path = preds_path
+                    self.metrics_btn.show()
         elif exit_code == -1 or (self.worker and self.worker.was_stopped):
             self.step_status_label.setText("Analysis stopped by user.")
             self.append_output("\n🛑 Analysis was stopped.")

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.config import ESLConfig
-from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog
+from gui.ui.widgets.results_display import SpsPlotDialog, GeneRanksDialog, ContinuousPlotDialog, PredictionMetricsDialog
 
 __all__ = [
     "select_and_show_existing_output",
@@ -73,8 +73,10 @@ class _ExistingOutputDialog(QDialog):
         btn_layout.addStretch()
 
         self._sps_path: Optional[str] = self._find_sps_plot()
+        self._cont_path: Optional[str] = self._find_cont_plot()
         self._gene_ranks_path: Optional[str] = self._find_gene_ranks()
         self._sites_path: Optional[str] = self._find_selected_sites()
+        self._preds_path: Optional[str] = self._find_predictions_csv()
 
         self._sps_btn = QPushButton("Show SPS Plot")
         if self._sps_path:
@@ -89,6 +91,19 @@ class _ExistingOutputDialog(QDialog):
         self._sps_btn.clicked.connect(self._show_sps)
         btn_layout.addWidget(self._sps_btn)
 
+        self._cont_btn = QPushButton("Show Phenotype Plot")
+        if self._cont_path:
+            self._cont_btn.setToolTip("Open the phenotype density plot from this run")
+        else:
+            self._cont_btn.setEnabled(False)
+            self._cont_btn.setToolTip("No phenotype plot found in this output folder")
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(self._cont_btn)
+            eff.setOpacity(0.4)
+            self._cont_btn.setGraphicsEffect(eff)
+        self._cont_btn.clicked.connect(self._show_cont)
+        btn_layout.addWidget(self._cont_btn)
+
         self._gene_btn = QPushButton("Show Gene Ranks")
         if self._gene_ranks_path:
             self._gene_btn.setToolTip("Open the gene-rank table from this run")
@@ -101,6 +116,20 @@ class _ExistingOutputDialog(QDialog):
             self._gene_btn.setGraphicsEffect(eff)
         self._gene_btn.clicked.connect(self._show_gene_ranks)
         btn_layout.addWidget(self._gene_btn)
+
+        # Prediction Metrics button (requires true_phenotype column)
+        self._metrics_btn = QPushButton("Show Prediction Metrics")
+        if self._preds_path and self._predictions_have_true_values():
+            self._metrics_btn.setToolTip("Open prediction metrics for this run")
+        else:
+            self._metrics_btn.setEnabled(False)
+            self._metrics_btn.setToolTip("Metrics require a predictions CSV with true_phenotype values.")
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(self._metrics_btn)
+            eff.setOpacity(0.4)
+            self._metrics_btn.setGraphicsEffect(eff)
+        self._metrics_btn.clicked.connect(self._show_metrics)
+        btn_layout.addWidget(self._metrics_btn)
 
         btn_layout.addStretch()
 
@@ -116,6 +145,13 @@ class _ExistingOutputDialog(QDialog):
         cand = os.path.join(self._output_dir, f"{base}_pred_sps_plot.svg")
         return cand if os.path.exists(cand) else None
 
+    def _find_cont_plot(self) -> Optional[str]:
+        base = self._cfg.output_file_base_name
+        if not base or getattr(self._cfg, "no_pred_output", False):
+            return None
+        cand = os.path.join(self._output_dir, f"{base}_continuous_plot.svg")
+        return cand if os.path.exists(cand) else None
+
     def _find_gene_ranks(self) -> Optional[str]:
         base = self._cfg.output_file_base_name
         if not base or getattr(self._cfg, "no_genes_output", False):
@@ -128,6 +164,24 @@ class _ExistingOutputDialog(QDialog):
         cand = os.path.join(self._output_dir, f"{base}_selected_sites.csv")
         return cand if os.path.exists(cand) else None
 
+    def _find_predictions_csv(self) -> Optional[str]:
+        base = self._cfg.output_file_base_name
+        cand = os.path.join(self._output_dir, f"{base}_species_predictions.csv")
+        return cand if os.path.exists(cand) else None
+
+    def _predictions_have_true_values(self) -> bool:
+        if not self._preds_path:
+            return False
+        try:
+            import csv
+
+            with open(self._preds_path, newline="", encoding="utf-8", errors="ignore") as fh:
+                reader = csv.reader(fh)
+                header = next(reader, [])
+        except Exception:
+            return False
+        return any(col.strip() == "true_phenotype" for col in header)
+
     # ------------------------------------------------------------------
     # Slots
     # ------------------------------------------------------------------
@@ -137,16 +191,29 @@ class _ExistingOutputDialog(QDialog):
         else:
             QMessageBox.information(self, "Unavailable", "No SPS plot found for this run.")
 
+    def _show_cont(self):  # pragma: no cover – UI slot
+        if self._cont_path:
+            ContinuousPlotDialog.show_dialog(self._cont_path, parent=self)
+        else:
+            QMessageBox.information(self, "Unavailable", "No phenotype plot found for this run.")
+
     def _show_gene_ranks(self):  # pragma: no cover – UI slot
         if self._gene_ranks_path:
+            # Launch as a top-level window with no parent so normal stacking applies
             GeneRanksDialog.show_dialog(
                 self._gene_ranks_path,
                 self._cfg,
                 self._sites_path,
-                parent=self,
+                parent=None,
             )
         else:
             QMessageBox.information(self, "Unavailable", "No gene-ranks file found for this run.")
+
+    def _show_metrics(self):  # pragma: no cover – UI slot
+        if self._preds_path and self._predictions_have_true_values():
+            PredictionMetricsDialog.show_dialog(self._preds_path, self._cfg, parent=self)
+        else:
+            QMessageBox.information(self, "Unavailable", "Metrics require a predictions CSV with true_phenotype values.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -210,6 +277,10 @@ def select_and_show_existing_output(parent=None):
     for key, val in arg_dict.items():
         if hasattr(cfg, key):
             setattr(cfg, key, val)
+    # Map CLI key names to GUI config fields where they differ
+    # species_pheno_path (CLI) -> species_phenotypes_file (GUI)
+    if not getattr(cfg, 'species_phenotypes_file', '') and 'species_pheno_path' in arg_dict:
+        cfg.species_phenotypes_file = arg_dict['species_pheno_path']
     # Fallback defaults
     if not cfg.output_dir:
         cfg.output_dir = dir_path

@@ -13,6 +13,12 @@ warnings.filterwarnings("ignore", category=UserWarning,  module="matplotlib")
 
 ##matplotlib.use('svg')
 
+
+def _pretty_title(text: str, width: int = 33) -> str:
+    normalized = str(text).replace('_', ' ').replace('-', ' ')
+    normalized = ' '.join(normalized.split())
+    return '\n'.join(wrap(normalized, width=width))
+
 def create_sps_plot(csv_file_path=None,
                     df=None, RMSE_rank = 0.05,
                     bw_method = 0.07,
@@ -24,7 +30,9 @@ def create_sps_plot(csv_file_path=None,
                     pos_pheno_color = '#2fc8cc',
                     percent_accuracy = True,
                     axes = None,
-                    min_genes = 0):
+                    min_genes = 0,
+                    aggregate_species = False,
+                    panel_suffix = None):
     '''creates density plot of sequence prediction score for each species in each ESL run 
     plot has two lines: one for the negative phenotype and one for the positive phenotype
     can either pass csv file or dataframe but not both
@@ -55,19 +63,37 @@ def create_sps_plot(csv_file_path=None,
     # select only models that have a minimum number of genes
     df =  df[df['num_genes'] > min_genes]
     
-    # converts input_RMSE to percentage rank
-    df['RMSE_Rank'] = df.input_RMSE.rank(pct = True)
-
-    # selects true_phenotype and SPS columns based on RMSE percentage rank
-    df =  df[df['RMSE_Rank'] < RMSE_rank]
+    if RMSE_rank is not None:
+        # converts input_RMSE to percentage rank
+        df['RMSE_Rank'] = df.input_RMSE.rank(pct = True)
+        # selects rows based on RMSE percentage rank
+        df = df[df['RMSE_Rank'] < RMSE_rank]
+    # Keep only labeled binary rows (±1); drop 0/unassigned and NaNs
+    tp = pd.to_numeric(df['true_phenotype'], errors='coerce')
+    mask = tp.isin([-1, 1]) & df['SPS'].notna()
+    df = df.loc[mask].copy()
+    if aggregate_species:
+        df = (
+            df.groupby('species', as_index=False)
+              .agg({'SPS': 'mean', 'true_phenotype': 'first'})
+        )
+    # Normalize phenotype labels to string "-1"/"1" for consistent pivots
+    df['true_phenotype'] = pd.to_numeric(df['true_phenotype'], errors='coerce').astype(int).astype(str)
     data_wide = df.pivot(columns='true_phenotype', values='SPS')
 
     # creates density plot using seaborn
-    sns.kdeplot(data_wide['-1'], color=neg_pheno_color, bw_method=bw_method, ax=axes, label=neg_pheno_name)
-    sns.kdeplot(data_wide['1'], color=pos_pheno_color, bw_method=bw_method, ax=axes, label=pos_pheno_name)
+    if '-1' in data_wide and data_wide['-1'].dropna().size > 0:
+        sns.kdeplot(data_wide['-1'], color=neg_pheno_color, bw_method=bw_method, ax=axes, label=neg_pheno_name)
+    if '1' in data_wide and data_wide['1'].dropna().size > 0:
+        sns.kdeplot(data_wide['1'], color=pos_pheno_color, bw_method=bw_method, ax=axes, label=pos_pheno_name)
     
     # labels axes and adds title
-    title = title + '\nlowest ' + "{0:.0%}".format(RMSE_rank) + ' of MFS models combined'
+    if panel_suffix is None:
+        if RMSE_rank is None:
+            panel_suffix = 'all models combined'
+        else:
+            panel_suffix = 'lowest ' + "{0:.0%}".format(RMSE_rank) + ' of MFS models combined'
+    title = _pretty_title(title) + '\n' + panel_suffix
     
     #adds caption with percent accuracy
     if percent_accuracy:
@@ -104,7 +130,9 @@ def create_sps_plot_violin(csv_file_path=None,
                     pos_pheno_color = '#2fc8cc',
                     percent_accuracy = True,
                     axes = None,
-                    min_genes = 0):
+                    min_genes = 0,
+                    aggregate_species = False,
+                    panel_suffix = None):
     
     # reads csv into pandas dataframe object if no dataframe provided
     if df is None:
@@ -117,11 +145,22 @@ def create_sps_plot_violin(csv_file_path=None,
     # select only models that have a minimum number of genes
     df =  df[df['num_genes'] > min_genes]
     
-    # converts input_RMSE to percentage rank
-    df['RMSE_Rank'] = df.input_RMSE.rank(pct = True)
-
-    # selects true_phenotype and SPS columns based on RMSE percentage rank
-    df =  df[df['RMSE_Rank'] < RMSE_rank]
+    if RMSE_rank is not None:
+        # converts input_RMSE to percentage rank
+        df['RMSE_Rank'] = df.input_RMSE.rank(pct = True)
+        # selects rows based on RMSE percentage rank
+        df = df[df['RMSE_Rank'] < RMSE_rank]
+    # Keep only labeled binary rows (±1); drop 0/unassigned and NaNs
+    tp = pd.to_numeric(df['true_phenotype'], errors='coerce')
+    mask = tp.isin([-1, 1]) & df['SPS'].notna()
+    df = df.loc[mask].copy()
+    if aggregate_species:
+        df = (
+            df.groupby('species', as_index=False)
+              .agg({'SPS': 'mean', 'true_phenotype': 'first'})
+        )
+    # Normalize phenotype labels to string "-1"/"1" for mapping
+    df['true_phenotype'] = pd.to_numeric(df['true_phenotype'], errors='coerce').astype(int).astype(str)
 
     # create the figure and subplot
     if axes is None:
@@ -143,7 +182,7 @@ def create_sps_plot_violin(csv_file_path=None,
     pheno_dict = {'1': pos_pheno_name, '-1': neg_pheno_name}
 
     # replace the true_phenotype values in the dataframe with the corresponding names
-    df['true_phenotype'] = df['true_phenotype'].astype(str).map(pheno_dict)
+    df['true_phenotype'] = df['true_phenotype'].map(pheno_dict)
     
     # create the violin plots for each true phenotype
     sns.violinplot(x='true_phenotype', y='SPS', data=df,
@@ -155,7 +194,14 @@ def create_sps_plot_violin(csv_file_path=None,
                    linewidth = 0)
 
     # set the plot title and axis labels
-    title_cutoff = '\n'+ '\n'.join(wrap(title, width = 33)) + '\nlowest ' + "{0:.0%}".format(RMSE_rank) + ' of MFS models combined'
+    if panel_suffix is None:
+        if aggregate_species and RMSE_rank is None:
+            panel_suffix = 'species-averaged SPS over all models'
+        elif RMSE_rank is None:
+            panel_suffix = 'all models combined'
+        else:
+            panel_suffix = 'lowest ' + "{0:.0%}".format(RMSE_rank) + ' of MFS models combined'
+    title_cutoff = '\n' + _pretty_title(title) + '\n' + panel_suffix
     axes.set_ylabel('Sequence Prediction Score')
     axes.set_title(title_cutoff, wrap=True)
 
@@ -165,9 +211,55 @@ def create_sps_plot_violin(csv_file_path=None,
     axes.grid(color='white', linestyle='-', linewidth=.5)
     axes.set_facecolor('#ececec')
     sns.despine(left=True, bottom=True)
+    axes.set_yticks([-1, -0.5, 0, 0.5, 1])
+    axes.set_yticklabels(['≤ -1', '-0.5', '0', '0.5', '≥ 1'])
     
     # save the plot to a file. Let matplotlib infer format from file extension to ensure the required backend is available.
     # Save only if caller did not supply external axes and requested a path
+    if fig_path and axes is None:
+        fig.savefig(fig_path)
+
+
+def create_continuous_plot(csv_file_path=None,
+                          df=None,
+                          fig_path='plot.png',
+                          title='Phenotype vs SPS',
+                          axes=None,
+                          min_genes=0):
+    """Create a 2D density plot of true phenotype vs SPS.
+
+    Args:
+        csv_file_path: Optional path to the predictions CSV file.
+        df: Optional dataframe containing predictions. If provided it will
+            be copied to avoid mutation.
+        fig_path: Where to save the resulting figure (format inferred from
+            extension).
+        title: Plot title.
+        axes: Optional matplotlib axes to draw on.
+        min_genes: Minimum number of genes a model must have to be included.
+    """
+    if df is None:
+        df = pd.read_csv(csv_file_path)
+    else:
+        df = df.copy()
+
+    df = df[df['num_genes'] > min_genes]
+
+    if axes is None:
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(6, 5))
+    else:
+        fig = axes.get_figure()
+
+    sns.kdeplot(data=df, x='true_phenotype', y='SPS', fill=True,
+                cmap='viridis', thresh=0, levels=100, ax=axes)
+
+    axes.set_xlabel('True phenotype')
+    axes.set_ylabel('SPS')
+    axes.set_title(title, wrap=True)
+    axes.grid(color='white', linestyle='-', linewidth=0.5)
+    axes.set_facecolor('#ececec')
+    sns.despine(left=True, bottom=True)
+
     if fig_path and axes is None:
         fig.savefig(fig_path)
 
@@ -190,25 +282,33 @@ def calc_percent_accuracy_from_csv(csv_file_path):
 
 # calculates percent accuracy from data frame
 def calc_percent_accuracy_from_df(df):
-    num_correct = 0
-    total_num = len(df.index)
-    # list comprehension to get tuples of SPS and true phenottype values
-    # call is_row_correct for each tuples then sum values
-    num_correct = sum([is_row_correct(x, int(y)) for x, y in zip(df['SPS'], df['true_phenotype'])]) 
-    return num_correct/total_num
+    # Normalize and filter to labeled binary rows (±1)
+    tp = pd.to_numeric(df['true_phenotype'], errors='coerce')
+    mask = tp.isin([-1, 1]) & df['SPS'].notna()
+    sps = df.loc[mask, 'SPS']
+    labels = tp.loc[mask].astype(int)
+    total_num = len(sps)
+    if total_num == 0:
+        return 0.0
+    num_correct = sum(is_row_correct(x, y) for x, y in zip(sps, labels))
+    return num_correct / total_num
 
 def calc_balanced_accuracy(df):
-    # Create a column that indicates whether the prediction is correct
-    df["correct"] = (df["SPS"] > 0) == (df["true_phenotype"].astype(int) > 0)
-    
-    # Compute the TPR and TNR
-    TPR = (df[(df["true_phenotype"].astype(int) == 1) & (df["correct"] == True)].shape[0]
-           / df[df["true_phenotype"].astype(int) == 1].shape[0])
-    TNR = (df[(df["true_phenotype"].astype(int) == -1) & (df["correct"] == True)].shape[0]
-           / df[df["true_phenotype"].astype(int) == -1].shape[0])
-
-    # Compute the balanced accuracy
-    balanced_acc = (TPR + TNR) / 2
+    # Normalize and filter to labeled binary rows (±1)
+    tp = pd.to_numeric(df['true_phenotype'], errors='coerce')
+    mask = tp.isin([-1, 1]) & df['SPS'].notna()
+    work = df.loc[mask, ['SPS']].copy()
+    labels = tp.loc[mask].astype(int)
+    # Correct prediction indicator
+    correct = (work['SPS'] > 0) == (labels > 0)
+    # Counts for denominators
+    pos_mask = labels == 1
+    neg_mask = labels == -1
+    pos_total = int(pos_mask.sum())
+    neg_total = int(neg_mask.sum())
+    TPR = (int((pos_mask & correct).sum()) / pos_total) if pos_total > 0 else 0.0
+    TNR = (int((neg_mask & correct).sum()) / neg_total) if neg_total > 0 else 0.0
+    balanced_acc = (TPR + TNR) / 2 if (pos_total > 0 or neg_total > 0) else 0.0
     return (TPR, TNR, balanced_acc)
 
 def is_row_correct(SPS, true_phenotype):
@@ -218,4 +318,3 @@ def is_row_correct(SPS, true_phenotype):
     if SPS*true_phenotype > 0:
         return 1
     return 0
-

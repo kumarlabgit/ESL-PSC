@@ -8,10 +8,11 @@ from pathlib import Path
 def test_demo_run_smoke(tmp_path):
     """Runs the CLI on the demo data and checks that output files are created."""
     project_root = Path(__file__).parent.parent
-    alignments_dir = project_root / "photosynthesis_alignments"
-    species_groups_src = project_root / "photo_single_LC_matrix_species_groups.txt"
+    alignments_dir = project_root / "demo_data" / "photosynthesis" / "alignments"
+    species_groups_src = project_root / "demo_data" / "photosynthesis" / "photo_single_LC_matrix_species_groups.txt"
     species_groups_file = tmp_path / "smoke_groups.txt"
-    species_pheno_file = project_root / "photo_species_phenotypes.txt"
+    species_pheno_file = project_root / "demo_data" / "photosynthesis" / "photo_species_phenotypes.txt"
+    limited_genes_file = tmp_path / "limited_genes.txt"
 
     assert alignments_dir.exists(), "Demo alignments directory not found!"
     assert species_groups_src.exists(), "Demo species groups file not found!"
@@ -21,20 +22,26 @@ def test_demo_run_smoke(tmp_path):
         for _ in range(4):
             dst.write(src.readline())
 
+    # Use only the top four genes from a full run to keep the smoke test fast
+    top_four_genes = ["ndhA.fas", "matk.fas", "clpP.fas", "ndhD.fas"]
+    limited_genes_file.write_text("\n".join(top_four_genes))
+
     output_basename = "smoke_test_output"
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
     command = [
         sys.executable,
-        "-m", "esl_multimatrix",
+        "-m", "esl_psc_cli.esl_multimatrix",
         "--alignments_dir", str(alignments_dir),
         "--species_groups_file", str(species_groups_file),
         "--species_pheno_path", str(species_pheno_file),
+        "--limited_genes_list", str(limited_genes_file),
         "--output_file_base_name", output_basename,
         "--output_dir", str(output_dir),
         "--use_logspace",
         "--num_log_points", "4",
+        "--preserve_canceled_alignments",
         "--show_selected_sites",
     ]
 

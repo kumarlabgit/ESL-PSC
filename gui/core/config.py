@@ -1,9 +1,11 @@
 """
 Configuration model for ESL-PSC analysis.
 """
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
 import os
+from typing import List, Optional, Tuple
+
+from gui.core.paths import default_output_dir
 
 @dataclass
 class ESLConfig:
@@ -11,9 +13,30 @@ class ESLConfig:
     alignments_dir: str = ""
     species_groups_file: str = ""
     species_phenotypes_file: str = ""
+    # Phenotype type detection (set by GUI when a phenotype file is chosen)
+    species_pheno_is_binary: bool = False
+    species_pheno_is_continuous: bool = False
+    # Whether ESL-PSC should treat phenotypes as continuous and use
+    # sg_lasso_leastr. Set via Parameters page or automatically when a
+    # response-matrix directory with continuous values is supplied.
+    use_continuous_phenotypes: bool = False
+    # Track if the provided response matrices already contain continuous values.
+    # When True, the GUI checkbox is locked in the "on" state.
+    response_matrices_are_continuous: bool = False
     prediction_alignments_dir: str = ""
     limited_genes_file: str = ""
     response_dir: str = ""
+
+    # Session-level memory (not written to CLI args)
+    # Remembers the last outgroup species selected in the Site Counter dialog
+    last_site_counter_outgroup: str = ""
+    last_site_counter_agree_pct: float = 100.0
+    last_site_counter_tree_file: str = ""
+    # Back-compat fields (legacy name retained for loading older configs).
+    last_fast_scan_outgroup: str = ""
+    # Remembers the last species combination chosen for Site Viewer
+    preferred_groups_combo: Optional[Tuple[List[str], List[str]]] = None
+    preferred_response_matrix: str = ""
 
     # ─── Hyper-parameters ───────────────────────────────────────────────────────
     initial_lambda1: float = 0.01
@@ -32,6 +55,11 @@ class ESLConfig:
     grid_type: str = 'log'  # 'log' or 'linear'
     num_points: int = 20  # Number of points for log grid, or step size for linear grid
 
+    # Maximum number of iterations for the optimizer (CLI: --maxiter). Default is 100.
+    maxiter: int = 100
+    # Disable epsilon-comparison line-search acceptance and use strict acceptance.
+    disable_ec: bool = True
+
     # ─── Phenotype names ────────────────────────────────────────────────────────
     pheno_name1: str = "Convergent"
     pheno_name2: str = "Control"
@@ -43,6 +71,8 @@ class ESLConfig:
 
     use_existing_alignments: bool = False
     canceled_alignments_dir: str = ""
+    # Preserve generated gap-canceled alignments at the end of run (default: False → cleanup)
+    preserve_canceled_alignments: bool = False
 
     
     # Use existing preprocess directories instead of re-processing alignments
@@ -50,7 +80,7 @@ class ESLConfig:
 
 
     # ─── Output options ─────────────────────────────────────────────────────────
-    output_dir: str = os.path.join(os.getcwd(), "esl_psc_output")
+    output_dir: str = field(default_factory=default_output_dir)
     output_file_base_name: str = "esl_psc_results"
     keep_raw_output: bool = False
     show_selected_sites: bool = False
@@ -61,6 +91,7 @@ class ESLConfig:
     no_sps_plot: bool = True
     make_sps_plot: bool = False
     make_sps_kde_plot: bool = False
+    make_continuous_plot: bool = False
 
     # ─── Multi-matrix / null models ─────────────────────────────────────────────
     top_rank_frac: float = 0.01
@@ -69,6 +100,13 @@ class ESLConfig:
     num_randomized_alignments: int = 10
 
     # ─── Helpers ────────────────────────────────────────────────────────────────
+
+    def __post_init__(self) -> None:
+        self.ensure_defaults()
+
+    def ensure_defaults(self) -> None:
+        if not self.output_dir:
+            self.output_dir = default_output_dir()
 
     # ─── Public API ─────────────────────────────────────────────────────────────
     def _flag(self, b: bool, name: str) -> List[str]:
@@ -81,6 +119,8 @@ class ESLConfig:
         # Required parameters
         if not self.output_file_base_name:
             raise ValueError("missing output_file_base_name")
+        if not self.output_dir:
+            raise ValueError("missing output_dir")
             
         # Input directories and files
         if self.alignments_dir:
@@ -95,6 +135,8 @@ class ESLConfig:
             a += ["--limited_genes_list", self.limited_genes_file]
         if self.response_dir:
             a += ["--response_dir", self.response_dir]
+        if getattr(self, 'use_continuous_phenotypes', False):
+            a.append("--use_continuous_phenotypes")
             
         # Output configuration
         a += ["--output_file_base_name", self.output_file_base_name]
@@ -111,6 +153,12 @@ class ESLConfig:
             a += ["--use_logspace", "--num_log_points", str(self.num_points)]
         else:  # linear
             a += ["--lambda_step", str(self.num_points)]  # Using num_points as step size for linear grid
+        
+        # Optimizer iterations (only include if not default)
+        if hasattr(self, 'maxiter') and self.maxiter != 100:
+            a += ["--maxiter", str(self.maxiter)]
+        if not getattr(self, 'disable_ec', True):
+            a.append("--enable_ec")
             
         # Group penalty - only include values if not using 'median' or 'std' type
         a += ["--group_penalty_type", self.group_penalty_type]
@@ -129,6 +177,8 @@ class ESLConfig:
                         "--use_existing_alignments")
         if getattr(self, 'canceled_alignments_dir', ''):
             a += ["--canceled_alignments_dir", self.canceled_alignments_dir]
+        # Preserve gap-canceled alignments (by default they are cleaned up)
+        a += self._flag(getattr(self, 'preserve_canceled_alignments', False), "--preserve_canceled_alignments")
 
         a += self._flag(getattr(self, 'use_existing_preprocess', False), "--use_existing_preprocess")
         
@@ -152,8 +202,11 @@ class ESLConfig:
         
         # Only include plot flags if we're generating prediction output
         if not no_pred:
-            a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
-            a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
+            if getattr(self, 'species_pheno_is_binary', False):
+                a += self._flag(getattr(self, 'make_sps_plot', False), "--make_sps_plot")
+                a += self._flag(getattr(self, 'make_sps_kde_plot', False), "--make_sps_kde_plot")
+            if getattr(self, 'use_continuous_phenotypes', False) or getattr(self, 'response_matrices_are_continuous', False):
+                a += self._flag(getattr(self, 'make_continuous_plot', False), "--make_continuous_plot")
         
         # Null model options
         if hasattr(self, 'make_null_models') and self.make_null_models:

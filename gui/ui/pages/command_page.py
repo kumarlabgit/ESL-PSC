@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QWidget, QScrollArea, QApplication, QFileDialog
 )
 
+from gui.core.worker import ESLWorker
 from .base_page import BaseWizardPage
 from .run_page import RunPage
 
@@ -27,6 +28,9 @@ class CommandPage(BaseWizardPage):
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Create a container widget for the scroll area
         container = QWidget()
@@ -114,7 +118,7 @@ class CommandPage(BaseWizardPage):
         
     def browse_output_dir(self):
         """Open a directory dialog to select the output directory."""
-        current_dir = self.output_dir_edit.text() or os.getcwd()
+        current_dir = self.output_dir_edit.text() or os.path.expanduser("~")
         dir_path = QFileDialog.getExistingDirectory(
             self, 
             "Select Output Directory",
@@ -130,15 +134,20 @@ class CommandPage(BaseWizardPage):
         
     def on_enter(self):
         """Update the command preview and summary when the page is shown."""
+        if not getattr(self.config, "output_dir", ""):
+            self.cmd_display.setPlainText(
+                "Choose an output directory on the previous page to enable the command preview."
+            )
+            self.update_summary()
+            return
         # Use the config's get_command_string method to generate the command
         try:
             cmd_str = self.config.get_command_string()
         except ValueError as e:
             cmd_str = f"Error generating command: {str(e)}"
             
-        # Display the command
-        # Prefix with the full python invocation for display
-        full_cmd = f"python -m esl_multimatrix {cmd_str}"
+        # Display the command with the actual preferred runner.
+        full_cmd = f"{ESLWorker.get_command_preview_prefix()} {cmd_str}"
         self.cmd_display.setPlainText(full_cmd)
         
         # Update the configuration summary
@@ -182,6 +191,8 @@ class CommandPage(BaseWizardPage):
             self.add_summary_item(layout, "Limited Genes:", self.config.limited_genes_file)
         if hasattr(self.config, 'response_dir') and self.config.response_dir:
             self.add_summary_item(layout, "Response Directory:", self.config.response_dir)
+        if getattr(self.config, 'use_continuous_phenotypes', False):
+            self.add_summary_item(layout, "Response Type:", "Continuous phenotypes")
         
         # Add a header for analysis parameters
         params_header = QLabel("Analysis Parameters")
@@ -227,6 +238,12 @@ class CommandPage(BaseWizardPage):
         if hasattr(self.config, 'top_rank_frac'):
             self.add_summary_item(layout, "Top Rank Fraction:", str(self.config.top_rank_frac))
         
+        # Max iterations (only show when above default)
+        if hasattr(self.config, 'maxiter') and isinstance(self.config.maxiter, int) and self.config.maxiter > 100:
+            self.add_summary_item(layout, "Max Iterations:", str(self.config.maxiter))
+        if not getattr(self.config, 'disable_ec', True):
+            self.add_summary_item(layout, "Epsilon Comparison:", "Enabled (--enable_ec)")
+        
         # Phenotype names
         if hasattr(self.config, 'pheno_name1') and hasattr(self.config, 'pheno_name2'):
             self.add_summary_item(layout, "Phenotype Comparison:", 
@@ -240,6 +257,8 @@ class CommandPage(BaseWizardPage):
         # Output directory and base name
         if hasattr(self.config, 'output_dir') and self.config.output_dir:
             self.add_summary_item(layout, "Output Directory:", self.config.output_dir)
+        else:
+            self.add_summary_item(layout, "Output Directory:", "Not selected")
         
         if hasattr(self.config, 'output_file_base_name') and self.config.output_file_base_name:
             self.add_summary_item(layout, "Output Base Name:", self.config.output_file_base_name)
@@ -271,8 +290,11 @@ class CommandPage(BaseWizardPage):
         # SPS plot settings – show SPS, KDE, or both depending on selections
         make_sps_plot = getattr(self.config, 'make_sps_plot', False)
         make_kde_plot = getattr(self.config, 'make_sps_kde_plot', False)
+        make_cont_plot = getattr(self.config, 'make_continuous_plot', False)
 
-        if make_sps_plot and make_kde_plot:
+        if make_cont_plot:
+            output_settings.append("Generate phenotype density plot")
+        elif make_sps_plot and make_kde_plot:
             output_settings.append("Generate SPS and KDE plots")
         elif make_sps_plot:
             output_settings.append("Generate SPS plots")

@@ -1,0 +1,195 @@
+name: Build Rust Binaries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build-linux:
+    name: Build (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
+        run: cargo build --release
+
+      - name: Verify built binaries
+        run: ls -la esl_psc_rs/target/release/
+
+      - name: Stage toolkit (Linux)
+        run: |
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --platform posix \
+            --os-tag linux \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (Linux)
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz)"
+
+      - name: "Upload artifact: esl-psc (Linux)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-linux-x86_64
+          path: esl_psc_rs/target/release/esl-psc
+          if-no-files-found: error
+
+      - name: "Upload artifact: ESL-PSC toolkit (Linux)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-linux-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.manifest.json
+          if-no-files-found: error
+
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
+        run: cargo build --release
+
+      - name: Verify built binaries
+        run: ls -la esl_psc_rs/target/release/
+
+      - name: Stage toolkit (macOS)
+        run: |
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --platform posix \
+            --os-tag macos \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (macOS)
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz)"
+
+      - name: "Upload artifact: esl-psc (macOS)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-macos
+          path: esl_psc_rs/target/release/esl-psc
+          if-no-files-found: error
+
+      - name: "Upload artifact: ESL-PSC toolkit (macOS)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-macos-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-x86_64.tar.gz.manifest.json
+          if-no-files-found: error
+
+  build-windows:
+    name: Build (Windows x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
+
+      - name: Show rustc version
+        run: rustc -Vv
+
+      - name: Build esl-psc (release)
+        working-directory: esl_psc_rs
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Verify built binaries
+        run: ls -la esl_psc_rs/target/x86_64-pc-windows-msvc/release/
+
+      - name: Stage toolkit (Windows)
+        shell: pwsh
+        run: |
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\package_toolkit.py" `
+            --dest-dir "$env:GITHUB_WORKSPACE\dist" `
+            --rust-main "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe" `
+            --platform windows `
+            --os-tag windows `
+            --arch x86_64 `
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit (Windows)
+        shell: pwsh
+        run: |
+          $artifact = (Get-ChildItem "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit-v*-windows-x86_64.zip" | Select-Object -First 1).FullName
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\smoke_test_toolkit.py" --artifact $artifact
+
+      - name: "Upload artifact: esl-psc (Windows)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-windows-x86_64
+          path: esl_psc_rs/target/x86_64-pc-windows-msvc/release/esl-psc.exe
+          if-no-files-found: error
+
+      - name: "Upload artifact: ESL-PSC toolkit (Windows)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-windows-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.sha256
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.manifest.json
+          if-no-files-found: error

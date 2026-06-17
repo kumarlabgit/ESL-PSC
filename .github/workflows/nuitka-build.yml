@@ -1,26 +1,84 @@
 name: Build Nuitka Distributables
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/nuitka-build.yml
   workflow_dispatch:
     inputs:
       target_os:
         description: "Platform to build"
         required: true
         type: choice
-        default: macos
+        default: macos_apple_silicon
         options:
-          - macos
+          - macos_apple_silicon
           - windows
+          - linux_gui
+          - linux_toolkit
+      upload_to_release:
+        description: "Upload macOS assets to the release after building"
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: "Release tag to upload to; defaults to v<package version>"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: "3.11"
 
 jobs:
-  build-macos:
-    if: ${{ github.event.inputs.target_os == 'macos' }}
-    runs-on: macos-latest
+  build-linux-toolkit:
+    if: ${{ github.event.inputs.target_os == 'linux_toolkit' }}
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install toolkit Python dependencies
+        run: |
+          pip install -r requirements-toolkit.txt
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Stage toolkit artifact
+        run: |
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --platform posix \
+            --os-tag linux \
+            --arch x86_64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-linux-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-linux-x86_64.tar.gz.manifest.json
+
+  build-linux-gui:
+    if: ${{ github.event.inputs.target_os == 'linux_gui' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -29,58 +87,153 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
-      - name: Build with Nuitka
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Stage runtime helpers
+        run: |
+          mkdir -p stage
+          cp bin/preprocess stage/preprocess
+          cp bin/sg_lasso stage/sg_lasso
+          cp bin/sg_lasso_leastr stage/sg_lasso_leastr
+          cp bin/deletion_canceler stage/deletion_canceler
+          cp esl_psc_rs/target/release/esl-psc stage/esl-psc
+          chmod +x stage/*
+      - name: Build GUI with Nuitka (standalone)
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: gui/main.py
+          mode: standalone
+          output-dir: build
+          lto: "yes"
+          no-deployment-flag: self-execution
+          enable-plugins: |
+            pyside6
+            matplotlib
+          nofollow-import-to: "*.tests"
+          include-raw-dir: stage=bin
+      - name: Build Linux GUI Debian package
+        run: |
+          DIST_DIR="$(find build -maxdepth 1 -type d -name '*.dist' | head -n 1)"
+          if [ -z "${DIST_DIR}" ]; then
+            echo "Failed to locate Nuitka .dist directory" >&2
+            exit 1
+          fi
+
+          python packaging/gui/build_deb.py \
+            --dist-dir "${DIST_DIR}" \
+            --dest-dir dist/gui \
+            --arch amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ESL-PSC-Linux-GUI-deb
+          path: |
+            dist/gui/esl-psc-gui_*.deb
+            dist/gui/esl-psc-gui_*.deb.sha256
+
+  build-macos-apple-silicon:
+    if: ${{ github.event.inputs.target_os == 'macos_apple_silicon' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          pip install nuitka
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --manifest-path esl_psc_rs/Cargo.toml
+      - name: Detect release version
+        id: version
+        run: |
+          version="$(python -c 'import tomllib; from pathlib import Path; data = tomllib.loads(Path("esl_psc_rs/Cargo.toml").read_text(encoding="utf-8")); print(data["package"]["version"])')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
           mode: app
           output-dir: build
-          lto: "yes"
-          include-package: esl_psc_cli
+          lto: "no"
           no-deployment-flag: self-execution
           enable-plugins: |
             pyside6
             matplotlib
           nofollow-import-to: "*.tests"
           macos-app-icon: assets/icons/app.icns
-      - name: Build CLI helper with Nuitka
-        uses: Nuitka/Nuitka-Action@main
-        with:
-          script-name: esl_psc_cli/esl_multimatrix.py
-          mode: onefile
-          output-dir: build/cli
-          lto: "yes"
-          include-package: esl_psc_cli
-          enable-plugins: |
-            matplotlib
-          python-flag: "-u"
       - name: Rename .app bundle
         run: mv build/main.app build/ESL-PSC.app
-      - name: Embed CLI binary into bundle
-        run: |
-          cp build/cli/esl_multimatrix.bin build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
-          chmod +x build/ESL-PSC.app/Contents/MacOS/esl_multimatrix
-      - name: Add CLI helpers
+      - name: Add runtime helpers to app bundle
         run: |
           mkdir -p build/ESL-PSC.app/Contents/MacOS/bin
           cp bin/preprocess_mac build/ESL-PSC.app/Contents/MacOS/bin/preprocess_mac
           cp bin/sg_lasso_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_mac
+          # Linear-regression backend for continuous phenotypes
+          cp bin/sg_lasso_leastr_mac build/ESL-PSC.app/Contents/MacOS/bin/sg_lasso_leastr_mac
+          cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
+          cp esl_psc_rs/target/release/esl-psc build/ESL-PSC.app/Contents/MacOS/bin/esl-psc
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Stage toolkit artifact
+        run: |
+          python packaging/toolkit/package_toolkit.py \
+            --dest-dir dist \
+            --rust-main esl_psc_rs/target/release/esl-psc \
+            --platform posix \
+            --os-tag macos \
+            --arch arm64 \
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        run: |
+          python packaging/toolkit/smoke_test_toolkit.py \
+            --artifact "$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)"
       - name: Create DMG
         run: |
+          mkdir -p dist/gui
           hdiutil create -volname "ESL-PSC" \
                          -srcfolder build/ESL-PSC.app \
-                         -ov -format UDZO build/ESL-PSC.dmg
+                         -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-macOS
-          path: build/ESL-PSC.dmg
+          path: dist/gui/ESL-PSC-v*-macOS.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-macos-arm64
+          path: |
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
+      - name: Upload macOS assets to GitHub release
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${{ github.event.inputs.release_tag }}"
+          if [ -z "${release_tag}" ]; then
+            release_tag="v${{ steps.version.outputs.version }}"
+          fi
+
+          gh release upload "${release_tag}" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            dist/gui/ESL-PSC-v*-macOS.dmg \
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz \
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256 \
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -89,59 +242,80 @@ jobs:
         run: |
           pip install -r requirements-gui.txt
           pip install nuitka
-      - name: Stage and Verify Windows Binaries
+      - name: Build Rust binaries
+        shell: bash
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path esl_psc_rs/Cargo.toml
+      - name: Stage and verify Windows binaries
         shell: pwsh
         run: |
-          # Define absolute paths using GitHub's workspace variable for reliability
           $SourceDir = "$env:GITHUB_WORKSPACE\bin"
+          $RustUnified = "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe"
           $StageDir = "$env:GITHUB_WORKSPACE\stage"
-  
-          Write-Host "--- Verifying source files exist at: $SourceDir ---"
+
           if (-not (Test-Path -Path "$SourceDir\preprocess.exe")) {
-            Get-ChildItem -Path $SourceDir # Show what's actually there
+            Get-ChildItem -Path $SourceDir
             throw "FATAL: Cannot find preprocess.exe in the source directory."
           }
-          Write-Host "✅ Source files found."
-  
-          Write-Host "--- Staging files to: $StageDir ---"
-          New-Item -ItemType Directory -Force -Path $StageDir
+
+          New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
+
           Copy-Item -Path "$SourceDir\preprocess.exe" -Destination $StageDir
           Copy-Item -Path "$SourceDir\sg_lasso.exe" -Destination $StageDir
-
-          # Copy required BLAS/LAPACK runtime DLLs that sg_lasso.exe depends on
+          Copy-Item -Path "$SourceDir\sg_lasso_leastr.exe" -Destination $StageDir
+          Copy-Item -Path "$SourceDir\deletion_canceler.exe" -Destination $StageDir
+          Copy-Item -Path $RustUnified -Destination $StageDir
           Copy-Item -Path "$SourceDir\libopenblas.dll" -Destination $StageDir -Force
           Copy-Item -Path "$SourceDir\liblapack.dll" -Destination $StageDir -Force
-  
-          Write-Host "--- Verifying files in stage directory ---"
+
           Get-ChildItem -Path $StageDir
           if (-not (Test-Path -Path "$StageDir\preprocess.exe")) {
-            throw "FATAL: File copy failed. The stage directory is empty or the file is missing."
+            throw "FATAL: stage verification failed; preprocess.exe missing."
           }
-          Write-Host "✅ Staging verification successful."
-      - name: Build with Nuitka
+      - name: Stage toolkit artifact
+        shell: pwsh
+        run: |
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\package_toolkit.py" `
+            --dest-dir "$env:GITHUB_WORKSPACE\dist" `
+            --rust-main "$env:GITHUB_WORKSPACE\esl_psc_rs\target\x86_64-pc-windows-msvc\release\esl-psc.exe" `
+            --platform windows `
+            --os-tag windows `
+            --arch x86_64 `
+            --git-sha "${{ github.sha }}"
+      - name: Smoke-test toolkit artifact
+        shell: pwsh
+        run: |
+          $artifact = (Get-ChildItem "$env:GITHUB_WORKSPACE\dist\esl-psc-toolkit-v*-windows-x86_64.zip" | Select-Object -First 1).FullName
+          python "$env:GITHUB_WORKSPACE\packaging\toolkit\smoke_test_toolkit.py" --artifact $artifact
+      - name: Build GUI with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: gui/main.py
           mode: onefile
           output-dir: build
           lto: "yes"
-          include-package: esl_psc_cli
           no-deployment-flag: self-execution
           enable-plugins: |
             pyside6
             matplotlib
-            upx
           nofollow-import-to: "*.tests"
           windows-icon-from-ico: assets/icons/app.ico
-          # This command includes the external helper binaries inside the .exe
+          windows-console-mode: disable
           include-raw-dir: stage=bin
       - name: Rename executable
         run: move build\\main.exe build\\ESL-PSC.exe
         shell: pwsh
-      - name: Compress build to ZIP
+      - name: Compress GUI build to ZIP
         shell: pwsh
         run: Compress-Archive -Path build\\ESL-PSC.exe -DestinationPath ESL-PSC-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-Windows
           path: ESL-PSC-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esl-psc-toolkit-windows-x86_64
+          path: |
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.sha256
+            dist/esl-psc-toolkit-v*-windows-x86_64.zip.manifest.json

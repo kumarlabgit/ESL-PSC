@@ -1,3 +1,4 @@
+**/target/
 photo_single_LC_matrix_species_groups_gap-canceled_alignments/
 photo_single_LC_matrix_species_groups_response_matrices/
 preprocessed_data_and_outputs/
@@ -13,12 +14,15 @@ demo_output/
 demo_output_gene_ranks.csv
 demo_output_pred_sps_plot.svg
 demo_output_species_predictions.csv
+demo_response_dir_run/
 
 gui/__pycache__/__init__.cpython-39.pyc
 gui/__pycache__/main.cpython-39.pyc
 
 .DS_Store
 __pycache__/
+
+.venv
 
 esl_psc_output/esl_psc_results_gene_ranks.csv
 esl_psc_output/esl_psc_results_species_predictions.csv
@@ -38,3 +42,15 @@ checkpoint_test/
 orthomam_echo_small_species_groups.txt
 notarize_esl_psc.sh
 
+
+deletion_canceler_rs/target/
+continuous_pheno_test_file.csv
+
+local_scripts/
+test_artifacts/
+demo_data/photosynthesis/demo_config_for_gui.json
+manuscript_drafts/
+dist/
+
+# Centralized local outputs, caches, and scratch runs
+.artifacts/

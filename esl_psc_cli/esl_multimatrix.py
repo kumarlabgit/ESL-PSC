@@ -1,7 +1,7 @@
 # A script to automate ESL-PSC integration experiments for multiple input
 #  matrices of species
 
-import argparse, os, time, shutil, random, itertools, sys
+import argparse, os, time, shutil, random, itertools, sys, subprocess
 from esl_psc_cli import checkpoint as cp_mod
 import faulthandler
 # Enable faulthandler so that **all Python threads** print a traceback when
@@ -76,7 +76,7 @@ def validate_limited_genes_list(limited_list_path, alignments_dir):
     requested = {name for name in requested if name}  # drop empties
     total_requested = len(requested)
 
-    # Collect .fas file names present in alignments directory (non-recursive)
+    # Collect FASTA file names present in alignments directory (non-recursive)
     present = {f for f in os.listdir(alignments_dir) if ecf.is_fasta(f)}
 
     found = requested & present
@@ -85,7 +85,7 @@ def validate_limited_genes_list(limited_list_path, alignments_dir):
     if len(found) == 0:
         raise ValueError(
             "None of the genes listed in --limited_genes_list were found in the alignments directory. "
-            "Please confirm that the list contains only file names that exactly match .fas files in the directory."
+            "Please confirm that the list contains only file names that exactly match FASTA files (.fas, .fasta, .fa, .faa) in the directory."
         )
 
 
@@ -248,6 +248,60 @@ def randomize_alignments(original_alignments_directory, species_list):
     
     # return path to new directory
     return scrambled_alignments_dir
+
+
+def _ensure_two_line_with_optional_conversion(
+    args,
+    dir_path: str,
+    *,
+    recursive: bool = False,
+    label: str = "alignments",
+) -> str:
+    """Validate 2-line FASTA format and optionally convert to a sibling folder.
+
+    This function is intentionally non-interactive so CLI runs remain automation-friendly.
+    """
+    if not dir_path:
+        return dir_path
+
+    try:
+        ecf.validate_alignment_dir_two_line(dir_path, recursive=recursive)
+        return dir_path
+    except ValueError as e:
+        msg = str(e)
+        if "not in 2-line FASTA format" not in msg:
+            raise
+
+    target_dir = ecf.default_two_line_dir(dir_path)
+    if not bool(getattr(args, "auto_convert_to_2line", False)):
+        raise ValueError(
+            f"{msg}\n"
+            "Run again with --auto_convert_to_2line to automatically create "
+            "a sibling '<alignments_dir>_2line' directory and continue non-interactively."
+        )
+
+    if os.path.exists(target_dir):
+        raise ValueError(
+            f"Cannot auto-convert {label}: target directory already exists:\n"
+            f"  {target_dir}\n"
+            "Use that converted directory directly as your alignment directory "
+            "(e.g., set --prediction_alignments_dir or --canceled_alignments_dir accordingly), "
+            "then re-run without --auto_convert_to_2line."
+        )
+
+    out_dir, n_written = ecf.convert_alignment_dir_to_two_line(
+        dir_path,
+        recursive=recursive,
+        output_dir=target_dir,
+        overwrite=False,
+    )
+    print(
+        f"Converted {n_written} FASTA file(s) in {label} to 2-line format:\n"
+        f"  source: {dir_path}\n"
+        f"  using:  {out_dir}"
+    )
+    ecf.validate_alignment_dir_two_line(out_dir, recursive=recursive)
+    return out_dir
     
 
 def run_multi_matrix_integration(args, list_of_species_combos,
@@ -283,6 +337,9 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         combo = list_of_species_combos[combo_offset]  # list is already sliced when resuming
         combo_name = 'combo_' + str(combo_num)
         total_combos = len(list_of_species_combos) + start_index  # original total for context
+        # Track all runs generated for this combo; checkpoint should be saved
+        # only after combo-level aggregate stats are finalized.
+        runs_this_combo = []
         
         # MODIFICATION: Announce combo processing in a parsable way
         print(f"\n--- Processing combo {combo_num + 1} of {total_combos} ({combo_name}) ---")
@@ -348,19 +405,12 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                 preprocess_dir_name,
                 gap_canceled_alignments_path,
                 gene_objects_dict,
-                combo_name)
+                combo_name,
+                response_matrix_path=response_path)
             # gene_objects_dict is an object and only a reference is passed to
             #   each run so same object persists and accumulates all the data
             master_run_list.extend(run_list)
-            # --- Checkpoint save ---
-            if checkpointer:
-                checkpointer.save_checkpoint(
-                    combo_num,
-                    gene_objects_dict,
-                    master_run_list,
-                    vars(args),
-                    run_list,
-                )
+            runs_this_combo.extend(run_list)
         else:
             # ***Do a Randomized Alignment Null Multimatrix Integration***
             for run_num in range(args.num_randomized_alignments):
@@ -382,15 +432,10 @@ def run_multi_matrix_integration(args, list_of_species_combos,
                                                   rand_aligns,
                                                   gene_objects_dict,
                                                   combo_name
-                                                      + '_' + str(run_num))
+                                                      + '_' + str(run_num),
+                                                  response_matrix_path=response_path)
                 master_run_list.extend(run_list)
-                if checkpointer:
-                    checkpointer.save_checkpoint(
-                        combo_num,
-                        gene_objects_dict,
-                        master_run_list,
-                        vars(args),
-                        run_list)
+                runs_this_combo.extend(run_list)
 
         # update gene variables to track best scores and num combos ranked etc.
         for gene in gene_objects_dict.values():
@@ -417,6 +462,16 @@ def run_multi_matrix_integration(args, list_of_species_combos,
         if args.delete_preprocess: # delete preprocess to keep folder clean
                         shutil.rmtree(os.path.join(args.esl_inputs_outputs_dir,
                                        preprocess_dir_name))
+        # Save checkpoint after combo-level aggregates are updated so restored
+        # state reflects final num_combos_ranked / best_ever values.
+        if checkpointer:
+            checkpointer.save_checkpoint(
+                combo_num,
+                gene_objects_dict,
+                master_run_list,
+                vars(args),
+                runs_this_combo,
+            )
 
     # return accumulated data
     return gene_objects_dict, master_run_list
@@ -428,7 +483,8 @@ def main(raw_args=None):
     desc_text = '''This will run ESL integrations for many species combinations.
                 All necessary args for esl_integrator.py must be included to
                 specify how each integration run will be performed. Alignments
-                must be in 2-line fasta format and file names end in ".fas".
+                should be in 2-line FASTA format; supported extensions: .fas, .fasta, .fa, .faa.
+                Multi-line FASTA files are accepted but may be slower.
                 If no species groups file is given, existing response matrices
                 must be given.  An * indicates required arguments. args can be
                 given in a config file called esl_ct_config.txt with 1 per line.
@@ -471,6 +527,12 @@ def main(raw_args=None):
     group.add_argument('--delete_preprocess',
                         help = 'Clear preprocess folders after each matrix run',
                         action = 'store_true', default = False)
+    group.add_argument('--preserve_canceled_alignments',
+                        help = (
+                            'Preserve the generated gap-canceled alignments folder at the end of the run. '\
+                            'By default, ESL-PSC will clean up the folder to save disk space.'
+                        ),
+                        action = 'store_true', default = False)
     group.add_argument('--make_null_models',
                         help = ('Make null response-flipped ESL-PSC models. '
                                 'must have an even number of pairs. All '
@@ -491,6 +553,15 @@ def main(raw_args=None):
     group.add_argument('--num_randomized_alignments',
                         help = 'number of pair-randomized alignments to make',
                         type = int, default = 10)
+    group.add_argument(
+        '--auto_convert_to_2line',
+        action='store_true',
+        default=False,
+        help=(
+            "If 2-line FASTA validation fails, automatically create a sibling "
+            "'<alignments_dir>_2line' directory and continue with converted files."
+        ),
+    )
     
     # Ensure we have sensible, project-root defaults for these two paths
     args = ecf.parse_args_with_config(parser, raw_args) # checks for config file
@@ -562,12 +633,26 @@ def main(raw_args=None):
     #   The index of the file name in the list can be the combo code to
     #   link to the correct preprocess folder and gap-canceled alignments folder
 
+    pheno_dict = None
     if args.response_dir: # this means there is a directory of response matrices
-        # sort them to get deterministic ordering
-        response_file_list = sorted(os.listdir(args.response_dir))
-        response_file_list = [os.path.join(args.response_dir, file) for
-                              file in response_file_list] # full paths
+        # Deterministic ordering; include only .txt files and only regular files
+        entries = [os.path.join(args.response_dir, name) for name in os.listdir(args.response_dir)]
+        response_file_list = sorted(
+            [p for p in entries if os.path.isfile(p) and p.lower().endswith(".txt")]
+        )
+        if not response_file_list:
+            raise ValueError(f"No .txt response matrix files found in '{args.response_dir}'.")
         response_dir = args.response_dir # for use later
+        if any(ecf.response_matrix_is_continuous(f) for f in response_file_list):
+            args.species_pheno_is_continuous = True
+            print("Detected continuous phenotype values: running ESL-PSC with continuous response variables.")
+            if getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False):
+                print("SPS plots are disabled for continuous phenotype files.")
+                args.make_sps_plot = False
+                args.make_sps_kde_plot = False
+            if getattr(args, 'make_continuous_plot', False) and not getattr(args, 'species_pheno_path', None):
+                print("Continuous phenotype plots require a species phenotype file; skipping plot.")
+                args.make_continuous_plot = False
         # generate list_of_species_combos
         list_of_species_combos = []
         for response_file in response_file_list:
@@ -588,12 +673,20 @@ def main(raw_args=None):
                                     os.path.split(args.species_groups_file)[1]
                                     + '_response_matrices')
         response_dir = response_dir.replace('.txt', '') #delete group file ext
+        pheno_dict = None
+        if getattr(args, 'species_pheno_is_continuous', False):
+            pheno_dict = ecf.get_pheno_dict(args.species_pheno_path)
         if not args.make_null_models: # this will be done later if doing nulls
             response_file_list = ecf.make_response_files(response_dir,
-                                                         list_of_species_combos)
+                                                         list_of_species_combos,
+                                                         pheno_dict)
     else: 
         raise ValueError("must give either response_dir or species_groups_file")
     # we now have a response_file_list and a response_dir with the files in it
+
+    if getattr(args, 'species_pheno_path', None):
+        ecf.ensure_pheno_species_overlap(args.species_pheno_path,
+                                         list_of_species_combos)
 
     # ---- Checkpoint handling (moved up – happens *before* any heavy work) ----
     resume_mode = False
@@ -627,15 +720,30 @@ def main(raw_args=None):
     # ------------------------------------------------------------------
     if not resume_mode:
         validate_specific_paths(args)
-        ecf.validate_alignment_dir_two_line(args.alignments_dir)
+        # When generating new gap-canceled alignments, skip expensive upfront
+        # 2-line FASTA verification on the source alignments. Both the Rust and
+        # Python deletion cancelers accept multi-line FASTA and will emit
+        # strictly 2-line FASTA, enforcing sequence-length consistency.
+        # For predictions, strictly require 2-line FASTA in the directory that
+        # will be used to read sequences for scoring.
+        if not args.no_pred_output:
+            args.prediction_alignments_dir = _ensure_two_line_with_optional_conversion(
+                args,
+                args.prediction_alignments_dir,
+                recursive=False,
+                label="prediction alignments",
+            )
+        # Otherwise, skip any upfront source alignment validation.
         # --- Limited genes list sanity check --------------------------------
         validate_limited_genes_list(args.limited_genes_list, args.alignments_dir)
-        if (args.prediction_alignments_dir
-                and args.prediction_alignments_dir != args.alignments_dir):
-            ecf.validate_alignment_dir_two_line(args.prediction_alignments_dir)
+        
         if args.use_existing_alignments and args.canceled_alignments_dir:
-            ecf.validate_alignment_dir_two_line(
-                args.canceled_alignments_dir, recursive=True)
+            args.canceled_alignments_dir = _ensure_two_line_with_optional_conversion(
+                args,
+                args.canceled_alignments_dir,
+                recursive=True,
+                label="existing canceled alignments",
+            )
 
         # --- Heuristic checks for common file mix-ups ----------------------
         if args.species_groups_file:
@@ -652,9 +760,52 @@ def main(raw_args=None):
             bad_lines = ecf.validate_species_pheno_file(args.species_pheno_path)
             if bad_lines:
                 msg = [
-                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<1|-1>).",
+                    "The file given via --species_pheno_path does not look like a valid species phenotype file (expected: <species>,<numeric>).",
                     "Problematic lines (up to first 5):",
                 ] + [f"    {ln}" for ln in bad_lines]
+                raise ValueError("\n".join(msg))
+
+        # --- Windows MAX_PATH guard for preprocess outputs -----------------
+        # The preprocess step writes files like
+        #   <esl_inputs_outputs_dir>/<base>_combo_N/feature_mapping_<base>_combo_N.txt
+        # which can exceed Windows MAX_PATH with long base/output dirs.
+        # Estimate worst-case length and fail fast with a clear message.
+        if os.name == 'nt':
+            base_dir = os.path.abspath(args.esl_inputs_outputs_dir)
+            sep_len = len(os.sep)
+            base_name = str(getattr(args, 'output_file_base_name', 'esl_psc'))
+            num_combos = max(1, len(list_of_species_combos))
+            max_combo_digits = len(str(num_combos))  # upper bound for N-1
+            combo_name_len = len('combo_') + max_combo_digits
+            preprocess_name_len = len(base_name) + 1 + combo_name_len  # "<base>_combo_N"
+
+            # Directory path length for the preprocess folder itself
+            target_dir_len = len(base_dir) + sep_len + preprocess_name_len
+
+            # Longest child we create is "feature_mapping_" + preprocess_name + ".txt"
+            longest_prefix_len = len('feature_mapping_')
+            child_path_len = (
+                target_dir_len +
+                sep_len +
+                longest_prefix_len +
+                preprocess_name_len +
+                len('.txt')
+            )
+
+            # Use a conservative threshold to leave headroom for native APIs
+            MAX_SAFE_WINDOWS_PATH = 240
+            if target_dir_len >= MAX_SAFE_WINDOWS_PATH or child_path_len >= MAX_SAFE_WINDOWS_PATH:
+                details = [
+                    f"  Target directory (est): {target_dir_len} chars",
+                    f"  Longest output file (est): {child_path_len} chars",
+                    f"  Base output name: '{base_name}'",
+                    f"  Outputs dir: '{base_dir}'",
+                ]
+                msg = [
+                    "Preprocess output paths are too long for Windows (max safe ~240 characters).",
+                    *details,
+                    "Please shorten --output_dir or --output_file_base_name, or enable long paths on this system.",
+                ]
                 raise ValueError("\n".join(msg))
 
         # write the configuration snapshot now (skip when resuming)
@@ -701,18 +852,67 @@ def main(raw_args=None):
         list_of_species_combos = ecf.make_null_combos(list_of_species_combos)
         # now fix the response directory
         response_file_list = ecf.make_response_files(response_dir,
-                                                     list_of_species_combos)
+                                                     list_of_species_combos,
+                                                     pheno_dict)
         
 
     # 2) Generate Gap-canceled Alignments
+    generated_gap_canceled_alignments = False
     if not args.use_existing_alignments: # skip if using existing alignments
         # if the folder already exists, remove it
         ecf.clear_existing_folder(args.canceled_alignments_dir)
+        generated_gap_canceled_alignments = True
         # generate new alignments
-        dc.generate_gap_canceled_alignments(args, list_of_species_combos,
-                                            enumerate_combos = True,
-                                            limited_genes_list =
-                                            args.limited_genes_list)
+        # Prefer the Rust deletion canceler on Linux, macOS, or Windows.
+        # Use it when either a species_groups_file or a response_dir is provided.
+        can_use_rust = (
+            (sys.platform.startswith("linux") or sys.platform == "darwin" or sys.platform.startswith("win"))
+            and (bool(getattr(args, "species_groups_file", None)) or bool(getattr(args, "response_dir", None)))
+        )
+        rust_bin = ecf.get_binary_path(args.esl_main_dir, "deletion_canceler")
+        rust_bin_ok = os.path.exists(rust_bin) and os.access(rust_bin, os.X_OK)
+
+        if can_use_rust and rust_bin_ok:
+            print("Gap-canceling alignments…")
+            cmd = [
+                rust_bin,
+                "--alignments-dir", args.alignments_dir,
+                "--canceled-alignments-dir", args.canceled_alignments_dir,
+                "--min-pairs", str(args.min_pairs),
+            ]
+            if getattr(args, "species_groups_file", None):
+                cmd += ["--species-groups-file", args.species_groups_file]
+            else:
+                # Deterministic ordering handled inside Rust; pass the directory
+                cmd += ["--response-dir", response_dir]
+            if getattr(args, "cancel_tri_allelic", False):
+                cmd.append("--cancel-tri-allelic")
+            if getattr(args, "nix_full_deletions", False):
+                cmd.append("--nix-full-deletions")
+            if getattr(args, "cancel_only_partner", False):
+                cmd.append("--cancel-only-partner")
+            if getattr(args, "outgroup_species", None):
+                cmd += ["--outgroup-species", args.outgroup_species]
+            if getattr(args, "limited_genes_list", None):
+                cmd += ["--limited-genes-list", args.limited_genes_list]
+
+            try:
+                ecf.run_subprocess_streamed(cmd)
+            except (subprocess.CalledProcessError, FileNotFoundError, PermissionError) as e:
+                print(f"[WARN] Rust deletion_canceler failed ({e!r}); falling back to Python implementation.")
+                dc.generate_gap_canceled_alignments(
+                    args,
+                    list_of_species_combos,
+                    enumerate_combos=True,
+                    limited_genes_list=args.limited_genes_list,
+                )
+        else:
+            if can_use_rust and not rust_bin_ok:
+                print(f"[INFO] Deletion_canceler binary not found or not executable at '{rust_bin}'. Falling back to Python.")
+            dc.generate_gap_canceled_alignments(args, list_of_species_combos,
+                                                enumerate_combos = True,
+                                                limited_genes_list =
+                                                args.limited_genes_list)
     else: # if using existing alignments check to make sure a folder is there
         if not args.canceled_alignments_dir: 
             raise Exception("When the use_existing_alignments option is in "
@@ -764,10 +964,8 @@ def main(raw_args=None):
     cmd = ' '.join(shlex.quote(a) for a in sys.argv)
     print(f"\nRun command: {cmd}\n")
 
-    # print these paths so they don't get lost
+    # print these paths so they don't get lost (response dir now; gap-canceled dir reported at very end)
     print("\nResponse matrices directory:", response_dir)
-    print("\nGap-canceled alignments directory:",
-          args.canceled_alignments_dir)
     
     # call output functions which should generate output files
     if not args.no_genes_output:  # skip genes output if flag is true
@@ -801,6 +999,23 @@ def main(raw_args=None):
                                   args.pheno_names,
                                   args.min_genes,
                                   plot_type)
+    elif getattr(args, 'make_continuous_plot', False):
+        ecf.continuous_pred_plot(preds_output_path,
+                                 args.output_file_base_name,
+                                 args.min_genes)
+
+    # Final report on gap-canceled alignments and optional cleanup
+    if generated_gap_canceled_alignments and not getattr(args, 'preserve_canceled_alignments', False):
+        try:
+            ecf.clear_existing_folder(args.canceled_alignments_dir)
+            print("\nGap-canceled alignments were cleaned up to save disk space.")
+        except Exception as e:
+            # If cleanup fails, at least report the directory path
+            print("\n[WARN] Failed to clean up gap-canceled alignments:", e)
+            print("Gap-canceled alignments directory:", args.canceled_alignments_dir)
+    else:
+        # Either using existing alignments or user requested to preserve
+        print("\nGap-canceled alignments directory:", args.canceled_alignments_dir)
 
 if __name__ == '__main__':
     main()

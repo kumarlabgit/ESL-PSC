@@ -1,6 +1,8 @@
 # ESL-PSC functions
 
-import os, subprocess, math, re, time, datetime, shutil, sys
+import os, subprocess, math, re, time, datetime, shutil, sys, shlex
+if os.name == "posix":
+    import pty, select  # PTY for live streaming on macOS/Linux
 import threading
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -22,8 +24,12 @@ from statistics import median
 # ------------------------------------------------------------
 
 def _is_pheno_line(line: str) -> bool:
-    """Return True if *line* looks like a phenotype mapping –
-    exactly two comma-separated fields where the second field is 1 or -1."""
+    """Return True if *line* looks like a phenotype mapping for the purposes
+    of the species-groups misload heuristic: exactly two comma-separated fields
+    where the second field is 1 or -1. Note: this is intentionally strict to
+    avoid false positives when inspecting groups files. Validation for actual
+    phenotype files is handled separately and permits continuous values.
+    """
     parts = [p.strip() for p in line.strip().split(',')]
     return len(parts) == 2 and parts[1] in {"1", "-1"} and bool(parts[0])
 
@@ -63,23 +69,153 @@ def species_groups_file_looks_like_pheno(file_path: str, *, sample_size: int = 2
 
 
 def validate_species_pheno_file(file_path: str, *, max_errors: int = 5):
-    """Return a list of lines (with line numbers) that violate the expected
-    ``<species>,<1|-1>`` format. If the returned list is empty, the file looks ok.
+    """Validate a species phenotype file allowing binary or continuous values.
+
+    Expected format per non-empty line: ``<species>,<numeric>`` where the value
+    can be an integer (e.g., 1/-1) or a float (e.g., 0.37). Returns a list of
+    problematic lines (with line numbers). If the list is empty, the file looks
+    acceptable.
     """
     bad_lines = []
+    header_skipped = False
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             for idx, raw in enumerate(fh, 1):
                 line = raw.strip()
                 if not line:
                     continue  # allow blank lines
-                if not _is_pheno_line(line):
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2 or not parts[0]:
+                    bad_lines.append(f"{idx}: {line}")
+                    if len(bad_lines) >= max_errors:
+                        break
+                    continue
+                # numeric check for phenotype value
+                try:
+                    float(parts[1])
+                except ValueError:
+                    # Allow a single apparent header line (commonly the first non-empty line)
+                    if not header_skipped and idx == 1:
+                        header_skipped = True
+                        continue
                     bad_lines.append(f"{idx}: {line}")
                     if len(bad_lines) >= max_errors:
                         break
     except Exception as exc:
         bad_lines.append(f"[IO ERROR] {exc}")
     return bad_lines
+
+
+def _phenotype_species_lists(file_path: str):
+    """Return (raw_names, stripped_names) from a phenotype file.
+
+    ``raw_names`` preserves the literal text as it appears before the first
+    comma, whereas ``stripped_names`` removes surrounding quotes/apostrophes
+    and collapses extra whitespace so we can detect quoting mismatches.
+    """
+    raw_names = []
+    stripped_names = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2:
+                    continue
+                species = parts[0]
+                if not species:
+                    continue
+                normalized = species.strip().strip('"').strip("'")
+                if normalized.lower() == "species":
+                    # Treat CSV headers such as "species","value" as metadata.
+                    continue
+                raw_names.append(species)
+                stripped_names.append(normalized)
+    except Exception:
+        return [], []
+    return raw_names, stripped_names
+
+
+def ensure_pheno_species_overlap(file_path: str, list_of_species_combos):
+    """Ensure that at least one species in *file_path* overlaps the combos.
+
+    Raises ValueError with a descriptive guidance message if no overlap is
+    found. This catches cases where the phenotype file was exported with
+    quoted identifiers or belongs to a different dataset entirely.
+    """
+    if not list_of_species_combos:
+        return
+
+    reference_species = set(chain.from_iterable(list_of_species_combos))
+    if not reference_species:
+        return
+
+    raw_names, stripped_names = _phenotype_species_lists(file_path)
+    if not raw_names:
+        return
+
+    raw_overlap = reference_species.intersection(raw_names)
+    if raw_overlap:
+        return
+
+    stripped_overlap = reference_species.intersection(stripped_names)
+    sample_pheno = ", ".join(stripped_names[:5]) if stripped_names else "<none>"
+    sample_reference = ", ".join(sorted(reference_species)[:5])
+
+    if stripped_overlap:
+        example = next(iter(stripped_overlap))
+        raise ValueError(
+            "The species phenotype file '{file}' appears to wrap species IDs in quotes "
+            "(e.g., \"{example}\"), but the species groups/alignments use unquoted names. "
+            "Remove the quotes (or re-export the CSV without quoted identifiers) so the "
+            "names match.\nSample phenotype entries: {pheno}\nSample species group entries: {groups}"
+            .format(file=file_path, example=example, pheno=sample_pheno, groups=sample_reference)
+        )
+
+    raise ValueError(
+        "No species in the phenotype file '{file}' overlap with the species listed in the "
+        "response matrices/species groups. This usually means the phenotype file belongs to a "
+        "different dataset or the species identifiers were modified.\n"
+        "Sample phenotype entries: {pheno}\nSample species group entries: {groups}"
+        .format(file=file_path, pheno=sample_pheno, groups=sample_reference)
+    )
+
+def detect_pheno_file_type(file_path: str) -> str:
+    """Return 'binary' if all numeric values are in {-1, 0, 1}; otherwise
+    return 'continuous'. Blank lines are ignored. Raises on IO errors.
+
+    Note: 0 is treated as "no phenotype assigned" and does not imply
+    continuous data.
+    """
+    has_values = False
+    header_skipped = False
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) != 2 or not parts[0]:
+                    # treat malformed as continuous so downstream disables binary-only features
+                    return "continuous"
+                try:
+                    val = float(parts[1])
+                except ValueError:
+                    # Allow one header-like line with non-numeric second column
+                    if not header_skipped:
+                        header_skipped = True
+                        continue
+                    return "continuous"
+                has_values = True
+                if val not in (-1.0, 0.0, 1.0):
+                    return "continuous"
+    except Exception:
+        # If unreadable, default to continuous
+        return "continuous"
+    return "binary" if has_values else "continuous"
 
 
 def get_binary_path(esl_dir, base_name):
@@ -91,6 +227,122 @@ def get_binary_path(esl_dir, base_name):
     else:
         exe = base_name
     return os.path.join(esl_dir, "bin", exe)
+
+
+def run_subprocess_streamed(cmd, *, cwd=None, env=None, merge_stderr=True, use_pty_on_posix=True, squash_blank_lines=False):
+    """Run a subprocess while streaming its output live to our stdout.
+
+    On POSIX (Linux/macOS), this attaches the child to a pseudo-terminal (PTY)
+    so many native binaries will line-buffer their output as if connected to a
+    terminal. This makes progress logs appear in packaged builds where stdout
+    might otherwise be block-buffered.
+
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    # Ensure we keep a string version in the exception for downstream handlers
+    display_cmd = " ".join(shlex.quote(str(x)) for x in (cmd if isinstance(cmd, (list, tuple)) else [cmd]))
+
+    if os.name == "posix" and use_pty_on_posix:
+        master_fd, slave_fd = pty.openpty()
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=cwd,
+                env=env,
+                stdin=None,
+                stdout=slave_fd,
+                stderr=slave_fd if merge_stderr else None,
+                close_fds=True,
+                text=False,
+            )
+        finally:
+            try:
+                os.close(slave_fd)
+            except Exception:
+                pass
+
+        try:
+            # Read from the PTY master until the child exits and output drains
+            pending = b""
+            while True:
+                rlist, _, _ = select.select([master_fd], [], [], 0.1)
+                if master_fd in rlist:
+                    try:
+                        data = os.read(master_fd, 4096)
+                    except OSError:
+                        data = b""
+                    if not data:
+                        # EOF
+                        break
+                    if squash_blank_lines:
+                        # Normalize line endings and emit full lines only
+                        pending += data
+                        # Normalize CRLF -> LF first
+                        pending = pending.replace(b"\r\n", b"\n")
+                        # Convert any remaining CR to LF (progress updates)
+                        pending = pending.replace(b"\r", b"\n")
+                        # Split into complete lines while keeping any trailing partial in 'pending'
+                        if b"\n" in pending:
+                            parts = pending.split(b"\n")
+                            complete = parts[:-1]
+                            pending = parts[-1]
+                        else:
+                            complete = []
+                        for chunk in complete:
+                            # Robustly decode bytes; fall back to str() if unexpected type
+                            if isinstance(chunk, (bytes, bytearray)):
+                                s = chunk.decode(errors="replace")
+                            else:
+                                s = str(chunk)
+                            if s.strip():
+                                sys.stdout.write(s + "\n")
+                        sys.stdout.flush()
+                    else:
+                        # Always decode to text and write via sys.stdout (may be a text wrapper)
+                        sys.stdout.write(data.decode(errors="replace"))
+                        sys.stdout.flush()
+            # Flush any trailing partial line when squashing at EOF
+            if squash_blank_lines and pending:
+                if isinstance(pending, (bytes, bytearray)):
+                    tail = pending.decode(errors="replace")
+                else:
+                    tail = str(pending)
+                if tail.strip():
+                    sys.stdout.write(tail + "\n")
+                sys.stdout.flush()
+        finally:
+            try:
+                os.close(master_fd)
+            except Exception:
+                pass
+        ret = proc.wait()
+        if ret != 0:
+            raise subprocess.CalledProcessError(ret, display_cmd)
+        return ret
+    else:
+        # Fallback path – stream via PIPE (child may still buffer if not a TTY)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if merge_stderr else None,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                if squash_blank_lines and not line.strip():
+                    continue
+                print(line, end="")
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        ret = proc.wait()
+        if ret != 0:
+            raise subprocess.CalledProcessError(ret, display_cmd)
+        return ret
 
 
 def parse_args_with_config(parser, raw_args=None):
@@ -112,16 +364,22 @@ def parse_args_with_config(parser, raw_args=None):
 
     # Point esl_main_dir at the *project root* (one level above this package)
     if not getattr(args, "esl_main_dir", None):
-        # Determine esl_main_dir; use executable dir only for Windows frozen bundle
-        if os.name == "nt" and getattr(sys, "frozen", False):
-            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
-            print(f"[DEBUG] Windows frozen sys.executable: {sys.executable}")
+        if getattr(sys, "frozen", False):
+            # For macOS app bundles, helpers live next to the executable (Contents/MacOS)
+            if sys.platform == "darwin":
+                bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            else:
+                # For Windows onefile, included data (e.g., include-raw-dir) are extracted
+                # into a temporary directory that also contains the compiled package dirs.
+                # The staged "bin/" is at the extraction root, which is the parent of this package.
+                bundle_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+
+            print(f"[DEBUG] Frozen executable: {sys.executable}")
             print(f"[DEBUG] Bundle directory: {bundle_dir}")
             try:
                 print("[DEBUG] Contents of bundle_dir:")
                 for entry in os.listdir(bundle_dir):
                     print(f"    {entry}")
-                # check for bin subdirectory
                 bin_dir = os.path.join(bundle_dir, "bin")
                 if os.path.isdir(bin_dir):
                     print(f"[DEBUG] Contents of bin_dir ({bin_dir}):")
@@ -159,29 +417,67 @@ def parse_args_with_config(parser, raw_args=None):
 
 
     # Conditional error for missing species_pheno_path when plot generation is requested
-    plot_requested = getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False)
+    plot_requested = (
+        getattr(args, 'make_sps_plot', False)
+        or getattr(args, 'make_sps_kde_plot', False)
+        or getattr(args, 'make_continuous_plot', False)
+    )
     species_pheno_path_missing = not getattr(args, 'species_pheno_path', None)
 
     if plot_requested and species_pheno_path_missing:
         raise ValueError("Error: A species phenotype file is required to make species plots or KDE plots.")
 
+    # If a phenotype file is provided, detect whether it is binary or continuous
+    if getattr(args, 'species_pheno_path', None):
+        ph_type = detect_pheno_file_type(args.species_pheno_path)
+        setattr(args, 'species_pheno_is_binary', ph_type == 'binary')
+        use_cont = getattr(args, 'use_continuous_phenotypes', False) and ph_type != 'binary'
+        setattr(args, 'species_pheno_is_continuous', use_cont)
+
+        if ph_type != 'binary' and use_cont:
+            print("Detected continuous phenotype values: running ESL-PSC with continuous response variables.")
+            if getattr(args, 'make_sps_plot', False) or getattr(args, 'make_sps_kde_plot', False):
+                print("SPS plots are disabled for continuous phenotype files.")
+                args.make_sps_plot = False
+                args.make_sps_kde_plot = False
+        elif ph_type != 'binary' and not use_cont:
+            print("Continuous phenotype file detected but --use_continuous_phenotypes was not set; treating values as binary.")
+            if getattr(args, 'make_continuous_plot', False):
+                print("Continuous phenotype plots require --use_continuous_phenotypes; skipping plot.")
+                args.make_continuous_plot = False
+        elif ph_type == 'binary' and getattr(args, 'make_continuous_plot', False):
+            print("Phenotype file appears to be binary; continuous phenotype plot will be skipped.")
+            args.make_continuous_plot = False
+    else:
+        setattr(args, 'species_pheno_is_binary', False)
+        setattr(args, 'species_pheno_is_continuous', False)
+
+    # show_selected_sites requires that gene ranks are being written
+    if getattr(args, 'no_genes_output', False) and getattr(args, 'show_selected_sites', False):
+        raise ValueError(
+            "The option --show_selected_sites requires gene ranks output and "
+            "cannot be used together with --no_genes_output."
+        )
+
     # Check for relative paths and adjust them to be absolute
     path_args = [
         'esl_inputs_outputs_dir', 'species_pheno_path', 'prediction_alignments_dir',
         'output_dir', 'canceled_alignments_dir', 'response_file', 'species_groups_file',
-        'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir'
+        'limited_genes_list', 'alignments_dir', 'response_dir', 'esl_main_dir',
+        # Ensure critical CLI paths are also normalized
+        'input_alignments_dir', 'response_matrix_path', 'path_file_path'
     ]
 
     # Convert path arguments to absolute paths
     for path_arg in path_args:
-        path = getattr(args, path_arg)
+        path = getattr(args, path_arg, None)
         if path:
             setattr(args, path_arg, os.path.abspath(path))
 
     return args
 
 def is_fasta(file_name):
-    return file_name.endswith(('.fa','.fas','.fasta'))
+    return file_name.endswith(('.fa', '.fas', '.fasta', '.faa'))
 
 def file_lines_to_list(file_path):
     with open(file_path, 'r') as file:
@@ -189,8 +485,13 @@ def file_lines_to_list(file_path):
     line_list = [line.strip() for line in lines]
     return line_list
 
-def assert_two_line_fasta(fasta_path):
-    """Raise ValueError if *fasta_path* is not in 2-line FASTA format."""
+def is_two_line_fasta(fasta_path):
+    """Return ``True`` if *fasta_path* is 2-line FASTA.
+
+    Returns ``False`` when sequence records span multiple lines but raises
+    :class:`ValueError` if the file is not valid FASTA (e.g. missing headers or
+    sequences)."""
+
     header = None
     seen_seq = False
     with open(fasta_path, 'r') as fh:
@@ -209,37 +510,149 @@ def assert_two_line_fasta(fasta_path):
                         f"Sequence data found before first header at line {lineno}"
                     )
                 if seen_seq:
-                    raise ValueError(
-                        f"Sequence for '{header}' spans multiple lines (starting at line {lineno})"
-                    )
+                    # Multi-line sequence detected
+                    return False
                 seen_seq = True
         if header is None:
             raise ValueError("File contains no FASTA records")
         if not seen_seq:
             raise ValueError(f"Header '{header}' has no sequence line at end of file")
+    return True
 
 
-def validate_alignment_dir_two_line(directory, recursive=False):
-    """Ensure all FASTA files in *directory* are 2-line format."""
+def find_non_two_line_fasta_files(directory, recursive=False):
+    """Return a sorted list of FASTA paths in *directory* that are not 2-line.
+
+    Raises
+    ------
+    ValueError
+        If any FASTA file is not parseable/valid FASTA.
+    """
     if not directory or not os.path.isdir(directory):
-        return
-        
-    print("Verifying alignment format...")
+        return []
 
     walker = os.walk(directory) if recursive else [(directory, [], os.listdir(directory))]
+    non_two_line = []
     for root, _dirs, files in walker:
         for fname in files:
+            if not is_fasta(fname):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                if not is_two_line_fasta(fpath):
+                    non_two_line.append(fpath)
+            except ValueError as e:
+                raise ValueError(
+                    f"Alignment file '{fpath}' is not valid FASTA: {e}"
+                ) from None
+    return sorted(non_two_line)
+
+
+def default_two_line_dir(source_dir, suffix="_2line"):
+    """Return sibling directory path for converted 2-line FASTA alignments."""
+    src = os.path.abspath(source_dir.rstrip(os.sep))
+    parent, base = os.path.split(src)
+    return os.path.join(parent, f"{base}{suffix}")
+
+
+def convert_alignment_dir_to_two_line(
+    source_dir,
+    *,
+    recursive=False,
+    output_dir=None,
+    suffix="_2line",
+    overwrite=True,
+    progress_callback=None,
+):
+    """Convert FASTA files from *source_dir* into strict 2-line FASTA files.
+
+    A new directory is created by default as a sibling of *source_dir* with
+    suffix ``_2line``. Returns ``(output_dir, num_files_written)``.
+    """
+    if not source_dir or not os.path.isdir(source_dir):
+        raise ValueError(f"Alignment directory not found: {source_dir}")
+
+    src = os.path.abspath(source_dir)
+    out = os.path.abspath(output_dir or default_two_line_dir(src, suffix=suffix))
+    if out == src:
+        raise ValueError("Output directory for 2-line conversion must differ from source directory")
+
+    if os.path.exists(out):
+        if not overwrite:
+            raise FileExistsError(
+                f"Output directory already exists: {out}. "
+                "Re-run with overwrite enabled or remove the directory first."
+            )
+        shutil.rmtree(out)
+    os.makedirs(out, exist_ok=True)
+
+    jobs = []
+    walker = os.walk(src) if recursive else [(src, [], os.listdir(src))]
+    for root, _dirs, files in walker:
+        rel = os.path.relpath(root, src)
+        out_root = out if rel == "." else os.path.join(out, rel)
+        for fname in files:
             if is_fasta(fname):
-                fpath = os.path.join(root, fname)
-                try:
-                    assert_two_line_fasta(fpath)
-                except ValueError as e:
-                    msg = (
-                        f"Alignment file '{fpath}' is not in 2-line FASTA format: {e}.\n"
-                        "Each sequence must appear on a single line. "
-                        "You can reformat the file with a tool like 'seqtk seq -l0'."
-                    )
-                    raise ValueError(msg) from None
+                jobs.append((os.path.join(root, fname), os.path.join(out_root, fname)))
+
+    total_jobs = len(jobs)
+    if total_jobs == 0:
+        raise ValueError(
+            f"No FASTA files (.fas, .fasta, .fa, .faa) were found in '{source_dir}'"
+        )
+
+    total_written = 0
+    for idx, (in_path, out_path) in enumerate(jobs, start=1):
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        if progress_callback is not None:
+            progress_callback(idx, total_jobs, in_path)
+        try:
+            records = list(SeqIO.parse(in_path, "fasta"))
+        except Exception as e:
+            raise ValueError(
+                f"Failed parsing FASTA file '{in_path}' during 2-line conversion: {e}"
+            ) from None
+        if not records:
+            raise ValueError(
+                f"Failed parsing FASTA file '{in_path}' during 2-line conversion: no records found"
+            )
+        with open(out_path, "w") as output_handle:
+            SeqIO.write(records, output_handle, "fasta-2line")
+        total_written += 1
+
+    if progress_callback is not None:
+        progress_callback(total_jobs, total_jobs, "")
+
+    return out, total_written
+
+
+def validate_alignment_dir_two_line(directory, recursive=False, allow_multi_line=False):
+    """Ensure all FASTA files in *directory* are 2-line format.
+
+    If *allow_multi_line* is ``True``, files with multi-line sequences will
+    trigger a warning instead of a :class:`ValueError`."""
+
+    if not directory or not os.path.isdir(directory):
+        return
+
+    print("Verifying alignment format...")
+
+    non_two_line = find_non_two_line_fasta_files(directory, recursive=recursive)
+    found_multiline = bool(non_two_line)
+    if non_two_line and not allow_multi_line:
+        msg = (
+            f"Alignment file '{non_two_line[0]}' is not in 2-line FASTA format.\n"
+            "Each sequence must appear on a single line. "
+            "You can reformat files with a tool like 'seqtk seq -l0', or use "
+            "ESL-PSC's built-in 2-line conversion option."
+        )
+        raise ValueError(msg)
+
+    if found_multiline:
+        print(
+            "WARNING: Detected FASTA files with sequences spanning multiple lines. "
+            "Processing will continue, but this may be slower."
+        )
 
 def get_species_to_check(response_matrix_path, check_order = False):
     '''takes a full path to a response matrix and returns a list of species
@@ -255,13 +668,42 @@ def get_species_to_check(response_matrix_path, check_order = False):
         if check_order:
             if line_index % 2 == 0:
                 # even indices are 0, 2, 4, i.e. 1st, 3rd, 5th
-                assert int(response_number) == 1 or int(response_number) == 0
+                assert float(response_number) == 1 or float(response_number) == 0
             else:
-                assert int(response_number) == -1 or int(response_number) == 0
+                assert float(response_number) == -1 or float(response_number) == 0
         #this shouldn't happen unless it's a pair
-        if int(response_number) != 0: 
+        if float(response_number) != 0:
             species_list.append(species_name)
     return species_list
+
+def response_matrix_is_continuous(response_matrix_path):
+    """Return True if *response_matrix_path* contains any response values other
+    than -1, 0, or 1."""
+    for line in file_lines_to_list(response_matrix_path):
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        try:
+            value = float(parts[1])
+        except ValueError:
+            continue
+        if value not in (-1.0, 0.0, 1.0):
+            return True
+    return False
+
+def get_response_dict(response_matrix_path):
+    """Return a dict mapping species to numeric phenotype values from a
+    response matrix file."""
+    resp = {}
+    for line in file_lines_to_list(response_matrix_path):
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        try:
+            resp[parts[0]] = float(parts[1])
+        except ValueError:
+            continue
+    return resp
 
 def make_taxa_list(alignments_dir_path):
     """Return a sorted list of all species IDs found in FASTA files."""
@@ -317,15 +759,17 @@ def get_gene_names(dir_or_file_path):
     path is given, it is assumed to be an alignment directory and the gene
     names are taken from fasta file names. returns a list of gene names.'''
     if os.path.isdir(dir_or_file_path): # if a directory path is given
-        return [file[:-4] for file in os.listdir(dir_or_file_path)
-                if file.endswith('.fas')]
+        # Accept any recognized FASTA extension and strip the extension robustly
+        return [os.path.splitext(file)[0] for file in os.listdir(dir_or_file_path)
+                if is_fasta(file)]
     else: # must be a path file (text file)
         gene_name_list = []
         alignment_path_lines = file_lines_to_list(dir_or_file_path)
         # loop through lines in the path file and extract the file name
         for line in alignment_path_lines:
             gene_name = os.path.split(line)[1].strip()
-            gene_name_list.append(gene_name[:-4]) #remove the .fas
+            # Remove any supported FASTA extension using splitext
+            gene_name_list.append(os.path.splitext(gene_name)[0])
         return gene_name_list
         
 def get_seq_records_in_order(fasta_file, species_list):
@@ -375,16 +819,17 @@ def get_median_var_sites(alignment_dir):
     number fo variable sites, ignoring alignments with zero variable sites.
     The median is rounded down to the nearest integer.
     '''
-    previous_dir = os.getcwd()
-    os.chdir(alignment_dir)
-    alignment_list = [file for file in os.listdir() if file.endswith('.fas')]
+    alignment_dir = os.path.abspath(alignment_dir)
+    alignment_list = [
+        os.path.join(alignment_dir, file)
+        for file in os.listdir(alignment_dir) if is_fasta(file)
+    ]
     numbers_of_var_sites = []
-    for alignment in alignment_list:
-        num_var = count_var_sites(list(SeqIO.parse(alignment, "fasta")))
+    for alignment_path in alignment_list:
+        num_var = count_var_sites(list(SeqIO.parse(alignment_path, "fasta")))
         if num_var == 0:
             continue  # skip alignments with no variability
         numbers_of_var_sites.append(num_var)
-    os.chdir(previous_dir)
 
     if not numbers_of_var_sites:
         raise ValueError(
@@ -397,17 +842,30 @@ def get_median_var_sites(alignment_dir):
     return int(median(numbers_of_var_sites))
 
 def get_pheno_dict(species_pheno_csv_path, str_phenos = False):
-    '''takes a full path to a csv file that has lines like: "species, 1"
-    and returns a dictionary with keys: species, values: phenotype values. If
-    str_phenos = True, the pheno type values will be returned as strings.
+    '''takes a full path to a csv file that has lines like: "species, 1" or
+    "species, 0.37" and returns a dictionary with keys: species, values:
+    phenotype values. If str_phenos = True, the pheno values will be returned
+    as strings. Otherwise, values are returned as floats.
     '''
     pheno_dict = {}
     pheno_lines = file_lines_to_list(species_pheno_csv_path)
     for line in pheno_lines:
+        line = line.strip()
+        if not line:
+            continue
         # split each line and assign values
-        species, pheno_value = [item.strip() for item in line.split(',')]
-        pheno_dict[species] = (int(pheno_value) if not str_phenos
-                               else pheno_value) # give int pheno by default
+        parts = [item.strip() for item in line.split(',')]
+        if len(parts) != 2 or not parts[0]:
+            continue
+        species, pheno_value = parts
+        if str_phenos:
+            pheno_dict[species] = pheno_value
+        else:
+            try:
+                pheno_dict[species] = float(pheno_value)
+            except ValueError:
+                # skip malformed values silently
+                continue
     return pheno_dict
 
 def report_elapsed_time(start_time):
@@ -445,7 +903,7 @@ def make_path_file(alignments_dir):
     same folder. returns the path to the path file
     '''
     alignment_file_list = [file for file in os.listdir(alignments_dir)
-                           if file.endswith('.fas')]
+                           if is_fasta(file)]
     path_file_path = os.path.join(alignments_dir, 'paths.txt')
     with open(path_file_path, 'w') as file:
         file.write('\n'.join(alignment_file_list))
@@ -459,21 +917,30 @@ def clear_existing_folder(directory_path):
         raise Exception("trying to check if this directory exists "
                         + directory_path + " but this is not a directory")
 
-def make_response_files(response_dir, list_of_species_combos):
+def make_response_files(response_dir, list_of_species_combos, pheno_dict=None):
     '''takes a directory path, either existing or not, and a list of species
-    combos in 1, -1, 1, -1 order and generates an ESL response file for each
-    combo. returns a list of response file paths
+    combos and generates an ESL response file for each combo. When ``pheno_dict``
+    is ``None`` the combos are assumed to be in ``+1, -1, +1, -1`` order and the
+    responses are assigned accordingly. If ``pheno_dict`` is provided, the
+    numeric phenotype value for each species is looked up instead of using the
+    default binary pattern. returns a list of response file paths
     '''
     response_file_list = []
     clear_existing_folder(response_dir)
     os.mkdir(response_dir)
     # combinations are given sequential codes: 0, 1, 2...
     #   the same codes will be used in gap-canceled alignments & preprocess
-    for index1, combo in enumerate(list_of_species_combos): 
+    for index1, combo in enumerate(list_of_species_combos):
         response_lines = []
         for index2, species in enumerate(combo):
-            # assumes species greoups are listed in "+1, -1, +1, -1" order
-            response = 1 if index2 % 2 == 0 else -1
+            if pheno_dict is not None:
+                if species not in pheno_dict:
+                    raise ValueError(
+                        f"Species '{species}' missing from phenotype file")
+                response = pheno_dict[species]
+            else:
+                # assumes species groups are listed in "+1, -1, +1, -1" order
+                response = 1 if index2 % 2 == 0 else -1
             response_lines.append(species + '\t' + str(response))
         # response file names are combo_1.txt, combo_2.txt etc.
         file_path = (os.path.join(response_dir,
@@ -554,10 +1021,11 @@ def run_preprocess(esl_dir_path, response_matrix_file_path, path_file_path,
     # make sure the input file names are right including ".txt" or get seg fault
     # print(' '.join(preprocess_command_list))  # suppress full command echo
     try:
-        subprocess.run(preprocess_command_list, check=True)
+        # In packaged builds, preprocess can emit many CR-only updates; squash blanks.
+        run_subprocess_streamed(preprocess_command_list, squash_blank_lines=True)
     except subprocess.CalledProcessError as e:
         if e.returncode == 126:
-            executable_name = e.cmd.split()[0].split('/')[-1]
+            executable_name = e.cmd.split()[0].split('/')[-1] if isinstance(e.cmd, str) else str(e.cmd).split()[0]
             error_message = (
                 f"\nFATAL ERROR: Cannot execute '{executable_name}' (Exit Code 126).\n"
                 "This means the program is not compatible with your operating system (e.g., a Linux binary on macOS)\n"
@@ -587,7 +1055,18 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     # code borrowed largely from Louise, with some tweaks
     start_time = time.time()
     print("making sps density plot figure...")
-    rmse_cutoffs = [.05, .1]
+    panel_specs = [
+        {
+            'rmse_cutoff': 0.05,
+            'aggregate_species': False,
+            'panel_suffix': 'lowest 5% of MFS models combined',
+        },
+        {
+            'rmse_cutoff': None,
+            'aggregate_species': True,
+            'panel_suffix': 'species-averaged SPS over all models',
+        },
+    ]
 
     # headless in worker thread
     if threading.current_thread().name != "MainThread":
@@ -598,10 +1077,10 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
         # Create side-by-side subplots and widen the figure slightly so axis
         # labels don’t collide. We’ll manually add horizontal spacing.
         fig, axes = plt.subplots(
-            ncols=len(rmse_cutoffs), figsize=(8, 7)
+            ncols=len(panel_specs), figsize=(8, 7)
         )
     elif plot_type == 'kde':
-        fig, axes = plt.subplots(nrows=len(rmse_cutoffs), ncols=1, figsize=(8, 7))
+        fig, axes = plt.subplots(nrows=len(panel_specs), ncols=1, figsize=(8, 7))
     # Add extra horizontal padding between subplots to avoid label overlap
     fig.subplots_adjust(wspace=0.35)
     
@@ -618,9 +1097,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     pos_pheno_name = pheno_names[0]
     neg_pheno_name = pheno_names[1]
         
-    for index, rmse_cutoff in enumerate(rmse_cutoffs):
+    for index, panel in enumerate(panel_specs):
         # create each plot
-        # print("making plot with MFS cutoff: " + str(rmse_cutoff))
+        rmse_cutoff = panel['rmse_cutoff']
         if plot_type == 'kde':    
             sps_density.create_sps_plot(df = df,
                                     RMSE_rank = rmse_cutoff,
@@ -628,7 +1107,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     neg_pheno_name = neg_pheno_name,
                                     pos_pheno_name = pos_pheno_name,
                                     axes = axes[index],
-                                    min_genes = min_genes)
+                                    min_genes = min_genes,
+                                    aggregate_species = panel['aggregate_species'],
+                                    panel_suffix = panel['panel_suffix'])
         elif plot_type == 'violin':
             sps_density.create_sps_plot_violin(df = df,
                                     RMSE_rank = rmse_cutoff,
@@ -636,7 +1117,9 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
                                     neg_pheno_name = neg_pheno_name,
                                     pos_pheno_name = pos_pheno_name,
                                     axes = axes[index],
-                                    min_genes = min_genes)
+                                    min_genes = min_genes,
+                                    aggregate_species = panel['aggregate_species'],
+                                    panel_suffix = panel['panel_suffix'])
             axes[index].set_ylim([-1.1, 1.1])
             axes[index].axhline(y=0, linestyle='--', color='lightgray')
     fig.tight_layout(pad=2.0, w_pad=0.5)
@@ -651,7 +1134,39 @@ def rmse_range_pred_plots(pred_csv_path, title, pheno_names = None,
     report_elapsed_time(start_time)
     print("\npredictions density plot figure saved at: " + fig_path)
 
-    
+
+def continuous_pred_plot(pred_csv_path, title, min_genes=0):
+    """Generate a 2D density plot of true phenotype vs SPS."""
+    start_time = time.time()
+    print("making continuous phenotype plot...")
+
+    if threading.current_thread().name != "MainThread":
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+
+    df = pd.read_csv(pred_csv_path, dtype={'species': str,
+                                           'SPS': float,
+                                           'num_genes': float,
+                                           'true_phenotype': float})
+    df = df[['species', 'SPS', 'num_genes', 'true_phenotype']]
+
+    fig_path = os.path.join(os.path.split(pred_csv_path)[0],
+                            title + '_continuous_plot.svg')
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    sps_density.create_continuous_plot(df=df, axes=ax,
+                                       title=title,
+                                       min_genes=min_genes)
+    fig.savefig(fig_path)
+
+    if sys.stdout.isatty():
+        plt.show()
+    else:
+        plt.close(fig)
+
+    report_elapsed_time(start_time)
+    print("\ncontinuous phenotype plot saved at: " + fig_path)
+
 
 class ESLRunFamily():
     '''a class to contain a family of runs with the same inputs.
@@ -828,45 +1343,73 @@ class ESLRun():
         preprocessed_dir_name = self.run_family.preprocessed_input_folder
         output_name = (self.run_family.preprocessed_input_folder +
                        self.get_lambda_tag())
-        # Build command list for ESL logistic lasso.
-        # Use an argument list (shell=False) so paths that contain spaces are
-        # passed intact to the executable.
-        esl_command_list = [
-            get_binary_path(self.run_family.args.esl_main_dir, "sg_lasso"),
-            "-f",
-            os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
-            "-z",
-            str(self.lambda1),
-            "-y",
-            str(self.lambda2),
-            "-n",
-            os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
-            "-r",
-            os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
-            "-w",
-            f"{output_name}_out_feature_weights",
-        ]
+        # Optional SLEP options file for non-default max iterations
+        maxiter = int(getattr(self.run_family.args, "maxiter", 100))
+        slep_opts_path = None
+        try:
+            if maxiter != 100:
+                # Create a per-run opts file to avoid clashes across runs
+                slep_opts_path = os.path.join(
+                    os.getcwd(), f"{output_name}_slep_opts.txt"
+                )
+                with open(slep_opts_path, "w") as sf:
+                    sf.write(f"maxIter\t{maxiter}\n")
 
-        # Run ESL and silence noisy output from sg_lasso. We still capture
-        # stdout/stderr so that errors can be surfaced if the command fails.
-        proc = subprocess.run(
-            esl_command_list,
-            shell=False,
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
-            # If the lasso run failed, show captured output for debugging.
-            print(proc.stdout)
-            print(proc.stderr, file=sys.stderr)
-            proc.check_returncode()
-        
-        # Extract feature weights directly from the generated XML. 
-        xml_path = (
-            f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
-        )
-        with open(xml_path, "r") as xf:
-            xml_txt = xf.read()
+            # Build command list for ESL lasso, selecting logistic or linear
+            # regression depending on whether the phenotype file is binary or
+            # continuous.  Use an argument list (shell=False) so paths that
+            # contain spaces are passed intact to the executable.
+            lasso_binary = (
+                "sg_lasso_leastr"
+                if getattr(self.run_family.args, "species_pheno_is_continuous", False)
+                else "sg_lasso"
+            )
+            esl_command_list = [
+                get_binary_path(self.run_family.args.esl_main_dir, lasso_binary),
+                "-f",
+                os.path.join(preprocessed_dir_name, f"feature_{preprocessed_dir_name}.txt"),
+                "-z",
+                str(self.lambda1),
+                "-y",
+                str(self.lambda2),
+                "-n",
+                os.path.join(preprocessed_dir_name, f"group_indices_{preprocessed_dir_name}.txt"),
+                "-r",
+                os.path.join(preprocessed_dir_name, f"response_{preprocessed_dir_name}.txt"),
+                "-w",
+                f"{output_name}_out_feature_weights",
+            ]
+            if slep_opts_path:
+                esl_command_list.extend(["-s", slep_opts_path])
+
+            # Run ESL and silence noisy output from sg_lasso. We still capture
+            # stdout/stderr so that errors can be surfaced if the command fails.
+            proc = subprocess.run(
+                esl_command_list,
+                shell=False,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode != 0:
+                # If the lasso run failed, show captured output for debugging.
+                print(proc.stdout)
+                print(proc.stderr, file=sys.stderr)
+                proc.check_returncode()
+            
+            # Extract feature weights directly from the generated XML. 
+            xml_path = (
+                f"{preprocessed_dir_name}{self.get_lambda_tag()}_out_feature_weights.xml"
+            )
+            with open(xml_path, "r") as xf:
+                xml_txt = xf.read()
+        finally:
+            # Clean up temporary slep options file, if created
+            if slep_opts_path and os.path.exists(slep_opts_path):
+                try:
+                    os.remove(slep_opts_path)
+                except Exception:
+                    # Non-fatal; continue without raising
+                    pass
 
         temp_lines = [w + "\n" for w in re.findall(r"<item>(.*?)</item>", xml_txt)]
         with open(

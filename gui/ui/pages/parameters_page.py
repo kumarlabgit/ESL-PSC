@@ -5,6 +5,7 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWizard
+from gui.core.paths import default_output_dir
 from gui.ui.widgets.file_selectors import FileSelector
 from dataclasses import fields
 from gui.core.config import ESLConfig
@@ -43,11 +44,18 @@ class ParametersPage(BaseWizardPage):
 
         # Store references to widgets that might be accessed after deletion
         self.widgets_initialized = False
+        # Session-only flag: once user edits log-grid points in advanced mode,
+        # hidden-mode auto defaults stop changing it until app restart.
+        self._manual_num_log_points_override = False
+        self._suppress_num_log_points_manual_tracking = False
         
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Make it obvious there is more content (especially on macOS)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Create container widget for scroll area
         container = QWidget()
@@ -63,6 +71,15 @@ class ParametersPage(BaseWizardPage):
         layout = self.layout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(scroll)
+
+        # "Advanced options" toggle: keep the main flow uncluttered.
+        # This hides entire sections that are rarely needed for typical runs.
+        self.show_advanced_chk = QCheckBox("Show advanced options")
+        self.show_advanced_chk.setToolTip(
+            "Show rarely-used settings (deletion canceler details, hyperparameters, null models)."
+        )
+        self.show_advanced_chk.toggled.connect(self._set_advanced_visible)
+        self.container_layout.addWidget(self.show_advanced_chk)
         
         # ===== Output Options =====
         output_group = QGroupBox("Output Options")
@@ -76,15 +93,29 @@ class ParametersPage(BaseWizardPage):
         explanation.setWordWrap(True)
         output_layout.addWidget(explanation)
 
+        # Place the continuous-mode toggle at the TOP of Output Options
+        self.use_continuous_chk = QCheckBox("Use continuous phenotype values?")
+        self.use_continuous_chk.setToolTip(
+            "Run ESL-PSC with continuous response variables using sg_lasso_leastr."
+        )
+
+        def _on_use_cont_toggled(checked: bool) -> None:
+            setattr(self.config, 'use_continuous_phenotypes', checked)
+            if hasattr(self, '_update_sps_plot_state'):
+                self._update_sps_plot_state()
+            # Also refresh visibility/enabled state of dependent widgets
+            self.update_output_options_state()
+
+        self.use_continuous_chk.toggled.connect(_on_use_cont_toggled)
+        output_layout.addWidget(self.use_continuous_chk)
+
         # Output file base name (on its own row, left-aligned)
         output_name_layout = QHBoxLayout()
         output_name_layout.addWidget(QLabel("Output File Base Name:"))
         
         self.output_file_base_name = QLineEdit("esl_psc_results")
         self.output_file_base_name.setMinimumWidth(400)  # Make it wider
-        self.output_file_base_name.textChanged.connect(
-            lambda t: setattr(self.config, 'output_file_base_name', t)
-        )
+        self.output_file_base_name.textChanged.connect(self._on_output_file_base_name_changed)
         # Set the default value in config
         self.config.output_file_base_name = "esl_psc_results"
         output_name_layout.addWidget(self.output_file_base_name)
@@ -100,8 +131,9 @@ class ParametersPage(BaseWizardPage):
         output_dir_layout.addWidget(QLabel("Output Directory:"))
         
         self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setReadOnly(True)
-        self.output_dir_edit.setPlaceholderText("Click Browse to select output directory")
+        self.output_dir_edit.setPlaceholderText("Choose or enter an output directory")
+        self.output_dir_edit.setText(self.config.output_dir)
+        self.output_dir_edit.textChanged.connect(self._on_output_dir_changed)
         output_dir_layout.addWidget(self.output_dir_edit, 1)  # Allow expanding
         
         self.browse_btn = QPushButton("Browse...")
@@ -126,7 +158,7 @@ class ParametersPage(BaseWizardPage):
             "Only generate gene ranks output. This is the fastest option and is "
             "recommended for finding genes that might be related to a convergent phenotype."
         )
-        self.genes_only_btn.setChecked(True)  # Set as default
+        self.genes_only_btn.setChecked(False)
         self.output_options_group.addButton(self.genes_only_btn)
         genes_only_layout.addWidget(self.genes_only_btn)
         genes_only_layout.addStretch()
@@ -156,6 +188,9 @@ class ParametersPage(BaseWizardPage):
             "a true phenotype column. This is the most comprehensive but slowest option."
         )
         self.both_outputs_btn.setChecked(True)  # Default selection
+        # Ensure mutually exclusive default favors 'Both outputs'
+        self.genes_only_btn.setChecked(False)
+        self.both_outputs_btn.toggled.connect(self._update_show_selected_sites_state)
         self.output_options_group.addButton(self.both_outputs_btn)
         both_outputs_layout.addWidget(self.both_outputs_btn)
         both_outputs_layout.addStretch()
@@ -168,8 +203,11 @@ class ParametersPage(BaseWizardPage):
             lambda checked: setattr(self.config, 'no_pred_output', checked)
         )
         self.genes_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.genes_only_btn.toggled.connect(self._update_show_selected_sites_state)
         self.preds_only_btn.toggled.connect(self._update_phenotype_names_state)
+        self.preds_only_btn.toggled.connect(self._update_show_selected_sites_state)
         self.both_outputs_btn.toggled.connect(self._update_phenotype_names_state)
+        self.both_outputs_btn.toggled.connect(self._update_show_selected_sites_state)
         
         # Add more spacing after the output options
         output_layout.addSpacing(15)  # Increased spacing
@@ -231,10 +269,10 @@ class ParametersPage(BaseWizardPage):
         
         # Add standard spacing after phenotype names
         output_layout.addSpacing(8)
-        
+
         # Add vertical spacer for better separation before output directory
         output_layout.addSpacing(5)  # Reduced spacing before output directory
-        
+
         # SPS plot options (always visible but may be disabled)
         self.sps_plot_group = QGroupBox("Species Prediction Score (SPS) Plots")
         sps_plot_layout = QVBoxLayout()
@@ -256,7 +294,8 @@ class ParametersPage(BaseWizardPage):
         # Make SPS plot
         self.make_sps_plot = QRadioButton("Generate SPS Violin plots")
         self.make_sps_plot.setToolTip(
-            "Create violin plots showing SPS density for each true phenotype."
+            "Create a two-panel SPS violin plot: lowest 5% of MFS models on the left, "
+            "species-averaged SPS over all models on the right."
         )
         self.make_sps_plot.toggled.connect(
             lambda checked: setattr(self.config, 'make_sps_plot', checked)
@@ -267,7 +306,8 @@ class ParametersPage(BaseWizardPage):
         # Make SPS KDE plot
         self.make_sps_kde_plot = QRadioButton("Generate SPS KDE plots")
         self.make_sps_kde_plot.setToolTip(
-            "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
+            "Create a two-panel SPS KDE plot: lowest 5% of MFS models on the left, "
+            "species-averaged SPS over all models on the right."
         )
         self.make_sps_kde_plot.toggled.connect(
             lambda checked: setattr(self.config, 'make_sps_kde_plot', checked)
@@ -279,30 +319,76 @@ class ParametersPage(BaseWizardPage):
         self.config.no_sps_plot = True
         self.config.make_sps_plot = False
         self.config.make_sps_kde_plot = False
-        
+        self.config.make_continuous_plot = False
+
         self.sps_plot_group.setLayout(sps_plot_layout)
         output_layout.addWidget(self.sps_plot_group)
+
+        self.continuous_plot_chk = QCheckBox("Generate phenotype density plot")
+        self.continuous_plot_chk.setToolTip(
+            "Create a 2D density plot with true phenotype on the X-axis and SPS on the Y-axis."
+        )
+        self.continuous_plot_chk.toggled.connect(
+            lambda checked: setattr(self.config, 'make_continuous_plot', checked)
+        )
+        self.continuous_plot_chk.setVisible(False)
+        output_layout.addWidget(self.continuous_plot_chk)
+
+        # (Continuous-mode toggle moved to top of Output Options above)
         
         # Connect output type changes to enable/disable SPS plot options
         def update_sps_plot_state():
-            enable_sps = not self.genes_only_btn.isChecked() and self.has_species_pheno
+            cont_active = (
+                getattr(self.config, 'use_continuous_phenotypes', False)
+                or getattr(self.config, 'response_matrices_are_continuous', False)
+            )
+            # Keep the SPS group visible at all times; enable only when applicable
+            enable_sps = (
+                not self.genes_only_btn.isChecked()
+                and self.has_species_pheno
+                and not cont_active
+            )
+            self.sps_plot_group.setVisible(True)
             self.sps_plot_group.setEnabled(enable_sps)
             self.sps_plot_group.setStyleSheet(
                 "QGroupBox:disabled { color: gray; }"
-                "QCheckBox:disabled { color: gray; }"
+                "QRadioButton:disabled { color: gray; }"
             )
 
-            if self.has_species_pheno:
+            # Show continuous plot option whenever continuous mode is active
+            # and we are not in 'Gene ranks only', regardless of phenotype file presence.
+            cont_visible = (
+                not self.genes_only_btn.isChecked()
+                and cont_active
+                and not getattr(self.config, 'response_matrices_are_continuous', False)
+            )
+            self.continuous_plot_chk.setVisible(cont_visible)
+            if not cont_visible:
+                self.continuous_plot_chk.setChecked(False)
+
+            if not self.has_species_pheno:
+                warn = "<font color='red'>Requires a species phenotype file to generate SPS plots.</font>"
+                self.make_sps_plot.setToolTip(warn)
+                self.make_sps_kde_plot.setToolTip(warn)
+                # Continuous mode without phenotype: still show control but clarify requirement
+                self.continuous_plot_chk.setToolTip(
+                    "Create a 2D density plot (requires a species phenotype file)."
+                )
+            elif cont_active:
+                warn = "<font color='red'>SPS plots are disabled for continuous phenotypes.</font>"
+                self.make_sps_plot.setToolTip(warn)
+                self.make_sps_kde_plot.setToolTip(warn)
+                self.continuous_plot_chk.setToolTip(
+                    "Create a 2D density plot with true phenotype on the X-axis and SPS on the Y-axis."
+                )
+            else:
                 self.make_sps_plot.setToolTip(
                     "Create violin plots showing SPS density for each true phenotype."
                 )
                 self.make_sps_kde_plot.setToolTip(
                     "Create Kernel Density Estimate (KDE) plots showing SPS density for each true phenotype."
                 )
-            else:
-                warn = "<font color='red'>Requires species phenotype file to generate SPS plots.</font>"
-                self.make_sps_plot.setToolTip(warn)
-                self.make_sps_kde_plot.setToolTip(warn)
+
         
         self.genes_only_btn.toggled.connect(update_sps_plot_state)
         self.preds_only_btn.toggled.connect(update_sps_plot_state)
@@ -338,7 +424,7 @@ class ParametersPage(BaseWizardPage):
         self.container_layout.addWidget(output_group)
         
         # ===== Deletion Canceler Options =====
-        del_cancel_group = QGroupBox("Deletion Canceler Options")
+        self.del_cancel_group = QGroupBox("Deletion Canceler Options")
         del_cancel_layout = QVBoxLayout()
         
         # Add explanatory text
@@ -428,11 +514,24 @@ class ParametersPage(BaseWizardPage):
         # initial config value
         self.config.use_existing_preprocess = False
         
-        del_cancel_group.setLayout(del_cancel_layout)
-        self.container_layout.addWidget(del_cancel_group)
+        # Preserve gap-canceled alignments (default off: clean up to save disk space)
+        self.preserve_gap_aligns = QCheckBox("Preserve gap-canceled alignments after run")
+        self.preserve_gap_aligns.setToolTip(
+            "By default, ESL-PSC deletes the generated gap-canceled alignments folder at the end of a run "
+            "to avoid accumulating very large folders. Check to keep the folder for inspection or reuse."
+        )
+        self.preserve_gap_aligns.stateChanged.connect(
+            lambda s: setattr(self.config, 'preserve_canceled_alignments', s == 2)
+        )
+        del_cancel_layout.addWidget(self.preserve_gap_aligns)
+        # initial config value
+        self.config.preserve_canceled_alignments = getattr(self.config, 'preserve_canceled_alignments', False)
+        
+        self.del_cancel_group.setLayout(del_cancel_layout)
+        self.container_layout.addWidget(self.del_cancel_group)
 
         # ===== Hyperparameters Section =====
-        hyper_group = QGroupBox("Hyperparameters")
+        self.hyper_group = QGroupBox("Hyperparameters")
         hyper_layout = QFormLayout()
         # Ensure the form rows themselves stay left-aligned instead of centering in the
         # available space.  Using AlignLeft keeps the widgets flush with the left
@@ -580,12 +679,14 @@ class ParametersPage(BaseWizardPage):
         self.linear_btn.toggled.connect(self._update_grid_type_view)
         
         # Connect spinbox changes to update config
-        self.num_log_points.valueChanged.connect(
-            lambda v: setattr(self.config, 'num_points', int(v)) if self.logspace_btn.isChecked() else None
-        )
+        self.num_log_points.valueChanged.connect(self._on_num_log_points_changed)
         self.lambda_step.valueChanged.connect(
             lambda v: setattr(self.config, 'num_points', float(v)) if self.linear_btn.isChecked() else None
         )
+        # In non-advanced mode, output mode drives log-point defaults.
+        self.genes_only_btn.toggled.connect(self._on_output_mode_toggled_for_points)
+        self.preds_only_btn.toggled.connect(self._on_output_mode_toggled_for_points)
+        self.both_outputs_btn.toggled.connect(self._on_output_mode_toggled_for_points)
         
         # Set initial values
         self.num_log_points.setValue(20)  # Default for log grid
@@ -682,12 +783,44 @@ class ParametersPage(BaseWizardPage):
         )
         hyper_layout.addRow("Top rank fraction:", self.top_rank_frac)
         
-        hyper_group.setLayout(hyper_layout)
+        # Optimizer compatibility controls
+        maxiter_row = QWidget()
+        maxiter_row_layout = QHBoxLayout(maxiter_row)
+        maxiter_row_layout.setContentsMargins(0, 0, 0, 0)
+        maxiter_row_layout.setSpacing(12)
+
+        self.maxiter_spin = QSpinBox()
+        self.maxiter_spin.setRange(100, 1000)
+        self.maxiter_spin.setValue(int(getattr(self.config, 'maxiter', 100)))
+        self.maxiter_spin.setMaximumWidth(120)
+        self.maxiter_spin.valueChanged.connect(
+            lambda v: setattr(self.config, 'maxiter', int(v))
+        )
+        self.maxiter_spin.setToolTip(
+            "Maximum number of iterations for the sg_lasso optimizer. Default is 100. Increase to allow more gradient descent steps."
+        )
+        maxiter_row_layout.addWidget(self.maxiter_spin)
+        maxiter_row_layout.addStretch()
+
+        hyper_layout.addRow("Max Iterations:", maxiter_row)
+
+        self.disable_ec_chk = QCheckBox("Disable epsilon comparison")
+        self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', True)))
+        self.disable_ec_chk.toggled.connect(
+            lambda checked: setattr(self.config, 'disable_ec', bool(checked))
+        )
+        self.disable_ec_chk.setToolTip(
+            "Use strict line-search acceptance instead of epsilon-comparison acceptance. "
+            "This is now the default and matches the original ESL-PSC paper-era solver behavior."
+        )
+        hyper_layout.addRow("", self.disable_ec_chk)
+        
+        self.hyper_group.setLayout(hyper_layout)
         # Add hyper group to container
-        self.container_layout.addWidget(hyper_group)
+        self.container_layout.addWidget(self.hyper_group)
         
         # ===== Null Models Section =====
-        null_models_group = QGroupBox("Null Models")
+        self.null_models_group_box = QGroupBox("Null Models")
         null_models_layout = QVBoxLayout()
         
         # Add explanatory text
@@ -783,8 +916,12 @@ class ParametersPage(BaseWizardPage):
         # Set default selection
         self.no_null_btn.setChecked(True)
         
-        null_models_group.setLayout(null_models_layout)
-        self.container_layout.addWidget(null_models_group)
+        self.null_models_group_box.setLayout(null_models_layout)
+        self.container_layout.addWidget(self.null_models_group_box)
+
+        # Default: hide advanced sections.
+        self.show_advanced_chk.setChecked(False)
+        self._set_advanced_visible(False)
         # --- Restore Defaults button (placed at bottom of Parameters page) ---
         self.container_layout.addSpacing(12)
         # Create a horizontal layout for the button to prevent it from stretching
@@ -795,6 +932,69 @@ class ParametersPage(BaseWizardPage):
         
         # Mark widgets as initialized
         self.widgets_initialized = True
+
+    def _set_advanced_visible(self, visible: bool) -> None:
+        """Show/hide advanced sections on this page."""
+        for attr in ("del_cancel_group", "hyper_group", "null_models_group_box"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setVisible(bool(visible))
+        if not visible:
+            self._apply_hidden_num_log_points_policy()
+
+    def _set_num_log_points_value(self, value: int) -> None:
+        """Programmatically set log-grid points without marking manual override."""
+        target = int(value)
+        if self.num_log_points.value() == target:
+            if self.logspace_btn.isChecked():
+                self.config.num_points = target
+            return
+        self._suppress_num_log_points_manual_tracking = True
+        try:
+            self.num_log_points.setValue(target)
+        finally:
+            self._suppress_num_log_points_manual_tracking = False
+        if self.logspace_btn.isChecked():
+            self.config.num_points = target
+
+    def _on_num_log_points_changed(self, value: int) -> None:
+        """Track manual edits and keep config in sync for log-space mode."""
+        if (
+            not self._suppress_num_log_points_manual_tracking
+            and self.show_advanced_chk.isChecked()
+        ):
+            self._manual_num_log_points_override = True
+        if self.logspace_btn.isChecked():
+            self.config.num_points = int(value)
+
+    def _on_output_mode_toggled_for_points(self, checked: bool) -> None:
+        if checked:
+            self._apply_hidden_num_log_points_policy()
+
+    def _apply_hidden_num_log_points_policy(self) -> None:
+        """Auto-manage log points unless the user explicitly overrode them in Advanced mode."""
+        if self.show_advanced_chk.isChecked() and self._manual_num_log_points_override:
+            return
+        if self._manual_num_log_points_override:
+            if self.logspace_btn.isChecked():
+                self.config.num_points = int(self.num_log_points.value())
+            return
+        desired_points = 4 if self.genes_only_btn.isChecked() else 20
+        self._set_num_log_points_value(desired_points)
+
+    def _on_output_file_base_name_changed(self, text: str) -> None:
+        self.config.output_file_base_name = text
+        
+    def _on_output_dir_changed(self, text: str) -> None:
+        self.config.output_dir = text.strip()
+        self.completeChanged.emit()
+
+    def _apply_output_dir_selection(self, selected_dir: str) -> None:
+        chosen_dir = os.path.abspath(selected_dir)
+        self.output_dir_edit.setText(chosen_dir)
+
+    def isComplete(self) -> bool:  # noqa: N802 (Qt override)
+        return bool(getattr(self.config, "output_dir", ""))
         
     def restore_defaults(self):
         """Reset all parameters to their default ESLConfig values and update the UI."""
@@ -802,7 +1002,9 @@ class ParametersPage(BaseWizardPage):
         # Do NOT reset input file paths or other pages' settings
         skip_fields = {
             "alignments_dir", "species_groups_file", "species_phenotypes_file",
-            "prediction_alignments_dir", "limited_genes_file", "response_dir"
+            "prediction_alignments_dir", "limited_genes_file", "response_dir",
+            "species_pheno_is_binary", "species_pheno_is_continuous",
+            "response_matrices_are_continuous"
         }
         for f in fields(ESLConfig):
             if f.name in skip_fields:
@@ -818,7 +1020,8 @@ class ParametersPage(BaseWizardPage):
         self.initial_lambda2.setValue(self.config.initial_lambda2)
         self.final_lambda2.setValue(self.config.final_lambda2)
         self.lambda_step.setValue(self.config.lambda_step)
-        self.num_log_points.setValue(self.config.num_points)
+        self._manual_num_log_points_override = False
+        self._set_num_log_points_value(self.config.num_points)
 
         # Group penalty
         self.group_penalty_type.setCurrentText("median (Recommended)")
@@ -828,6 +1031,12 @@ class ParametersPage(BaseWizardPage):
 
         # Top-rank frac
         self.top_rank_frac.setValue(self.config.top_rank_frac)
+        
+        # Max iterations
+        if hasattr(self, 'maxiter_spin'):
+            self.maxiter_spin.setValue(int(self.config.maxiter))
+        if hasattr(self, 'disable_ec_chk'):
+            self.disable_ec_chk.setChecked(bool(getattr(self.config, 'disable_ec', True)))
 
         # Output options
         self.genes_only_btn.setChecked(False)
@@ -838,6 +1047,7 @@ class ParametersPage(BaseWizardPage):
         self.pheno_name1.setText(self.config.pheno_name1)
         self.pheno_name2.setText(self.config.pheno_name2)
         self.output_dir_edit.setText(self.config.output_dir)
+        self.completeChanged.emit()
 
         self.keep_raw_output_chk.setChecked(self.config.keep_raw_output)
         self.show_selected_sites.setChecked(self.config.show_selected_sites)
@@ -853,6 +1063,8 @@ class ParametersPage(BaseWizardPage):
         self.use_existing_alignments.setChecked(self.config.use_existing_alignments)
         self.canceled_alignments_selector.set_path(self.config.canceled_alignments_dir)
         self.canceled_alignments_selector.setVisible(self.config.use_existing_alignments)
+        if hasattr(self, 'preserve_gap_aligns'):
+            self.preserve_gap_aligns.setChecked(bool(getattr(self.config, 'preserve_canceled_alignments', False)))
 
         # Null models
         self.no_null_btn.setChecked(True)
@@ -861,6 +1073,7 @@ class ParametersPage(BaseWizardPage):
         self._update_grid_type_view()
         self._update_penalty_type(self.config.group_penalty_type)
         self._update_phenotype_names_state()
+        self._apply_hidden_num_log_points_policy()
         self.update_output_options_state()
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -871,6 +1084,8 @@ class ParametersPage(BaseWizardPage):
         if not getattr(self, 'widgets_initialized', False):
             return  # widgets not ready yet
         cfg = self.config
+        if not cfg.output_dir:
+            cfg.output_dir = default_output_dir()
         # Grid type & lambda values
         self.logspace_btn.setChecked(cfg.grid_type == 'log')
         self.linear_btn.setChecked(cfg.grid_type == 'linear')
@@ -879,7 +1094,7 @@ class ParametersPage(BaseWizardPage):
         self.initial_lambda2.setValue(cfg.initial_lambda2)
         self.final_lambda2.setValue(cfg.final_lambda2)
         if cfg.grid_type == 'log':
-            self.num_log_points.setValue(int(cfg.num_points))
+            self._set_num_log_points_value(int(cfg.num_points))
         else:
             self.lambda_step.setValue(float(cfg.num_points))
         # Group penalty
@@ -895,11 +1110,17 @@ class ParametersPage(BaseWizardPage):
         self.gp_step.setValue(cfg.gp_step)
         # Top rank frac
         self.top_rank_frac.setValue(cfg.top_rank_frac)
+        # Max iterations
+        if hasattr(self, 'maxiter_spin'):
+            self.maxiter_spin.setValue(int(cfg.maxiter))
+        if hasattr(self, 'disable_ec_chk'):
+            self.disable_ec_chk.setChecked(bool(getattr(cfg, 'disable_ec', True)))
         # Output basics
         self.output_file_base_name.setText(cfg.output_file_base_name)
         self.pheno_name1.setText(cfg.pheno_name1)
         self.pheno_name2.setText(cfg.pheno_name2)
         self.output_dir_edit.setText(cfg.output_dir)
+        self.completeChanged.emit()
         # Toggles
         self.keep_raw_output_chk.setChecked(cfg.keep_raw_output)
         self.show_selected_sites.setChecked(cfg.show_selected_sites)
@@ -911,16 +1132,8 @@ class ParametersPage(BaseWizardPage):
             self.make_sps_plot.setChecked(cfg.make_sps_plot)
         if hasattr(self, 'make_sps_kde_plot'):
             self.make_sps_kde_plot.setChecked(cfg.make_sps_kde_plot)
-        # Deletion canceler
-        self.nix_full_deletions.setChecked(cfg.nix_full_deletions)
-        self.cancel_only_partner.setChecked(cfg.cancel_only_partner)
-        self.min_pairs.setValue(cfg.min_pairs)
-        self.use_existing_alignments.setChecked(getattr(cfg, 'use_existing_alignments', False))
-        self.canceled_alignments_selector.set_path(getattr(cfg, 'canceled_alignments_dir', ''))
-        self.canceled_alignments_selector.setVisible(getattr(cfg, 'use_existing_alignments', False))
-        # Update Output Files radios from config (block signals so we don’t write back immediately)
-        for btn in (self.genes_only_btn, self.preds_only_btn, self.both_outputs_btn):
-            btn.blockSignals(True)
+        if hasattr(self, 'continuous_plot_chk'):
+            self.continuous_plot_chk.setChecked(getattr(cfg, 'make_continuous_plot', False))
 
         if cfg.no_genes_output and not cfg.no_pred_output:
             # only species predictions
@@ -943,7 +1156,13 @@ class ParametersPage(BaseWizardPage):
         self._update_grid_type_view()
         self._update_penalty_type(cfg.group_penalty_type)
         self._update_phenotype_names_state()
+        self._apply_hidden_num_log_points_policy()
         self.update_output_options_state()
+        # Deletion-canceler: preserve gap-canceled alignments
+        if hasattr(self, 'preserve_gap_aligns'):
+            self.preserve_gap_aligns.blockSignals(True)
+            self.preserve_gap_aligns.setChecked(bool(getattr(cfg, 'preserve_canceled_alignments', False)))
+            self.preserve_gap_aligns.blockSignals(False)
 
     # Qt calls this each time the page becomes current
     def initializePage(self):
@@ -954,7 +1173,11 @@ class ParametersPage(BaseWizardPage):
 
         # Update UI that depends on input page
         if hasattr(self.wizard(), 'input_page') and hasattr(self.wizard().input_page, 'species_phenotypes'):
-            self.has_species_pheno = bool(self.wizard().input_page.species_phenotypes.get_path())
+            path = self.wizard().input_page.species_phenotypes.get_path()
+            self.has_species_pheno = bool(path) and (
+                bool(getattr(self.config, 'species_pheno_is_binary', False)) or
+                bool(getattr(self.config, 'species_pheno_is_continuous', False))
+            )
         self.update_output_options_state()
         return
 
@@ -988,7 +1211,7 @@ class ParametersPage(BaseWizardPage):
         """Open a dialog to select the output directory."""
         try:
             # Get the current output directory or use the default
-            current_dir = getattr(self.config, 'output_dir', os.getcwd())
+            current_dir = getattr(self.config, 'output_dir', '') or os.path.expanduser("~")
             
             # Open directory dialog
             dir_path = QFileDialog.getExistingDirectory(
@@ -999,8 +1222,7 @@ class ParametersPage(BaseWizardPage):
             )
             
             if dir_path:  # User didn't cancel
-                self.output_dir_edit.setText(dir_path)
-                self.config.output_dir = dir_path
+                self._apply_output_dir_selection(dir_path)
                 
         except Exception as e:
             print(f"Error browsing for output directory: {e}")
@@ -1011,12 +1233,22 @@ class ParametersPage(BaseWizardPage):
         try:
             wiz = self.wizard()
             if wiz and hasattr(wiz, 'input_page'):
-                self.has_species_pheno = bool(wiz.input_page.species_phenotypes.get_path())
+                path = wiz.input_page.species_phenotypes.get_path()
+                self.has_species_pheno = bool(path) and (
+                    getattr(self.config, 'species_pheno_is_binary', False)
+                    or getattr(self.config, 'species_pheno_is_continuous', False)
+                )
             else:
                 # Fallback to the value already stored in the config
-                self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+                self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', '')) and (
+                    getattr(self.config, 'species_pheno_is_binary', False)
+                    or getattr(self.config, 'species_pheno_is_continuous', False)
+                )
         except Exception:
-            self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', ''))
+            self.has_species_pheno = bool(getattr(self.config, 'species_phenotypes_file', '')) and (
+                getattr(self.config, 'species_pheno_is_binary', False)
+                or getattr(self.config, 'species_pheno_is_continuous', False)
+            )
 
         if not getattr(self, 'widgets_initialized', False):
             return
@@ -1047,6 +1279,28 @@ class ParametersPage(BaseWizardPage):
                     "Generate both gene ranks and species predictions outputs. The predictions file will not include a true phenotype column."
                 )
 
+            # Continuous phenotype handling is derived from InputPage/config.
+            # InputPage will turn off use_continuous_phenotypes when nothing continuous is detected,
+            # so do not override it here. Just refresh the SPS plot/density UI.
+            if hasattr(self, '_update_sps_plot_state'):
+                self._update_sps_plot_state()
+
+            # Show/enable continuous phenotype toggle based on config
+            if hasattr(self, 'use_continuous_chk'):
+                if getattr(self.config, 'response_matrices_are_continuous', False):
+                    # When response matrices are already continuous, lock checkbox on
+                    self.use_continuous_chk.setVisible(True)
+                    self.use_continuous_chk.setChecked(True)
+                    self.use_continuous_chk.setEnabled(False)
+                else:
+                    cont_detected = bool(getattr(self.config, 'species_pheno_is_continuous', False))
+                    self.use_continuous_chk.setVisible(cont_detected)
+                    self.use_continuous_chk.setEnabled(cont_detected)
+                    if cont_detected:
+                        self.use_continuous_chk.setChecked(
+                            bool(getattr(self.config, 'use_continuous_phenotypes', False))
+                        )
+
         except RuntimeError:
             # Widgets have been deleted, ignore
             pass
@@ -1056,9 +1310,7 @@ class ParametersPage(BaseWizardPage):
             # Ignore any other errors
             pass
 
-        # Update SPS plot availability when phenotype file status changes
-        if hasattr(self, '_update_sps_plot_state'):
-            self._update_sps_plot_state()
+        # (UI already refreshed above)
             
 
     
@@ -1153,3 +1405,20 @@ class ParametersPage(BaseWizardPage):
             self.pheno_label.setStyleSheet("")
             self.pheno_name1.setStyleSheet("")
             self.pheno_name2.setStyleSheet("")
+    
+    def _update_show_selected_sites_state(self):
+        if not hasattr(self, 'show_selected_sites'):
+            return
+        preds_only = hasattr(self, 'preds_only_btn') and self.preds_only_btn.isChecked()
+        if preds_only:
+            if self.show_selected_sites.isChecked():
+                self.show_selected_sites.setChecked(False)
+            self.show_selected_sites.setEnabled(False)
+            self.show_selected_sites.setToolTip(
+                "Requires generating gene ranks output; not available when only species predictions are generated."
+            )
+        else:
+            self.show_selected_sites.setEnabled(True)
+            self.show_selected_sites.setToolTip(
+                "If checked, include an additional output file with selected sites and their highest position score."
+            )

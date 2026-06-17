@@ -7,11 +7,12 @@ import io
 import re
 import threading
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QRunnable, Slot
 from contextlib import redirect_stdout, redirect_stderr # noqa: F401
-from esl_psc_cli.esl_multimatrix import main as esl_main
+from esl_psc_cli import esl_psc_functions as ecf
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
@@ -35,6 +36,7 @@ class ESLWorker(QRunnable):
         self.is_running = False
         self.was_stopped = False # Flag to indicate if stop() was called
         self.process = None
+        self.original_cwd: str | None = None
         # Track deletion-canceler progress counts for step progress bar
         self.del_total_combos: int | None = None  # total combos printed by deletion_canceler
         self.del_current_combo: int = 0           # number of combos completed so far
@@ -45,7 +47,8 @@ class ESLWorker(QRunnable):
         self.total_combos: int | None = None
         # Progress phase tracking for per-combo "sub-bar" so that the bar fills
         # only once per combo instead of resetting multiple times.
-        # 0 = not started, 1 = deletion-canceler, 2 = preprocess, 3 = build models, 4 = predictions
+        # 0 = not started, 1 = initial input loading / pre-combo setup,
+        # 2 = preprocess, 3 = build models, 4 = predictions
         self.phase: int = 0
         self.phase_weights: list[int] = [10, 10, 60, 20]  # must sum to 100
         self.total_phases: int = len(self.phase_weights)
@@ -59,12 +62,192 @@ class ESLWorker(QRunnable):
                     self.alignments_dir = self.command_args[idx]
             except Exception:
                 self.alignments_dir = None
+
+    @staticmethod
+    def _resolve_unified_rust_binary() -> Path | None:
+        if os.name == "nt":
+            exe_names = [
+                "esl-psc.exe",
+                "esl-psc",
+            ]
+        else:
+            exe_names = ["esl-psc"]
+
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        # Source-tree location
+        try:
+            repo_root = Path(__file__).resolve().parents[2]
+            for exe_name in exe_names:
+                candidates.append(repo_root / "esl_psc_rs" / "target" / "release" / exe_name)
+                candidates.append(repo_root / "bin" / exe_name)
+        except Exception:
+            pass
+
+        # Packaged app sibling location
+        try:
+            launcher = Path(os.path.realpath(sys.argv[0]))
+            for exe_name in exe_names:
+                candidates.append(launcher.with_name(exe_name))
+                candidates.append(launcher.parent / exe_name)
+                candidates.append(launcher.parent / "bin" / exe_name)
+        except Exception:
+            pass
+
+        # PATH fallback
+        for exe_name in exe_names:
+            which = shutil.which(exe_name)
+            if which:
+                candidates.append(Path(which))
+
+        for cand in candidates:
+            key = str(cand)
+            if key in seen:
+                continue
+            seen.add(key)
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return cand
+        return None
+
+    @staticmethod
+    def get_command_preview_prefix() -> str:
+        rust_bin = ESLWorker._resolve_unified_rust_binary()
+        if rust_bin is not None:
+            return str(rust_bin)
+        return f"{sys.executable} -u -m esl_psc_cli.esl_multimatrix"
+
+    @staticmethod
+    def _split_plot_flags(command_args: list[str]) -> tuple[str | None, list[str]]:
+        """Return (plot_mode, args_without_plot_flags)."""
+        has_cont = "--make_continuous_plot" in command_args or "--make-continuous-plot" in command_args
+        has_violin = "--make_sps_plot" in command_args or "--make-sps-plot" in command_args
+        has_kde = "--make_sps_kde_plot" in command_args or "--make-sps-kde-plot" in command_args
+
+        mode: str | None = None
+        if has_cont:
+            mode = "continuous"
+        elif has_violin:
+            mode = "violin"
+        elif has_kde:
+            mode = "kde"
+
+        plot_flags = {
+            "--make_continuous_plot",
+            "--make-continuous-plot",
+            "--make_sps_plot",
+            "--make-sps-plot",
+            "--make_sps_kde_plot",
+            "--make-sps-kde-plot",
+        }
+        filtered = [arg for arg in command_args if arg not in plot_flags]
+        return mode, filtered
+
+    @staticmethod
+    def _arg_value(command_args: list[str], *names: str, default: str | None = None) -> str | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 1 < len(command_args):
+                return command_args[i + 1]
+        return default
+
+    @staticmethod
+    def _arg_pair(command_args: list[str], *names: str) -> tuple[str, str] | None:
+        for i, token in enumerate(command_args):
+            if token in names and i + 2 < len(command_args):
+                return command_args[i + 1], command_args[i + 2]
+        return None
+
+    @staticmethod
+    def _hidden_subprocess_kwargs() -> dict[str, object]:
+        """Return subprocess kwargs that suppress console windows on Windows."""
+        if os.name != "nt":
+            return {}
+
+        kwargs: dict[str, object] = {}
+        create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if create_no_window:
+            kwargs["creationflags"] = create_no_window
+
+        startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+        use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+        sw_hide = getattr(subprocess, "SW_HIDE", 0)
+        if startupinfo_cls is not None:
+            startupinfo = startupinfo_cls()
+            if use_show_window:
+                startupinfo.dwFlags |= use_show_window
+            startupinfo.wShowWindow = sw_hide
+            kwargs["startupinfo"] = startupinfo
+
+        return kwargs
+
+    def _run_inprocess_plot(self, mode: str, command_args: list[str]) -> bool:
+        """Generate plots using the GUI's Python runtime (no extra bundled runtime)."""
+        if "--no_pred_output" in command_args or "--no-pred-output" in command_args:
+            self.signals.output.emit("[INFO] Plot requested, but --no_pred_output is set; skipping plot generation.")
+            return True
+
+        output_dir = self._arg_value(command_args, "--output_dir", "--output-dir")
+        output_base = self._arg_value(
+            command_args,
+            "--output_file_base_name",
+            "--output-file-base-name",
+        )
+        if not output_dir or not output_base:
+            self.signals.error.emit(
+                "Unable to generate plots: missing --output_dir or --output_file_base_name."
+            )
+            return False
+
+        min_genes_raw = self._arg_value(command_args, "--min_genes", "--min-genes", default="0")
+        try:
+            min_genes = int(min_genes_raw or "0")
+        except ValueError:
+            min_genes = 0
+
+        pred_csv = Path(output_dir) / f"{output_base}_species_predictions.csv"
+        if not pred_csv.is_file():
+            self.signals.error.emit(
+                f"Unable to generate plots: predictions CSV not found: {pred_csv}"
+            )
+            return False
+
+        plot_args = [
+            "--mode", mode,
+            "--pred_csv", str(pred_csv),
+            "--title", output_base,
+            "--min_genes", str(min_genes),
+        ]
+        if mode != "continuous":
+            pheno_names = self._arg_pair(command_args, "--pheno_names", "--pheno-names")
+            if pheno_names:
+                plot_args.extend([
+                    "--pheno_name1", pheno_names[0],
+                    "--pheno_name2", pheno_names[1],
+                ])
+
+        try:
+            from esl_psc_cli.plot_cli import main as plot_cli_main
+
+            self.signals.output.emit(
+                f"[INFO] Generating {mode} prediction plot with bundled Python runtime..."
+            )
+            rc = int(plot_cli_main(plot_args))
+            if rc != 0:
+                self.signals.error.emit(
+                    f"Plot generation failed with exit code {rc}."
+                )
+                return False
+            self.signals.output.emit("[INFO] Plot generation completed.")
+            return True
+        except Exception as exc:
+            self.signals.error.emit(f"Plot generation failed: {exc}")
+            return False
     
     @Slot()
     def run(self):
         """Execute esl_multimatrix in a subprocess and stream its output."""
         self.is_running = True
-        original_cwd = os.getcwd()  # Preserve GUI's working directory
+        self.original_cwd = os.getcwd()  # Preserve GUI's working directory
         exit_code = 0
 
         class StreamEmitter(io.TextIOBase):
@@ -112,8 +295,9 @@ class ESLWorker(QRunnable):
                         # Only parse stdout for progress updates
                         is_progress = self._parse_progress(line)
                         if not is_progress:
-                            # Emit the line even if it's empty to preserve original spacing
-                            self.signals.output.emit(line)
+                            # Drop whitespace-only lines during preprocess to reduce noise
+                            if not (self.worker.phase == 2 and not line.strip()):
+                                self.signals.output.emit(line)
                     else:  # stderr
                         # Always forward stderr lines to preserve spacing
                         self.signals.error.emit(line)
@@ -152,6 +336,50 @@ class ESLWorker(QRunnable):
                     self.signals.step_status.emit(line.strip().replace("---", "").strip())
                     self._emit_step_progress(0)
                     return True
+
+                # Initial in-memory alignment loading before any combo starts.
+                if "Loading input alignments from" in line:
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("Loading input alignments...")
+                    return False
+
+                if "Loading prediction alignments from" in line:
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("Loading prediction alignments...")
+                    return False
+
+                m_load_total = re.search(r"Loading (input|prediction) alignment files:\s+(\d+)", line)
+                if m_load_total:
+                    label, total = m_load_total.groups()
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                        self._emit_step_progress(0)
+                    noun = "input alignments" if label.lower() == "input" else "prediction alignments"
+                    self.signals.step_status.emit(f"Loading {noun} (0/{total})...")
+                    return True
+
+                m_load_step = re.search(r"Loaded (input|prediction) alignment file (\d+) of (\d+)", line)
+                if m_load_step:
+                    label, current, total = m_load_step.groups()
+                    if self.worker.phase < 1:
+                        self.worker.phase = 1
+                    current_i, total_i = int(current), int(total)
+                    if total_i > 0:
+                        self._emit_step_progress(int(current_i / total_i * 100))
+                    noun = "input alignments" if label.lower() == "input" else "prediction alignments"
+                    self.signals.step_status.emit(f"Loading {noun} ({current_i}/{total_i})...")
+                    return True
+
+                m_loaded_total = re.search(r"Loaded (\d+) gene alignments", line)
+                if m_loaded_total and self.worker.phase <= 1:
+                    self.worker.phase = max(self.worker.phase, 1)
+                    self._emit_step_progress(100)
+                    self.signals.step_status.emit(f"Loaded {m_loaded_total.group(1)} gene alignments")
+                    return False
 
                 # Deletion-canceler overall progress – first record total # combos
                 m_del_total = re.search(r"Generated (\d+) species combinations", line)
@@ -192,7 +420,6 @@ class ESLWorker(QRunnable):
                 if "Running ESL preprocess" in line or "preprocess_" in line or "preprocess_mac" in line:
                     # We’re now in phase 2 (preprocess)
                     self.worker.phase = 2
-                    # Reset deletion-canceler counters so they don’t affect later steps
                     # Reset deletion-canceler counters so they don't affect later steps
                     self.worker.del_total_combos = None
                     self.worker.del_current_combo = 0
@@ -202,13 +429,13 @@ class ESLWorker(QRunnable):
                         combo_msg = f" for combo {self.worker.current_combo} of {self.worker.total_combos}"
                     friendly = f"Running ESL preprocess{combo_msg}..."
                     # Reset counters for per-file progress
-                    self.pre_total_files: int | None = None
+                    self.pre_total_files: int | None = 0
                     self.pre_current_file: int = 0
                     if self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None
@@ -227,6 +454,23 @@ class ESLWorker(QRunnable):
                     if total > 0:
                         self._emit_step_progress(int(current / total * 100))
                     # This is a progress update, but we still want to see it in the log
+                    return False
+
+                # Group penalties adjustment status (CLI prints this right before replacement)
+                if "adjusting group penalties" in line.lower():
+                    # Treat as entering the model-building phase soon; reset phase progress if advancing
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("adjusting group penalties...")
+                    return False
+
+                # Median penalty calculation status (printed before computing median GP)
+                if "calculating median group penalty" in line.lower():
+                    if self.worker.phase < 3:
+                        self.worker.phase = 3
+                        self._emit_step_progress(0)
+                    self.signals.step_status.emit("calculating median group penalty...")
                     return False
 
                 # Step status for major phases
@@ -248,19 +492,15 @@ class ESLWorker(QRunnable):
                         elif self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                     except Exception:
                         self.pre_total_files = None
-                    return True  # suppress command line output
-
-                # Preprocess per-file progress
-                if line.startswith("Processing FASTA file"):
-                    if self.pre_total_files is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
+                    if getattr(self, "pre_total_files", None) is None and self.worker.alignments_dir and os.path.isdir(self.worker.alignments_dir):
                         try:
                             self.pre_total_files = len([
                                 f for f in os.listdir(self.worker.alignments_dir)
-                                if f.endswith('.fas')
+                                if ecf.is_fasta(f)
                             ])
                         except Exception:
                             self.pre_total_files = None
@@ -271,10 +511,6 @@ class ESLWorker(QRunnable):
                         if self.pre_total_files >= 5 and self.pre_current_file % max(1, self.pre_total_files // 10) == 0:
                             self.signals.step_status.emit(f"Preprocessing alignments ({self.pre_current_file}/{self.pre_total_files})")
                     return True  # hide individual file lines
-
-                # Filter noisy full path lines produced by preprocess
-                if "-alignments" in line and "/combo_" in line:
-                    return True
 
                 status_keywords = [
                     "Building models...",
@@ -306,13 +542,83 @@ class ESLWorker(QRunnable):
 
                 return False # Not a progress line
 
-        # For Windows packaged builds, Nuitka may not always set sys.frozen.
-        # Detect a packaged run either by sys.frozen *or* by the launcher not ending in '.py'.
-        if os.name == 'nt' and (getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"):
+        def _run_subprocess(command: list[str]) -> int:
+            out_stream = StreamEmitter(self, stream_type='stdout')
+            err_stream = StreamEmitter(self, stream_type='stderr')
+
+            self.process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                stdin=subprocess.DEVNULL,
+                **self._hidden_subprocess_kwargs(),
+            )
+
+            def _reader(pipe, emitter: StreamEmitter):
+                for line in iter(pipe.readline, ''):
+                    if not self.is_running:
+                        break
+                    emitter.write(line)
+                pipe.close()
+
+            t_out = threading.Thread(target=_reader, args=(self.process.stdout, out_stream), daemon=True)
+            t_err = threading.Thread(target=_reader, args=(self.process.stderr, err_stream), daemon=True)
+            t_out.start()
+            t_err.start()
+
+            self.process.wait()
+            t_out.join()
+            t_err.join()
+            return self.process.returncode
+
+        # Prefer unified Rust runner when available.
+        rust_bin = self._resolve_unified_rust_binary()
+        # Detect a packaged run either by sys.frozen or by the launcher not ending in '.py'
+        packaged = getattr(sys, 'frozen', False) or Path(sys.argv[0]).suffix.lower() != ".py"
+
+        if rust_bin is not None:
             try:
-                # --- NEW PATH: Direct function call for packaged Windows ---
+                plot_mode, rust_args = self._split_plot_flags(self.command_args)
+                command = [str(rust_bin), *rust_args]
+                self.signals.output.emit(f"[INFO] Running unified Rust CLI: {rust_bin}")
+                if plot_mode is not None:
+                    self.signals.output.emit(
+                        "[INFO] Plot flags will be handled in-process by the GUI Python runtime."
+                    )
+                exit_code = _run_subprocess(command)
+                if exit_code == 0 and plot_mode is not None:
+                    if not self._run_inprocess_plot(plot_mode, rust_args):
+                        exit_code = 1
+            except Exception as e:
+                import traceback
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    exit_code = -1
+            finally:
+                self.is_running = False
+                if self.process and self.process.poll() is None:
+                    self.process.kill()
+                self.process = None
+                try:
+                    os.chdir(self.original_cwd)
+                except Exception:
+                    pass
+                if not self.was_stopped:
+                    self.signals.finished.emit(exit_code)
+        elif packaged:
+            # Fallback for packaged builds when Rust CLI isn't present.
+            try:
                 out_stream = StreamEmitter(self, stream_type='stdout')
                 err_stream = StreamEmitter(self, stream_type='stderr')
+                # Import only in fallback path to avoid eagerly pulling the full
+                # Python CLI stack into packaged apps that run Rust by default.
+                from esl_psc_cli.esl_multimatrix import main as esl_main
 
                 with redirect_stdout(out_stream), redirect_stderr(err_stream):
                     esl_main(self.command_args)
@@ -320,98 +626,53 @@ class ESLWorker(QRunnable):
                 # Flush any remaining output
                 out_stream.flush_buffer()
                 err_stream.flush_buffer()
-                exit_code = 0 # Assume success if no exceptions
+                exit_code = 0
 
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Treat exceptions raised after a user-initiated stop as cancellation
+                    exit_code = -1
             finally:
                 self.is_running = False
-                os.chdir(original_cwd)
+                try:
+                    os.chdir(self.original_cwd)
+                except Exception:
+                    pass
                 if not self.was_stopped:
                     self.signals.finished.emit(exit_code)
         else:
-            # --- ORIGINAL PATH: Subprocess for macOS and source runs ---
+            # Source fallback when Rust binary is unavailable.
             try:
-                out_stream = StreamEmitter(self, stream_type='stdout')
-                err_stream = StreamEmitter(self, stream_type='stderr')
-
-                def _build_command() -> list[str]:
-                    """
-                    • If we’re running from source (argv[0] ends with .py), use
-                        the current Python to launch the module with -m.
-                    • Otherwise we’re inside the packaged bundle: call the helper
-                    binary `esl_multimatrix(.exe)` that lives next to the GUI
-                    launcher (`main` on macOS, `ESL-PSC.exe` on Windows).
-                    """
-                    launcher_path = Path(os.path.realpath(sys.argv[0]))
-                    running_from_source = launcher_path.suffix.lower() == ".py"
-
-                    if running_from_source:
-                        return [
-                            sys.executable, "-u", "-m",
-                            "esl_psc_cli.esl_multimatrix",
-                            *self.command_args,
-                        ]
-
-                    # -------- packaged path --------
-                    # On macOS the helper binary is just "esl_multimatrix" with no extension.
-                    # Windows bundles no separate helper; Windows-specific logic is handled elsewhere.
-                    exe_name = "esl_multimatrix"
-                    cli_helper = launcher_path.with_name(exe_name)
-
-                    # Pass the bundle’s MacOS/ (or Windows dir) so the helper
-                    # can find bin/preprocess and bin/sg_lasso
-                    bundle_dir = launcher_path.parent  # Contents/MacOS or the exe dir
-
-                    return [
-                        str(cli_helper),
-                        "--esl_main_dir", str(bundle_dir),
-                        *self.command_args,
-                    ]
-
-                command = _build_command()
-                self.process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                )
-
-                def _reader(pipe, emitter: StreamEmitter):
-                    for line in iter(pipe.readline, ''):
-                        if not self.is_running:
-                            break
-                        emitter.write(line)
-                    pipe.close()
-
-                t_out = threading.Thread(target=_reader, args=(self.process.stdout, out_stream), daemon=True)
-                t_err = threading.Thread(target=_reader, args=(self.process.stderr, err_stream), daemon=True)
-                t_out.start()
-                t_err.start()
-
-                self.process.wait()
-                t_out.join()
-                t_err.join()
-                exit_code = self.process.returncode
-
+                command = [
+                    sys.executable, "-u", "-m",
+                    "esl_psc_cli.esl_multimatrix",
+                    *self.command_args,
+                ]
+                self.signals.output.emit("[INFO] Unified Rust CLI not found; falling back to Python CLI.")
+                exit_code = _run_subprocess(command)
             except Exception as e:
                 import traceback
-                self.signals.error.emit(
-                    f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
-                )
-                exit_code = 1
+                if not self.was_stopped:
+                    self.signals.error.emit(
+                        f"An unexpected worker error occurred: {e}\n{traceback.format_exc()}"
+                    )
+                    exit_code = 1
+                else:
+                    # Suppress errors that arise due to user-initiated stop and mark as cancelled
+                    exit_code = -1
             finally:
                 self.is_running = False
                 if self.process and self.process.poll() is None:
                     self.process.kill()
                 self.process = None
                 try:
-                    os.chdir(original_cwd)
+                    os.chdir(self.original_cwd)
                 except Exception:
                     pass
                 if not self.was_stopped:
@@ -427,5 +688,11 @@ class ESLWorker(QRunnable):
                     self.process.kill()
                 except Exception:
                     pass
+            # Attempt to restore the original working directory immediately on stop
+            try:
+                if self.original_cwd and os.getcwd() != self.original_cwd:
+                    os.chdir(self.original_cwd)
+            except Exception:
+                pass
             # Emit special code for user stop
             self.signals.finished.emit(-1)
