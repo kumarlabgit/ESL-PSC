@@ -8,13 +8,13 @@ This directory contains a local conda-build recipe for packaging the unified
 From repository root:
 
 ```bash
-conda build packaging/conda/recipe
+conda-build packaging/conda/recipe
 ```
 
 To place built packages in a local folder:
 
 ```bash
-conda build packaging/conda/recipe --output-folder dist/conda
+conda-build packaging/conda/recipe --output-folder dist/conda
 ```
 
 ## Notes

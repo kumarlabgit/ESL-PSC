@@ -44,7 +44,7 @@ jobs:
       - name: Build conda package
         shell: bash -el {0}
         run: |
-          conda build packaging/conda/recipe --output-folder dist/conda
+          conda-build packaging/conda/recipe --output-folder dist/conda
       - uses: actions/upload-artifact@v4
         with:
           name: esl-psc-conda-package
