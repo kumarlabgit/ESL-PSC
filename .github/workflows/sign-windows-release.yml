@@ -102,6 +102,7 @@ jobs:
           certificate-profile-name: ${{ env.CERTIFICATE_PROFILE }}
           files-folder: ${{ github.workspace }}\work\toolkit
           files-folder-filter: exe,dll,msi,msix,appx
+          files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: ${{ env.TIMESTAMP_URL }}
           timestamp-digest: SHA256
