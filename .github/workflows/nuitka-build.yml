@@ -178,6 +178,64 @@ jobs:
           cp bin/deletion_canceler_mac build/ESL-PSC.app/Contents/MacOS/bin/deletion_canceler_mac
           cp esl_psc_rs/target/release/esl-psc build/ESL-PSC.app/Contents/MacOS/bin/esl-psc
           chmod +x build/ESL-PSC.app/Contents/MacOS/bin/*
+      - name: Validate macOS signing secrets
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          missing=0
+          for name in \
+            MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 \
+            MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD \
+            MACOS_CODESIGN_IDENTITY \
+            APPLE_ID \
+            APPLE_TEAM_ID \
+            APPLE_APP_SPECIFIC_PASSWORD
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required macOS signing secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+      - name: Import macOS signing certificate
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="${RUNNER_TEMP}/developer_id_application.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(uuidgen)}"
+
+          echo "${MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64}" | base64 --decode > "${CERTIFICATE_PATH}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERTIFICATE_PATH}" \
+            -P "${MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD}" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "${KEYCHAIN_PATH}"
+          security list-keychain -d user -s "${KEYCHAIN_PATH}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
+      - name: Code sign macOS app
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          codesign --force --deep --options runtime --timestamp \
+            --sign "${MACOS_CODESIGN_IDENTITY}" \
+            build/ESL-PSC.app
+          codesign --verify --deep --strict --verbose=2 build/ESL-PSC.app
       - name: Stage toolkit artifact
         run: |
           python packaging/toolkit/package_toolkit.py \
@@ -197,6 +255,31 @@ jobs:
           hdiutil create -volname "ESL-PSC" \
                          -srcfolder build/ESL-PSC.app \
                          -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+      - name: Code sign macOS DMG
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          codesign --force --timestamp \
+            --sign "${MACOS_CODESIGN_IDENTITY}" \
+            "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+          codesign --verify --verbose=2 "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+      - name: Notarize and staple macOS DMG
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          DMG_PATH="dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+          xcrun notarytool submit "${DMG_PATH}" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+            --wait
+          xcrun stapler staple "${DMG_PATH}"
+          xcrun stapler validate "${DMG_PATH}"
+          spctl --assess --type open --verbose=4 "${DMG_PATH}"
       - uses: actions/upload-artifact@v4
         with:
           name: ESL-PSC-macOS
