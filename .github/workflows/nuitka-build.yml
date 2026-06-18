@@ -264,6 +264,50 @@ jobs:
           VERIFY_DIR="$(mktemp -d)"
           tar -xzf "$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)" -C "${VERIFY_DIR}"
           codesign --verify --strict --verbose=2 "${VERIFY_DIR}/esl-psc-toolkit/bin/esl-psc"
+      - name: Create macOS toolkit DMG
+        run: |
+          TOOLKIT_ARCHIVE="$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)"
+          TOOLKIT_STAGE="$(mktemp -d)"
+          TOOLKIT_DMG_PATH="dist/esl-psc-toolkit-v${{ steps.version.outputs.version }}-macos-arm64.dmg"
+          tar -xzf "${TOOLKIT_ARCHIVE}" -C "${TOOLKIT_STAGE}"
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "ESL-PSC CLI Toolkit" \
+                             -srcfolder "${TOOLKIT_STAGE}/esl-psc-toolkit" \
+                             -ov -format UDZO "${TOOLKIT_DMG_PATH}"; then
+              exit 0
+            fi
+            status=$?
+            hdiutil detach "/Volumes/ESL-PSC CLI Toolkit" -force || true
+            sleep $((attempt * 10))
+          done
+          exit "${status}"
+      - name: Code sign macOS toolkit DMG
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          TOOLKIT_DMG_PATH="dist/esl-psc-toolkit-v${{ steps.version.outputs.version }}-macos-arm64.dmg"
+          codesign --force --timestamp \
+            --sign "${MACOS_CODESIGN_IDENTITY}" \
+            "${TOOLKIT_DMG_PATH}"
+          codesign --verify --verbose=2 "${TOOLKIT_DMG_PATH}"
+      - name: Notarize and staple macOS toolkit DMG
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          TOOLKIT_DMG_PATH="dist/esl-psc-toolkit-v${{ steps.version.outputs.version }}-macos-arm64.dmg"
+          xcrun notarytool submit "${TOOLKIT_DMG_PATH}" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+            --wait
+          xcrun stapler staple "${TOOLKIT_DMG_PATH}"
+          xcrun stapler validate "${TOOLKIT_DMG_PATH}"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "${TOOLKIT_DMG_PATH}"
+          shasum -a 256 "${TOOLKIT_DMG_PATH}" > "${TOOLKIT_DMG_PATH}.sha256"
       - name: Create DMG
         run: |
           mkdir -p dist/gui
@@ -315,6 +359,8 @@ jobs:
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
+            dist/esl-psc-toolkit-v*-macos-arm64.dmg
+            dist/esl-psc-toolkit-v*-macos-arm64.dmg.sha256
       - name: Upload macOS assets to GitHub release
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release == 'true' }}
         env:
@@ -331,7 +377,9 @@ jobs:
             dist/gui/ESL-PSC-v*-macOS.dmg \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz \
             dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.sha256 \
-            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json
+            dist/esl-psc-toolkit-v*-macos-arm64.tar.gz.manifest.json \
+            dist/esl-psc-toolkit-v*-macos-arm64.dmg \
+            dist/esl-psc-toolkit-v*-macos-arm64.dmg.sha256
 
   build-windows:
     if: ${{ github.event.inputs.target_os == 'windows' }}
