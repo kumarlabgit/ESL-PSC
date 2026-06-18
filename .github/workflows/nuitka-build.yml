@@ -267,9 +267,18 @@ jobs:
       - name: Create DMG
         run: |
           mkdir -p dist/gui
-          hdiutil create -volname "ESL-PSC" \
-                         -srcfolder build/ESL-PSC.app \
-                         -ov -format UDZO "dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+          DMG_PATH="dist/gui/ESL-PSC-v${{ steps.version.outputs.version }}-macOS.dmg"
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "ESL-PSC" \
+                             -srcfolder build/ESL-PSC.app \
+                             -ov -format UDZO "${DMG_PATH}"; then
+              exit 0
+            fi
+            status=$?
+            hdiutil detach "/Volumes/ESL-PSC" -force || true
+            sleep $((attempt * 10))
+          done
+          exit "${status}"
       - name: Code sign macOS DMG
         if: ${{ github.event.inputs.upload_to_release == 'true' }}
         env:
