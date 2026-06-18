@@ -236,6 +236,15 @@ jobs:
             --sign "${MACOS_CODESIGN_IDENTITY}" \
             build/ESL-PSC.app
           codesign --verify --deep --strict --verbose=2 build/ESL-PSC.app
+      - name: Code sign macOS toolkit executable
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          codesign --force --options runtime --timestamp \
+            --sign "${MACOS_CODESIGN_IDENTITY}" \
+            esl_psc_rs/target/release/esl-psc
+          codesign --verify --strict --verbose=2 esl_psc_rs/target/release/esl-psc
       - name: Stage toolkit artifact
         run: |
           python packaging/toolkit/package_toolkit.py \
@@ -249,6 +258,12 @@ jobs:
         run: |
           python packaging/toolkit/smoke_test_toolkit.py \
             --artifact "$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)"
+      - name: Verify signed macOS toolkit artifact
+        if: ${{ github.event.inputs.upload_to_release == 'true' }}
+        run: |
+          VERIFY_DIR="$(mktemp -d)"
+          tar -xzf "$(ls dist/esl-psc-toolkit-v*-macos-arm64.tar.gz)" -C "${VERIFY_DIR}"
+          codesign --verify --strict --verbose=2 "${VERIFY_DIR}/esl-psc-toolkit/bin/esl-psc"
       - name: Create DMG
         run: |
           mkdir -p dist/gui
