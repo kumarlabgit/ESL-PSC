@@ -20,8 +20,6 @@ archive:
 
 - Alignments archive: `echolocation/orthomam_echo_species_alignments.zip`
 - Species groups file: `echolocation/orthomam_echo_species_groups.txt`
-- Small species groups file: `echolocation/orthomam_echo_small_species_groups.txt`
-- Example configuration: `echolocation/echo_config.json`
 
 Unzip `orthomam_echo_species_alignments.zip` before selecting the echolocation
 alignment folder in the GUI.
