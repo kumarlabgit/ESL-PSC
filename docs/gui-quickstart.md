@@ -6,9 +6,9 @@ This guide is for first-time users who want the desktop app and do not want to s
 
 Use the GUI download for your computer:
 
-- Mac with Apple Silicon: [`ESL-PSC-v2.5.2-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.2/ESL-PSC-v2.5.2-macOS.dmg)
-- Windows: [`ESL-PSC-v2.5.2-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.2/ESL-PSC-v2.5.2-Windows.zip)
-- Ubuntu or Debian Linux on Intel/AMD 64-bit computers: [`esl-psc-gui_2.5.2_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.2/esl-psc-gui_2.5.2_amd64.deb)
+- Mac with Apple Silicon: [`ESL-PSC-v2.5.3-macOS.dmg`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.3/ESL-PSC-v2.5.3-macOS.dmg)
+- Windows: [`ESL-PSC-v2.5.3-Windows.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.3/ESL-PSC-v2.5.3-Windows.zip)
+- Ubuntu or Debian Linux on Intel/AMD 64-bit computers: [`esl-psc-gui_2.5.3_amd64.deb`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.3/esl-psc-gui_2.5.3_amd64.deb)
 
 
 Install the app:
@@ -40,7 +40,7 @@ The `.deb` file is for 64-bit Ubuntu, Debian, and closely related Debian-based L
 If you prefer the terminal on Linux, you can also install it with:
 
 ```bash
-sudo dpkg -i esl-psc-gui_2.5.2_amd64.deb
+sudo dpkg -i esl-psc-gui_2.5.3_amd64.deb
 ```
 
 ## Getting started
@@ -155,7 +155,7 @@ On the final page:
 ## First practice run
 
 If you installed the desktop GUI from a release download, download and unzip the
-separate [`ESL-PSC-v2.5.2-demo-data.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.2/ESL-PSC-v2.5.2-demo-data.zip)
+separate [`ESL-PSC-v2.5.3-demo-data.zip`](https://github.com/John-Allard/ESL-PSC/releases/download/v2.5.3/ESL-PSC-v2.5.3-demo-data.zip)
 archive first.
 
 For the photosynthesis practice run, use:

@@ -10,7 +10,7 @@ on:
       release_tag:
         description: "Release tag whose Windows assets should be replaced"
         required: true
-        default: "v2.5.1"
+        default: "v2.5.3"
         type: string
 
 permissions:

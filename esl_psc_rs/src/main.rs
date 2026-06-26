@@ -442,9 +442,8 @@ struct PhenotypeInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PredictionDesign {
     species: Vec<String>,
-    // For each feature index, row indices (within `species`) with a match.
-    feature_hit_rows: Vec<Vec<usize>>,
     true_values: Vec<Option<f64>>,
+    gene_lookup: HashMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,6 +476,7 @@ struct CheckpointState {
     next_combo_index: usize,
     total_model_runs: usize,
     gene_aggregates: Vec<GeneAggregate>,
+    #[serde(default)]
     prediction_rows: Vec<PredictionRowOut>,
 }
 
@@ -666,7 +666,9 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
     let use_continuous = args.use_continuous_phenotypes || auto_continuous;
 
     if auto_continuous && !args.use_continuous_phenotypes {
-        statusln!("Detected non-binary response values; using continuous solver mode automatically");
+        statusln!(
+            "Detected non-binary response values; using continuous solver mode automatically"
+        );
     }
     let preserve_canceled_root = if args.preserve_canceled_alignments
         && is_multimatrix_mode
@@ -699,7 +701,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         })
         .collect();
 
-    let mut all_prediction_rows: Vec<PredictionRowOut> = Vec::new();
+    let mut legacy_checkpoint_prediction_rows: Vec<PredictionRowOut> = Vec::new();
     let mut top_rank_threshold = (gene_aggregates.len() as f64 * args.top_rank_frac).max(1.0);
 
     let mut total_model_runs = 0usize;
@@ -713,7 +715,7 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
             &args,
             &output_dir,
             &mut gene_aggregates,
-            &mut all_prediction_rows,
+            &mut legacy_checkpoint_prediction_rows,
             &mut total_model_runs,
         )? {
             start_combo_index = restored;
@@ -729,8 +731,27 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
         }
     }
 
+    let mut prediction_output = if args.no_pred_output {
+        None
+    } else {
+        Some(PredictionOutputSink::open(
+            &output_dir,
+            &args.output_file_base_name,
+            phenotype_info.is_some(),
+            start_combo_index,
+            &combos,
+            args.make_pair_randomized_null_models,
+            args.num_randomized_alignments.max(1),
+            &legacy_checkpoint_prediction_rows,
+            checkpoint_enabled,
+        )?)
+    };
+
     let mut combo_alignment_cache: HashMap<PathBuf, Vec<GeneAlignment>> = HashMap::new();
     for combo in combos.iter().skip(start_combo_index) {
+        if let Some(output) = prediction_output.as_mut() {
+            output.start_combo(combo.index)?;
+        }
         statusln!(
             "\n--- Processing combo {} of {} ({}) ---",
             combo.index + 1,
@@ -853,8 +874,6 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
             } else {
                 Some(build_prediction_design(
                     prediction_alignments,
-                    &prep.features,
-                    &prep.genes,
                     &combo.species,
                     phenotype_info.as_ref(),
                 )?)
@@ -954,16 +973,19 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
 
                         if let Some(pred) = &pred_design {
                             append_prediction_rows(
-                                &mut all_prediction_rows,
+                                prediction_output
+                                    .as_mut()
+                                    .ok_or_else(|| anyhow!("missing prediction output sink"))?,
                                 &prep,
                                 input_feature_hit_rows
                                     .as_deref()
                                     .ok_or_else(|| anyhow!("missing input feature hit rows"))?,
+                                prediction_alignments,
                                 pred,
                                 result,
                                 &combo_tag,
                                 phenotype_info.as_ref(),
-                            );
+                            )?;
                         }
 
                         total_model_runs += 1;
@@ -986,6 +1008,9 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                 top_rank_threshold,
                 &mut gene_aggregates,
             );
+        }
+        if let Some(output) = prediction_output.as_mut() {
+            output.finish_combo()?;
         }
         if use_preprocess_dirs && args.delete_preprocess && preprocess_root.exists() {
             let preprocess_name = preprocess_dir_name_for_combo(
@@ -1016,7 +1041,6 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
                     combo.index + 1,
                     total_model_runs,
                     &gene_aggregates,
-                    &all_prediction_rows,
                     &pending_checkpoint_audits,
                 )?;
                 pending_checkpoint_audits.clear();
@@ -1028,12 +1052,10 @@ fn run_unified_pipeline(args: Args, start: Instant) -> Result<()> {
     statusln!("\nFinished {} model runs", total_model_runs);
 
     if !args.no_pred_output {
-        let pred_path = write_predictions_csv(
-            &output_dir,
-            &args.output_file_base_name,
-            &all_prediction_rows,
-            phenotype_info.is_some(),
-        )?;
+        let pred_path = prediction_output
+            .take()
+            .ok_or_else(|| anyhow!("missing prediction output sink"))?
+            .finalize()?;
         maybe_generate_plots(&args, &pred_path, use_continuous)?;
     }
 
@@ -1627,7 +1649,6 @@ fn save_checkpoint_state(
     next_combo_index: usize,
     total_model_runs: usize,
     gene_aggregates: &[GeneAggregate],
-    prediction_rows: &[PredictionRowOut],
     run_audits: &[CheckpointRunAudit],
 ) -> Result<()> {
     let (cp_dir, state_path, cmd_path, meta_path, runs_path) = checkpoint_paths(output_dir);
@@ -1641,7 +1662,7 @@ fn save_checkpoint_state(
         next_combo_index,
         total_model_runs,
         gene_aggregates: gene_aggregates.to_vec(),
-        prediction_rows: prediction_rows.to_vec(),
+        prediction_rows: Vec::new(),
     };
     {
         let tmp = cp_dir.join("state.json.gz.tmp");
@@ -2426,7 +2447,8 @@ fn load_alignments(
         fasta_files
             .into_iter()
             .filter(|fasta| {
-                fasta.file_stem()
+                fasta
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .map(|gene_name| allowed.contains(gene_name))
                     .unwrap_or(false)
@@ -2459,7 +2481,12 @@ fn load_alignments(
         if let Some(label) = progress_label {
             let current = idx + 1;
             if current == 1 || current == total_files || current % progress_interval == 0 {
-                statusln!("Loaded {} alignment file {} of {}", label, current, total_files);
+                statusln!(
+                    "Loaded {} alignment file {} of {}",
+                    label,
+                    current,
+                    total_files
+                );
             }
         }
     }
@@ -3207,8 +3234,6 @@ fn count_var_sites_python(seqs: &[Vec<u8>]) -> usize {
 
 fn build_prediction_design(
     prediction_alignments: &[GeneAlignment],
-    features: &[FeatureMeta],
-    genes: &[GeneMeta],
     input_species: &[String],
     phenotype_info: Option<&PhenotypeInfo>,
 ) -> Result<PredictionDesign> {
@@ -3238,29 +3263,16 @@ fn build_prediction_design(
         species.push(sp);
     }
 
-    let gene_lookup: HashMap<&str, &GeneAlignment> = prediction_alignments
+    let gene_lookup: HashMap<String, usize> = prediction_alignments
         .iter()
-        .map(|g| (g.name.as_str(), g))
+        .enumerate()
+        .map(|(idx, g)| (g.name.clone(), idx))
         .collect();
-
-    let mut feature_hit_rows = vec![Vec::new(); features.len()];
-    for (row_idx, sp) in species.iter().enumerate() {
-        for (j, fm) in features.iter().enumerate() {
-            let gene_name = genes[fm.gene_idx].name.as_str();
-            if let Some(gene) = gene_lookup.get(gene_name) {
-                if let Some(seq) = gene.seqs.get(sp) {
-                    if fm.position < seq.len() && seq[fm.position] == fm.aa {
-                        feature_hit_rows[j].push(row_idx);
-                    }
-                }
-            }
-        }
-    }
 
     Ok(PredictionDesign {
         species,
-        feature_hit_rows,
         true_values,
+        gene_lookup,
     })
 }
 
@@ -3281,23 +3293,29 @@ fn build_feature_hit_rows_from_dense(x: &[Vec<f64>]) -> Vec<Vec<usize>> {
 }
 
 fn append_prediction_rows(
-    out_rows: &mut Vec<PredictionRowOut>,
+    writer: &mut PredictionOutputSink,
     prep: &PreprocessedData,
     input_feature_hit_rows: &[Vec<usize>],
+    prediction_alignments: &[GeneAlignment],
     pred: &PredictionDesign,
     run: &ModelResult,
     combo_tag: &str,
     phenotype_info: Option<&PhenotypeInfo>,
-) {
+) -> Result<()> {
     if pred.species.is_empty() {
-        return;
+        return Ok(());
     }
 
     // Python parity: species predictions are emitted only for species that
     // matched at least one selected non-zero feature in that run.
     // Intercept and RMSE are then applied only to species present in the score map.
-    let (pred_scores, input_rmse) =
-        python_style_prediction_scores(prep, input_feature_hit_rows, pred, run);
+    let (pred_scores, input_rmse) = python_style_prediction_scores(
+        prep,
+        input_feature_hit_rows,
+        prediction_alignments,
+        pred,
+        run,
+    );
 
     for (i, score) in pred_scores {
         let true_phenotype = if let Some(ph) = phenotype_info {
@@ -3310,7 +3328,7 @@ fn append_prediction_rows(
             None
         };
 
-        out_rows.push(PredictionRowOut {
+        let row = PredictionRowOut {
             species_combo: combo_tag.to_string(),
             lambda1: run.lambda1,
             lambda2: run.lambda2,
@@ -3320,13 +3338,16 @@ fn append_prediction_rows(
             species: pred.species[i].clone(),
             sps: score,
             true_phenotype,
-        });
+        };
+        writer.write_row(&row)?;
     }
+    Ok(())
 }
 
 fn python_style_prediction_scores(
     prep: &PreprocessedData,
     input_feature_hit_rows: &[Vec<usize>],
+    prediction_alignments: &[GeneAlignment],
     pred: &PredictionDesign,
     run: &ModelResult,
 ) -> (Vec<(usize, f64)>, f64) {
@@ -3351,10 +3372,18 @@ fn python_style_prediction_scores(
                 input_touched[row] = true;
             }
         }
-        if let Some(rows) = pred.feature_hit_rows.get(j) {
-            for &row in rows {
-                pred_scores_dense[row] += w;
-                pred_touched_mask[row] = true;
+        let fm = &prep.features[j];
+        let gene_name = prep.genes[fm.gene_idx].name.as_str();
+        if let Some(&gene_idx) = pred.gene_lookup.get(gene_name) {
+            if let Some(gene) = prediction_alignments.get(gene_idx) {
+                for (row, sp) in pred.species.iter().enumerate() {
+                    if let Some(seq) = gene.seqs.get(sp) {
+                        if fm.position < seq.len() && seq[fm.position] == fm.aa {
+                            pred_scores_dense[row] += w;
+                            pred_touched_mask[row] = true;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3475,6 +3504,353 @@ fn update_best_rank(slot: &mut Option<usize>, rank: usize) {
     }
 }
 
+fn predictions_csv_path(output_dir: &Path, base_name: &str) -> PathBuf {
+    output_dir.join(format!("{}_species_predictions.csv", base_name))
+}
+
+struct PredictionCsvStream {
+    writer: Writer<File>,
+    include_true_phenotype: bool,
+}
+
+impl PredictionCsvStream {
+    fn open(path: &Path, include_true_phenotype: bool, append: bool) -> Result<Self> {
+        let file = if append {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .with_context(|| format!("failed to open {}", path.display()))?
+        } else {
+            File::create(path).with_context(|| format!("failed to create {}", path.display()))?
+        };
+        let mut out = Self {
+            writer: Writer::from_writer(file),
+            include_true_phenotype,
+        };
+        if !append || path.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+            out.write_header()?;
+        }
+        Ok(out)
+    }
+
+    fn write_header(&mut self) -> Result<()> {
+        if self.include_true_phenotype {
+            self.writer.write_record([
+                "species_combo",
+                "lambda1",
+                "lambda2",
+                "penalty_term",
+                "num_genes",
+                "input_RMSE",
+                "species",
+                "SPS",
+                "true_phenotype",
+            ])?;
+        } else {
+            self.writer.write_record([
+                "species_combo",
+                "lambda1",
+                "lambda2",
+                "penalty_term",
+                "num_genes",
+                "input_RMSE",
+                "species",
+                "SPS",
+            ])?;
+        }
+        Ok(())
+    }
+
+    fn write_row(&mut self, row: &PredictionRowOut) -> Result<()> {
+        if self.include_true_phenotype {
+            self.writer.write_record([
+                row.species_combo.clone(),
+                format_float_trim(row.lambda1),
+                format_float_trim(row.lambda2),
+                format_float_trim(row.penalty_term),
+                row.num_genes.to_string(),
+                format_float_trim(row.input_rmse),
+                row.species.clone(),
+                format_float_trim(row.sps),
+                row.true_phenotype.clone().unwrap_or_default(),
+            ])?;
+        } else {
+            self.writer.write_record([
+                row.species_combo.clone(),
+                format_float_trim(row.lambda1),
+                format_float_trim(row.lambda2),
+                format_float_trim(row.penalty_term),
+                row.num_genes.to_string(),
+                format_float_trim(row.input_rmse),
+                row.species.clone(),
+                format_float_trim(row.sps),
+            ])?;
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.writer.flush()?;
+        Ok(())
+    }
+}
+
+enum PredictionOutputSink {
+    Direct {
+        path: PathBuf,
+        writer: PredictionCsvStream,
+    },
+    Sharded {
+        output_dir: PathBuf,
+        base_name: String,
+        checkpoint_dir: PathBuf,
+        include_true_phenotype: bool,
+        combo_count: usize,
+        current_combo_index: Option<usize>,
+        writer: Option<PredictionCsvStream>,
+    },
+}
+
+impl PredictionOutputSink {
+    fn open(
+        output_dir: &Path,
+        base_name: &str,
+        include_true_phenotype: bool,
+        start_combo_index: usize,
+        combos: &[ComboJob],
+        pair_randomized: bool,
+        random_repeats: usize,
+        legacy_checkpoint_prediction_rows: &[PredictionRowOut],
+        checkpoint_enabled: bool,
+    ) -> Result<Self> {
+        let path = predictions_csv_path(output_dir, base_name);
+        if !checkpoint_enabled {
+            return Ok(Self::Direct {
+                writer: PredictionCsvStream::open(&path, include_true_phenotype, false)?,
+                path,
+            });
+        }
+
+        let (checkpoint_dir, _, _, _, _) = checkpoint_paths(output_dir);
+        fs::create_dir_all(&checkpoint_dir).with_context(|| {
+            format!(
+                "failed to create checkpoint dir {}",
+                checkpoint_dir.display()
+            )
+        })?;
+
+        seed_prediction_shards_from_legacy_checkpoint(
+            &checkpoint_dir,
+            include_true_phenotype,
+            start_combo_index,
+            combos,
+            pair_randomized,
+            random_repeats,
+            legacy_checkpoint_prediction_rows,
+        )?;
+
+        Ok(Self::Sharded {
+            output_dir: output_dir.to_path_buf(),
+            base_name: base_name.to_string(),
+            checkpoint_dir,
+            include_true_phenotype,
+            combo_count: combos.len(),
+            current_combo_index: None,
+            writer: None,
+        })
+    }
+
+    fn start_combo(&mut self, combo_index: usize) -> Result<()> {
+        match self {
+            Self::Direct { .. } => Ok(()),
+            Self::Sharded {
+                checkpoint_dir,
+                include_true_phenotype,
+                current_combo_index,
+                writer,
+                ..
+            } => {
+                let tmp = prediction_shard_tmp_path(checkpoint_dir, combo_index);
+                let complete = prediction_shard_path(checkpoint_dir, combo_index);
+                if tmp.exists() {
+                    fs::remove_file(&tmp)
+                        .with_context(|| format!("failed to remove {}", tmp.display()))?;
+                }
+                if complete.exists() {
+                    fs::remove_file(&complete)
+                        .with_context(|| format!("failed to remove {}", complete.display()))?;
+                }
+                *writer = Some(PredictionCsvStream::open(
+                    &tmp,
+                    *include_true_phenotype,
+                    false,
+                )?);
+                *current_combo_index = Some(combo_index);
+                Ok(())
+            }
+        }
+    }
+
+    fn write_row(&mut self, row: &PredictionRowOut) -> Result<()> {
+        match self {
+            Self::Direct { writer, .. } => writer.write_row(row),
+            Self::Sharded { writer, .. } => writer
+                .as_mut()
+                .ok_or_else(|| anyhow!("prediction shard writer was not opened for this combo"))?
+                .write_row(row),
+        }
+    }
+
+    fn finish_combo(&mut self) -> Result<()> {
+        match self {
+            Self::Direct { writer, .. } => writer.flush(),
+            Self::Sharded {
+                checkpoint_dir,
+                current_combo_index,
+                writer,
+                ..
+            } => {
+                let Some(combo_index) = current_combo_index.take() else {
+                    return Ok(());
+                };
+                if let Some(mut open_writer) = writer.take() {
+                    open_writer.flush()?;
+                }
+                let tmp = prediction_shard_tmp_path(checkpoint_dir, combo_index);
+                let complete = prediction_shard_path(checkpoint_dir, combo_index);
+                fs::rename(&tmp, &complete).with_context(|| {
+                    format!(
+                        "failed to promote prediction shard {} -> {}",
+                        tmp.display(),
+                        complete.display()
+                    )
+                })?;
+                Ok(())
+            }
+        }
+    }
+
+    fn finalize(mut self) -> Result<PathBuf> {
+        match &mut self {
+            Self::Direct { path, writer } => {
+                writer.flush()?;
+                Ok(path.clone())
+            }
+            Self::Sharded {
+                output_dir,
+                base_name,
+                checkpoint_dir,
+                include_true_phenotype,
+                combo_count,
+                current_combo_index: _,
+                writer: _,
+            } => {
+                let final_path = predictions_csv_path(output_dir, base_name);
+                let tmp_final = final_path.with_extension("csv.tmp");
+                {
+                    let mut final_writer =
+                        PredictionCsvStream::open(&tmp_final, *include_true_phenotype, false)?;
+                    for combo_index in 0..*combo_count {
+                        let shard = prediction_shard_path(checkpoint_dir, combo_index);
+                        if !shard.exists() {
+                            bail!(
+                                "prediction shard for combo {} is missing: {}",
+                                combo_index + 1,
+                                shard.display()
+                            );
+                        }
+                        append_prediction_shard_records(&shard, &mut final_writer)?;
+                    }
+                    final_writer.flush()?;
+                }
+                fs::rename(&tmp_final, &final_path).with_context(|| {
+                    format!(
+                        "failed to replace final predictions CSV {}",
+                        final_path.display()
+                    )
+                })?;
+                Ok(final_path)
+            }
+        }
+    }
+}
+
+fn prediction_shard_path(checkpoint_dir: &Path, combo_index: usize) -> PathBuf {
+    checkpoint_dir.join(format!("predictions_combo_{combo_index}.csv"))
+}
+
+fn prediction_shard_tmp_path(checkpoint_dir: &Path, combo_index: usize) -> PathBuf {
+    checkpoint_dir.join(format!("predictions_combo_{combo_index}.csv.tmp"))
+}
+
+fn append_prediction_shard_records(
+    shard: &Path,
+    final_writer: &mut PredictionCsvStream,
+) -> Result<()> {
+    let mut reader = csv::Reader::from_path(shard)
+        .with_context(|| format!("failed to read {}", shard.display()))?;
+    for rec in reader.records() {
+        final_writer.writer.write_record(&rec?)?;
+    }
+    Ok(())
+}
+
+fn combo_prediction_tags(
+    combo: &ComboJob,
+    pair_randomized: bool,
+    random_repeats: usize,
+) -> Vec<String> {
+    if pair_randomized {
+        (0..random_repeats.max(1))
+            .map(|random_rep| format!("{}_{}", combo.combo_tag, random_rep))
+            .collect()
+    } else {
+        vec![combo.combo_tag.clone()]
+    }
+}
+
+fn seed_prediction_shards_from_legacy_checkpoint(
+    checkpoint_dir: &Path,
+    include_true_phenotype: bool,
+    start_combo_index: usize,
+    combos: &[ComboJob],
+    pair_randomized: bool,
+    random_repeats: usize,
+    legacy_checkpoint_prediction_rows: &[PredictionRowOut],
+) -> Result<()> {
+    if start_combo_index == 0 || legacy_checkpoint_prediction_rows.is_empty() {
+        return Ok(());
+    }
+
+    for combo in combos.iter().take(start_combo_index) {
+        let shard = prediction_shard_path(checkpoint_dir, combo.index);
+        if shard.exists() {
+            continue;
+        }
+        let tags: HashSet<String> = combo_prediction_tags(combo, pair_randomized, random_repeats)
+            .into_iter()
+            .collect();
+        let tmp = prediction_shard_tmp_path(checkpoint_dir, combo.index);
+        let mut writer = PredictionCsvStream::open(&tmp, include_true_phenotype, false)?;
+        for row in legacy_checkpoint_prediction_rows
+            .iter()
+            .filter(|row| tags.contains(row.species_combo.as_str()))
+        {
+            writer.write_row(row)?;
+        }
+        writer.flush()?;
+        fs::rename(&tmp, &shard).with_context(|| {
+            format!(
+                "failed to promote legacy prediction shard {} -> {}",
+                tmp.display(),
+                shard.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn intercept_only_model(
     prep: &PreprocessedData,
     lambda1: f64,
@@ -3497,72 +3873,6 @@ fn intercept_only_model(
         gene_gss: vec![0.0; prep.genes.len()],
         selected_sites: Vec::new(),
     }
-}
-
-fn write_predictions_csv(
-    output_dir: &Path,
-    base_name: &str,
-    rows: &[PredictionRowOut],
-    include_true_phenotype: bool,
-) -> Result<PathBuf> {
-    let path = output_dir.join(format!("{}_species_predictions.csv", base_name));
-    let mut wtr =
-        Writer::from_path(&path).with_context(|| format!("failed to create {}", path.display()))?;
-
-    if include_true_phenotype {
-        wtr.write_record([
-            "species_combo",
-            "lambda1",
-            "lambda2",
-            "penalty_term",
-            "num_genes",
-            "input_RMSE",
-            "species",
-            "SPS",
-            "true_phenotype",
-        ])?;
-    } else {
-        wtr.write_record([
-            "species_combo",
-            "lambda1",
-            "lambda2",
-            "penalty_term",
-            "num_genes",
-            "input_RMSE",
-            "species",
-            "SPS",
-        ])?;
-    }
-
-    for row in rows {
-        if include_true_phenotype {
-            wtr.write_record([
-                row.species_combo.clone(),
-                format_float_trim(row.lambda1),
-                format_float_trim(row.lambda2),
-                format_float_trim(row.penalty_term),
-                row.num_genes.to_string(),
-                format_float_trim(row.input_rmse),
-                row.species.clone(),
-                format_float_trim(row.sps),
-                row.true_phenotype.clone().unwrap_or_default(),
-            ])?;
-        } else {
-            wtr.write_record([
-                row.species_combo.clone(),
-                format_float_trim(row.lambda1),
-                format_float_trim(row.lambda2),
-                format_float_trim(row.penalty_term),
-                row.num_genes.to_string(),
-                format_float_trim(row.input_rmse),
-                row.species.clone(),
-                format_float_trim(row.sps),
-            ])?;
-        }
-    }
-
-    wtr.flush()?;
-    Ok(path)
 }
 
 fn write_gene_ranks_csv_single(
